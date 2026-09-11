@@ -242,3 +242,6 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
   .auth-reference-card h1{font-size:29px!important}
   .auth-reference-card .auth-intro{font-size:14px!important}
 }
+
+/* V6.25 Maintenance */
+.maintenance-head{align-items:flex-start;margin-bottom:18px}.maintenance-head .primary{display:flex;align-items:center;gap:8px}.maintenance-toolbar{justify-content:flex-end}.maintenance-toolbar .input-icon{width:min(420px,50vw);margin-right:auto}.maintenance-toolbar select{min-width:170px}.maintenance-form-grid select{width:100%}.maintenance-actions{display:flex;gap:5px}.danger-icon{color:#dc2626}.maintenance-badge{background:#e8f7ee;color:#18743a;white-space:nowrap}#maintenanceTable td{vertical-align:top;max-width:260px}#maintenanceTable table{min-width:1050px}@media(max-width:800px){.maintenance-head{flex-direction:column;gap:12px}.maintenance-toolbar{align-items:stretch}.maintenance-toolbar .input-icon{width:100%}.maintenance-toolbar select{width:100%}}
