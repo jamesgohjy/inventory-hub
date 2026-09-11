@@ -112,3 +112,13 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
   #inventoryView .toolbar .input-icon,#auditView .toolbar .input-icon{width:100%;max-width:none;min-width:0;flex:1 1 auto}
   #categoryFilter{width:100%;min-width:0;max-width:none;flex:1 1 auto}
 }
+
+
+/* V6.4: latest requested layout refinements */
+#documentsView .toolbar{display:flex;align-items:center}
+#documentsView .toolbar .input-icon{flex:0 1 50%;width:50%;min-width:360px;max-width:720px}
+#documentSearch{width:100%;min-width:0}
+/* Crop the source photo before the embedded wording area, leaving only the projector scene visible. */
+.hero-projector-img{inset:0 auto 0 0;width:138%;height:100%;object-fit:cover;object-position:left center;max-width:none}
+@media(max-width:1200px){.hero-projector-img{width:142%;object-position:left center}}
+@media(max-width:720px){#documentsView .toolbar{flex-direction:column;align-items:stretch}#documentsView .toolbar .input-icon{width:100%;max-width:none;min-width:0;flex:1 1 auto}}
