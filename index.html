@@ -56,6 +56,7 @@
         <button class="nav-btn" data-view="inventory"><i data-lucide="package"></i><span>Inventory</span></button>
         <button id="sidebarImportBtn" class="nav-action"><i data-lucide="upload"></i><span>Import Invoice</span></button>
         <button class="nav-btn" data-view="documents"><i data-lucide="file-text"></i><span>Documents</span></button>
+        <button class="nav-btn" data-view="maintenance"><i data-lucide="wrench"></i><span>Maintenance</span></button>
         <button class="nav-btn" data-view="audit"><i data-lucide="history"></i><span>Recent Activities</span></button>
       </nav>
 
@@ -133,7 +134,7 @@
           </article>
         </div>
       </section>
-        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.24</span></div>
+        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.25</span></div>
 
       <section id="inventoryView" class="view">
         <article class="panel content-panel">
@@ -149,6 +150,15 @@
         <article class="panel content-panel">
           <div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div></div>
           <div id="documentsTable" class="table-wrap"></div>
+        </article>
+      </section>
+
+
+      <section id="maintenanceView" class="view">
+        <article class="panel content-panel">
+          <div class="panel-head maintenance-head"><div><h2>Maintenance Records</h2><p class="muted">Keep equipment repair and service history together with your inventory records.</p></div><button id="addMaintenanceBtn" class="primary"><i data-lucide="plus"></i> Add Maintenance Record</button></div>
+          <div class="toolbar maintenance-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="maintenanceSearch" class="search" autocomplete="off" placeholder="Search equipment, SKU, serial, issue..." /></div><select id="maintenanceOutcome"><option value="">All outcomes</option><option>Repaired</option><option>Replaced</option><option>Sent for Service</option><option>No Fault Found</option><option>Disposed</option></select></div>
+          <div id="maintenanceTable" class="table-wrap"></div>
         </article>
       </section>
 
@@ -217,6 +227,24 @@
     </div>
   </dialog>
 
+
+  <dialog id="maintenanceDialog" class="dialog wide">
+    <form id="maintenanceForm">
+      <div class="dialog-head"><div><h2 id="maintenanceDialogTitle">Add Maintenance Record</h2><p>Record equipment faults, repairs and service outcomes.</p></div><button id="closeMaintenanceBtn" type="button" class="icon-btn"><i data-lucide="x"></i></button></div>
+      <input type="hidden" id="maintenanceId" />
+      <div class="form-grid maintenance-form-grid">
+        <label>Date *<input id="maintenanceDate" type="date" required /></label>
+        <label>Equipment / SKU *<select id="maintenanceItem" required></select></label>
+        <label>Serial Number<select id="maintenanceSerial"><option value="">None / not applicable</option></select></label>
+        <label>Outcome *<select id="maintenanceResult" required><option>Repaired</option><option>Replaced</option><option>Sent for Service</option><option>No Fault Found</option><option>Disposed</option></select></label>
+        <label class="span-2">Issue / Problem *<textarea id="maintenanceIssue" rows="3" required placeholder="Describe the issue or fault..."></textarea></label>
+        <label class="span-2">Action Taken *<textarea id="maintenanceAction" rows="3" required placeholder="Describe what was done..."></textarea></label>
+        <label class="span-2">Notes<textarea id="maintenanceNotes" rows="2" placeholder="Additional notes (optional)..."></textarea></label>
+      </div>
+      <div class="dialog-actions"><button id="cancelMaintenanceBtn" type="button" class="secondary">Cancel</button><button type="submit" class="primary">Save Record</button></div>
+    </form>
+  </dialog>
+
   <dialog id="detailDialog" class="dialog wide">
     <div class="dialog-head"><div><h2 id="detailTitle">Item</h2><p id="detailSubtitle"></p></div><button id="closeDetailBtn" class="icon-btn"><i data-lucide="x"></i></button></div>
     <div id="detailBody"></div>
@@ -225,6 +253,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=624"></script>
+  <script type="module" src="app.js?v=625"></script>
 </body>
 </html>
