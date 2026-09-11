@@ -7,26 +7,33 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=620" />
+  <link rel="stylesheet" href="styles.css?v=621" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
 <body data-view="dashboard">
   <div id="authGate" class="auth-gate hidden">
-    <div class="auth-card">
-      <div class="auth-brand">
-        <div class="brand-mark"><i data-lucide="box"></i></div>
-        <div><strong>AV Inventory Hub</strong><span>Assets simplified</span></div>
-      </div>
-      <h1>Welcome back</h1>
-      <p>Sign in to access your shared AV inventory.</p>
-      <label>Email<input id="authEmail" type="email" autocomplete="email" placeholder="you@school.edu.sg" /></label>
-      <label>Password<input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
-      <div class="row gap">
-        <button id="signInBtn" class="primary flex1">Sign in</button>
-        <button id="signUpBtn" class="secondary flex1">Create account</button>
-      </div>
-      <p id="authMessage" class="muted small"></p>
+    <div class="auth-layout">
+      <section class="auth-card" aria-label="Sign in">
+        <div class="auth-brand">
+          <div class="brand-mark"><i data-lucide="box"></i></div>
+          <div><strong>AV Inventory Hub</strong><span>Assets simplified</span></div>
+        </div>
+        <h1>Welcome back</h1>
+        <p class="auth-intro">Sign in to access your shared AV inventory.</p>
+        <label for="authEmail">Email address</label>
+        <div class="auth-input-wrap"><i data-lucide="mail"></i><input id="authEmail" type="email" autocomplete="email" placeholder="name@school.edu.sg" /></div>
+        <p id="emailError" class="field-error hidden">Enter a valid email address.</p>
+        <div class="auth-label-row"><label for="authPassword">Password</label><button id="forgotPasswordBtn" class="auth-text-btn" type="button">Forgot password?</button></div>
+        <div class="auth-input-wrap"><i data-lucide="lock-keyhole"></i><input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" /><button id="togglePasswordBtn" class="password-toggle" type="button" aria-label="Show password"><i data-lucide="eye"></i></button></div>
+        <p id="passwordError" class="field-error hidden">Password is required.</p>
+        <button id="signInBtn" class="primary auth-signin" type="button" disabled>Sign in</button>
+        <p id="authMessage" class="auth-message hidden" role="alert"></p>
+        <p class="auth-create">New team member? <button id="signUpBtn" class="auth-text-btn" type="button">Create account</button></p>
+      </section>
+      <aside class="auth-visual" aria-hidden="true">
+        <div class="auth-visual-copy"><h2>Your AV inventory, organized.</h2><p>Track equipment, invoices and serial numbers from one shared workspace.</p></div>
+      </aside>
     </div>
   </div>
 
@@ -215,6 +222,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=620"></script>
+  <script type="module" src="app.js?v=621"></script>
 </body>
 </html>
