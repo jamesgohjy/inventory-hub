@@ -85,3 +85,10 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
 /* V4: destructive document action */
 .actions .danger-outline{color:#b42318;border-color:#f5c7c2;background:#fff}
 .actions .danger-outline:hover{color:#912018;border-color:#ea8f86;background:#fff5f4}
+
+/* V5 inventory toolbar sizing */
+#inventoryView .toolbar{display:grid;grid-template-columns:minmax(420px,1fr) 180px;gap:12px;align-items:center}
+#inventoryView .toolbar .input-icon{min-width:0;width:100%}
+#inventorySearch{width:100%;min-width:0}
+#categoryFilter{width:180px;min-width:160px;max-width:180px}
+@media(max-width:760px){#inventoryView .toolbar{grid-template-columns:1fr}#categoryFilter{width:100%;min-width:0;max-width:none}}
