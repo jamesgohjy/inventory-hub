@@ -178,6 +178,34 @@ async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=awai
   let text=pages.join('\n');if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(45*i/pdf.numPages),`OCR page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:1.6});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(95,'Standardising fields…');return text;}
 function setProgress(p,t){$('importProgress').classList.remove('hidden');$('progressBar').style.width=p+'%';$('progressText').textContent=t;}
 function parseDate(v=''){const s=v.trim();let d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);const m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;return `${y}-${String(+m[2]).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;}return'';}
+function detectInvoiceDate(text,invoice=''){
+  const flat=String(text||'').replace(/\r/g,'');
+  // 1) Strong labels: Invoice Date / Document Date / Tax Invoice Date.
+  const strong=[
+    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d[\/.-][01]?\d[\/.-](?:\d{2}|\d{4}))/i,
+    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i
+  ];
+  for(const re of strong){const m=flat.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
+  // 2) OCR often puts column headings on one line and values on the next. For a recognised
+  // invoice, inspect the neighbourhood around DATE and the invoice number for a plausible date.
+  const isInvoice=/\b(?:tax\s+)?invoice\b/i.test(flat)||!!invoice;
+  if(isInvoice){
+    const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
+    const dateToken=/\b([0-3]?\d[\/.-][01]?\d[\/.-](?:\d{2}|\d{4}))\b/;
+    for(let i=0;i<lines.length;i++){
+      if(/^(?:invoice\s*)?date\b/i.test(lines[i])||/\bdate\b/i.test(lines[i])){
+        for(let j=i;j<=Math.min(lines.length-1,i+4);j++){
+          const m=lines[j].match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}
+        }
+      }
+    }
+    if(invoice){
+      const idx=flat.toLowerCase().indexOf(String(invoice).toLowerCase());
+      if(idx>=0){const near=flat.slice(Math.max(0,idx-250),idx+500);const m=near.match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}}
+    }
+  }
+  return '';
+}
 function first(re,text,group=1){const m=text.match(re);return m?m[group].trim():'';}
 function parseInvoice(text){const flat=text.replace(/\r/g,'');let supplier='';if(/Loud Technologies Asia/i.test(flat))supplier='Loud Technologies Asia Pte Ltd';else if(/AV\s+MEDIA\s+PTE\s+LTD/i.test(flat))supplier='AV Media Pte Ltd';else supplier=first(/([A-Z][A-Za-z0-9 &.,'-]+Pte\.?\s*Ltd\.?)/i,flat);
   let invoice='';
@@ -194,17 +222,9 @@ function parseInvoice(text){const flat=text.replace(/\r/g,'');let supplier='';if
   invoice=String(invoice||'').replace(/\s+/g,' ').trim();
   // Never accept common invoice headings/labels as an invoice number.
   if(/^(sold\s*to|bill\s*to|ship\s*to|invoice|inv|invoice\s*(no|number)|date)$/i.test(invoice)) invoice='';
-  let date='';
-  // Prefer an explicit Invoice Date. If an invoice only labels the field as "Date",
-  // accept that date only when invoice context is present (invoice number + invoice wording).
-  const explicitInvoiceDate=first(/Invoice\s*Date\s*[:#-]?\s*\n?\s*([^\n]+)/i,flat);
-  if(explicitInvoiceDate) date=parseDate(explicitInvoiceDate);
-  if(!date && invoice && /\b(?:tax\s+)?invoice\b/i.test(flat)){
-    const genericDate=first(/(?:^|\n)\s*Date\s*[:#-]?\s*(?:\n\s*)?([^\n]+)/im,flat);
-    date=parseDate(genericDate);
-  }
+  let date=detectInvoiceDate(flat,invoice);
   const subtotal=num(first(/Subtotal\s*\n?\s*([\d,.]+)/i,flat)||first(/SUB\s*TOTAL\s*(?:SGD)?\s*([\d,.]+)/i,flat));const gst=num(first(/(?:GST\s*9%|Total Local supply of goods and services 9%)\s*(?:SGD)?\s*\n?\s*([\d,.]+)/i,flat));const total=num(first(/(?:Invoice Total SGD|AMOUNT\s*SGD)\s*\n?\s*([\d,.]+)/i,flat));
-  const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:'',purchase_order_number:first(/P\/?O\s*NO\.?\s*\n?\s*([^\n]+)/i,flat),reference_number:first(/(?:Reference|REF\.\s*NO\.)\s*\n?\s*([^\n]+)/i,flat),currency:'SGD',subtotal,gst,total_amount:total};
+  const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:'',purchase_order_number:'',reference_number:first(/(?:Reference|REF\.\s*NO\.)\s*\n?\s*([^\n]+)/i,flat),currency:'SGD',subtotal,gst,total_amount:total};
   let items=[];if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];return{doc,items};}
 function parseLoud(text){const products=[
   ['XVIVE-U35C','XVive U35C Wireless System','XVive U35C Wireless System for Condenser Microphones 5.8GHz','Audio / Wireless',4,340,1360,'1 Year','IntlE251100449, Intle251100452, Intle251000719, Intle251100448'],
@@ -216,7 +236,7 @@ function parseLoud(text){const products=[
 function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84\" x 84\" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
 
 function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.parsed.items.map((x,i)=>`<div class="parsed-row" data-pi="${i}"><div class="parsed-grid"><label>SKU / model<input data-f="sku" value="${esc(x.sku)}"></label><label>Standard item name<input data-f="item_name" value="${esc(x.item_name)}"></label><label>Qty<input type="number" min="0.01" step="0.01" data-f="quantity" value="${x.quantity??1}"></label><label>Unit price<input type="number" step="0.01" data-f="unit_price" value="${x.unit_price??''}"></label><label>Amount<input type="number" step="0.01" data-f="amount" value="${x.amount??''}"></label><label>Description<textarea data-f="description" rows="2">${esc(x.description)}</textarea></label></div><div class="parsed-meta"><label>Category<input data-f="category" value="${esc(x.category||'')}"></label><label>Warranty<input data-f="warranty" value="${esc(x.warranty||'')}"></label><label>Serial numbers<input data-f="serials" value="${esc(x.serials||'')}"></label></div><div class="actions" style="margin-top:8px"><button type="button" data-remove-line="${i}">Remove line</button></div></div>`).join('');}
-function collectParsed(){document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;row.querySelectorAll('[data-f]').forEach(el=>state.parsed.items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});state.parsed.doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:$('pPo').value.trim(),reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};}
+function collectParsed(){document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;row.querySelectorAll('[data-f]').forEach(el=>state.parsed.items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});state.parsed.doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:'',reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};}
 async function ensureUniqueFilename(file){
   let name=file.name.trim();
   while(await state.db.duplicateFilename(name)){
@@ -234,7 +254,7 @@ async function ensureUniqueFilename(file){
   return new File([file],name,{type:file.type||'application/pdf',lastModified:file.lastModified});
 }
 
-async function startImport(file){file=await ensureUniqueFilename(file);if(!file)return;state.file=file;$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);state.parsed={...parseInvoice(text),raw:text};const d=state.parsed.doc;$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;$('pDo').value=d.delivery_order_number;$('pPo').value=d.purchase_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=text;renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number):null;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').textContent=dupe?'Possible duplicate: this supplier + invoice number already exists. Saving will be blocked.':'';setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');}}
+async function startImport(file){file=await ensureUniqueFilename(file);if(!file)return;state.file=file;$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);state.parsed={...parseInvoice(text),raw:text};const d=state.parsed.doc;$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=text;renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number):null;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').textContent=dupe?'Possible duplicate: this supplier + invoice number already exists. Saving will be blocked.':'';setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const base=email?email.split('@')[0]:(CFG.mode==='supabase'?'Team Member':'Demo User');const pretty=base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase());if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();}
 async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;setUserIdentity(s);$('authGate').classList.toggle('hidden',!!s);if(!s){window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();window.lucide?.createIcons();}
