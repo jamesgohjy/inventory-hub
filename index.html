@@ -3,21 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inventory Hub</title>
+  <title>AV Inventory Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
-<body>
+<body data-view="dashboard">
   <div id="authGate" class="auth-gate hidden">
     <div class="auth-card">
-      <div class="brand-mark">IH</div>
-      <h1>Inventory Hub</h1>
-      <p>Sign in to access the shared inventory.</p>
-      <label>Email<input id="authEmail" type="email" autocomplete="email" /></label>
-      <label>Password<input id="authPassword" type="password" autocomplete="current-password" /></label>
+      <div class="auth-brand">
+        <div class="brand-mark"><i data-lucide="box"></i></div>
+        <div><strong>AV Inventory Hub</strong><span>Assets simplified</span></div>
+      </div>
+      <h1>Welcome back</h1>
+      <p>Sign in to access your shared AV inventory.</p>
+      <label>Email<input id="authEmail" type="email" autocomplete="email" placeholder="you@school.edu.sg" /></label>
+      <label>Password<input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
       <div class="row gap">
         <button id="signInBtn" class="primary flex1">Sign in</button>
         <button id="signUpBtn" class="secondary flex1">Create account</button>
@@ -29,56 +33,108 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">IH</div>
-        <div><strong>Inventory Hub</strong><span id="modeBadge" class="mode-badge">Demo</span></div>
+        <div class="brand-mark"><i data-lucide="box"></i></div>
+        <div class="brand-copy">
+          <strong>AV Inventory Hub</strong>
+          <span>ASSETS · SIMPLIFIED</span>
+          <span id="modeBadge" class="mode-badge">Demo</span>
+        </div>
       </div>
-      <nav>
-        <button class="nav-btn active" data-view="dashboard">Dashboard</button>
-        <button class="nav-btn" data-view="inventory">Inventory</button>
-        <button class="nav-btn" data-view="documents">Documents</button>
-        <button class="nav-btn" data-view="audit">Audit history</button>
+
+      <nav class="side-nav">
+        <button class="nav-btn active" data-view="dashboard"><i data-lucide="house"></i><span>Dashboard</span></button>
+        <button class="nav-btn" data-view="inventory"><i data-lucide="package"></i><span>Inventory</span></button>
+        <button id="sidebarImportBtn" class="nav-action"><i data-lucide="upload"></i><span>Import Invoice</span></button>
+        <button class="nav-btn" data-view="documents"><i data-lucide="file-text"></i><span>Documents</span></button>
+        <button class="nav-btn" data-view="audit"><i data-lucide="history"></i><span>Audit History</span></button>
       </nav>
+
       <div class="sidebar-footer">
-        <button id="signOutBtn" class="ghost hidden">Sign out</button>
-        <p class="small muted">Shared inventory with standardised invoice data.</p>
+        <div class="footer-rule"></div>
+        <p>Track today.<br>Empower tomorrow.</p>
+        <button id="signOutBtn" class="ghost hidden"><i data-lucide="log-out"></i> Sign out</button>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div>
-          <h1 id="pageTitle">Dashboard</h1>
-          <p id="pageSubtitle">Overview of purchased and current inventory.</p>
+        <div class="global-search-wrap">
+          <i data-lucide="search"></i>
+          <input id="globalSearch" placeholder="Search inventory, invoice, supplier..." aria-label="Global search" />
+          <span class="search-hint">Enter</span>
         </div>
         <div class="top-actions">
-          <button id="importBtn" class="secondary">Import PDF</button>
-          <button id="addItemBtn" class="primary">+ Add item</button>
+          <button id="addItemBtn" class="primary compact"><i data-lucide="plus"></i><span>Add item</span></button>
+          <div class="user-chip">
+            <div id="userAvatar" class="avatar">AV</div>
+            <div class="user-copy"><strong id="userName">Team Member</strong><span id="userEmail">AV Inventory</span></div>
+          </div>
         </div>
       </header>
 
-      <section id="dashboardView" class="view active">
+      <div class="page-header">
+        <div><h1 id="pageTitle">Dashboard</h1><p id="pageSubtitle">Overview of purchased and current inventory.</p></div>
+      </div>
+
+      <section id="dashboardView" class="view active dashboard-view">
+        <section class="hero">
+          <div class="hero-content">
+            <div class="eyebrow">AV INVENTORY HUB</div>
+            <h1>Manage Your<br>Assets with Confidence</h1>
+            <p>Track. Organize. Keep your AV operations moving.</p>
+            <div class="hero-actions">
+              <button id="importBtn" class="hero-primary"><i data-lucide="cloud-upload"></i> Import Invoice</button>
+              <button class="hero-secondary" data-go="inventory">View Inventory <i data-lucide="arrow-right"></i></button>
+            </div>
+          </div>
+          <div class="hero-visual" aria-hidden="true">
+            <div class="light-beam"></div>
+            <div class="projector-shadow"></div>
+            <div class="projector">
+              <div class="projector-top"></div>
+              <div class="projector-grille"></div>
+              <div class="projector-lens"><div class="lens-core"></div></div>
+              <div class="projector-feet"></div>
+            </div>
+            <div class="hero-caption">PROFESSIONAL<br>AUDIO VISUAL INVENTORY<br>READY WHEN YOU ARE</div>
+          </div>
+        </section>
+
         <div class="metrics">
-          <article class="metric"><span>Master SKUs</span><strong id="mSku">0</strong></article>
-          <article class="metric"><span>Total purchased</span><strong id="mPurchased">0</strong></article>
-          <article class="metric"><span>Current inventory</span><strong id="mCurrent">0</strong></article>
-          <article class="metric"><span>Documents</span><strong id="mDocs">0</strong></article>
-        </div>
-        <div class="grid-2">
-          <article class="panel">
-            <div class="panel-head"><h2>Inventory summary</h2><button class="link-btn" data-go="inventory">View all</button></div>
-            <div id="dashboardInventory" class="table-wrap"></div>
+          <article class="metric">
+            <div class="metric-icon blue"><i data-lucide="package"></i></div>
+            <div><span>Total SKUs</span><strong id="mSku">0</strong></div>
           </article>
-          <article class="panel">
-            <div class="panel-head"><h2>Recent activity</h2><button class="link-btn" data-go="audit">Audit log</button></div>
+          <article class="metric">
+            <div class="metric-icon green"><i data-lucide="layers-3"></i></div>
+            <div><span>Current Inventory</span><strong id="mCurrent">0</strong></div>
+          </article>
+          <article class="metric">
+            <div class="metric-icon violet"><i data-lucide="shopping-cart"></i></div>
+            <div><span>Total Purchased</span><strong id="mPurchased">0</strong></div>
+          </article>
+          <article class="metric">
+            <div class="metric-icon sky"><i data-lucide="files"></i></div>
+            <div><span>Total Documents</span><strong id="mDocs">0</strong></div>
+          </article>
+        </div>
+
+        <div class="grid-2 dashboard-grid">
+          <article class="panel inventory-preview-panel">
+            <div class="panel-head"><h2>Recent Inventory Items</h2><button class="link-btn" data-go="inventory">View all <i data-lucide="arrow-right"></i></button></div>
+            <div id="dashboardInventory" class="inventory-card-grid"></div>
+          </article>
+          <article class="panel activity-panel">
+            <div class="panel-head"><h2>Recent Activities</h2><button class="link-btn" data-go="audit">View all <i data-lucide="arrow-right"></i></button></div>
             <div id="recentAudit" class="activity-list"></div>
           </article>
         </div>
       </section>
 
       <section id="inventoryView" class="view">
-        <article class="panel">
+        <article class="panel content-panel">
           <div class="toolbar">
-            <input id="inventorySearch" class="search" placeholder="Search SKU, item, model, serial, supplier, invoice..." />
+            <div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div>
             <select id="categoryFilter"><option value="">All categories</option></select>
           </div>
           <div id="inventoryTable" class="table-wrap"></div>
@@ -86,15 +142,15 @@
       </section>
 
       <section id="documentsView" class="view">
-        <article class="panel">
-          <div class="toolbar"><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div>
+        <article class="panel content-panel">
+          <div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div></div>
           <div id="documentsTable" class="table-wrap"></div>
         </article>
       </section>
 
       <section id="auditView" class="view">
-        <article class="panel">
-          <div class="toolbar"><input id="auditSearch" class="search" placeholder="Search user, action, item or change..." /></div>
+        <article class="panel content-panel">
+          <div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="auditSearch" class="search" placeholder="Search user, action, item or change..." /></div></div>
           <div id="auditTable" class="table-wrap"></div>
         </article>
       </section>
@@ -103,7 +159,7 @@
 
   <dialog id="itemDialog" class="dialog">
     <form method="dialog" id="itemForm">
-      <div class="dialog-head"><div><h2 id="itemDialogTitle">Add item</h2><p>Create or edit a master SKU.</p></div><button value="cancel" class="icon-btn">×</button></div>
+      <div class="dialog-head"><div><h2 id="itemDialogTitle">Add item</h2><p>Create or edit a master SKU.</p></div><button value="cancel" class="icon-btn"><i data-lucide="x"></i></button></div>
       <input type="hidden" id="itemId" />
       <div class="form-grid">
         <label>SKU / Model code<input id="itemSku" required /></label>
@@ -118,7 +174,7 @@
 
   <dialog id="adjustDialog" class="dialog">
     <form method="dialog" id="adjustForm">
-      <div class="dialog-head"><div><h2>Adjust inventory</h2><p id="adjustItemLabel"></p></div><button value="cancel" class="icon-btn">×</button></div>
+      <div class="dialog-head"><div><h2>Adjust inventory</h2><p id="adjustItemLabel"></p></div><button value="cancel" class="icon-btn"><i data-lucide="x"></i></button></div>
       <input type="hidden" id="adjustItemId" />
       <div class="form-grid">
         <label>Reason<select id="adjustType" required><option>Damaged</option><option>Missing</option><option>Disposed</option><option>Other</option></select></label>
@@ -132,10 +188,10 @@
   </dialog>
 
   <dialog id="importDialog" class="dialog wide">
-    <div class="dialog-head"><div><h2>Import invoice / document</h2><p>PDF → extract/OCR → standardise → review → duplicate check → save.</p></div><button id="closeImportBtn" class="icon-btn">×</button></div>
+    <div class="dialog-head"><div><h2>Import invoice / document</h2><p>PDF → extract/OCR → standardise → review → duplicate check → save.</p></div><button id="closeImportBtn" class="icon-btn"><i data-lucide="x"></i></button></div>
     <div id="dropZone" class="drop-zone">
       <input id="pdfInput" type="file" accept="application/pdf" hidden />
-      <strong>Drop a PDF here</strong><span>or click to choose a file</span>
+      <div class="drop-icon"><i data-lucide="file-up"></i></div><strong>Drop a PDF here</strong><span>or click to choose a file</span>
     </div>
     <div id="importProgress" class="progress-wrap hidden"><div class="progress"><span id="progressBar"></span></div><p id="progressText">Reading PDF…</p></div>
     <div id="reviewArea" class="hidden">
@@ -156,7 +212,7 @@
   </dialog>
 
   <dialog id="detailDialog" class="dialog wide">
-    <div class="dialog-head"><div><h2 id="detailTitle">Item</h2><p id="detailSubtitle"></p></div><button id="closeDetailBtn" class="icon-btn">×</button></div>
+    <div class="dialog-head"><div><h2 id="detailTitle">Item</h2><p id="detailSubtitle"></p></div><button id="closeDetailBtn" class="icon-btn"><i data-lucide="x"></i></button></div>
     <div id="detailBody"></div>
   </dialog>
 
