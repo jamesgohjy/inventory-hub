@@ -82,7 +82,7 @@
             </div>
           </div>
           <div class="hero-visual hero-photo" aria-hidden="true">
-            <img class="hero-projector-img" src="./hero-projector.jpg?v=4" alt="" />
+            <img class="hero-projector-img" src="./hero-projector.jpg?v=65" alt="" />
           </div>
         </section>
 
@@ -159,8 +159,8 @@
   </dialog>
 
   <dialog id="adjustDialog" class="dialog">
-    <form method="dialog" id="adjustForm">
-      <div class="dialog-head"><div><h2>Adjust inventory</h2><p id="adjustItemLabel"></p></div><button value="cancel" class="icon-btn"><i data-lucide="x"></i></button></div>
+    <form id="adjustForm">
+      <div class="dialog-head"><div><h2>Adjust inventory</h2><p id="adjustItemLabel"></p></div><button type="button" id="closeAdjustBtn" class="icon-btn" aria-label="Close"><i data-lucide="x"></i></button></div>
       <input type="hidden" id="adjustItemId" />
       <div class="form-grid">
         <label>Reason<select id="adjustType" required><option>Damaged</option><option>Missing</option><option>Disposed</option><option>Other</option></select></label>
@@ -169,7 +169,7 @@
         <label class="span-2">Remarks<textarea id="adjustReason" rows="3" placeholder="Optional details"></textarea></label>
       </div>
       <div class="warning-box">This does not alter the original purchase history. It only reduces Current Inventory.</div>
-      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="default" class="danger">Subtract inventory</button></div>
+      <div class="dialog-actions"><button type="button" id="cancelAdjustBtn" class="secondary">Cancel</button><button type="submit" class="danger">Submit</button></div>
     </form>
   </dialog>
 
