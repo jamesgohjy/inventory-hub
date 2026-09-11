@@ -69,9 +69,29 @@ class SupabaseDB{
       if(up.error)throw up.error;uploaded=true;
       const dr=await this.sb.from('documents').insert({...doc,storage_path:path}).select().single();
       if(dr.error)throw dr.error;docId=dr.data.id;
-      const cleanPurchase={...purchase,document_id:docId,invoice_date:purchase.invoice_date||null,delivery_order_number:purchase.delivery_order_number||'',purchase_order_number:purchase.purchase_order_number||'',reference_number:purchase.reference_number||'',subtotal:Number.isFinite(Number(purchase.subtotal))?Number(purchase.subtotal):null,gst:Number.isFinite(Number(purchase.gst))?Number(purchase.gst):null,total_amount:Number.isFinite(Number(purchase.total_amount))?Number(purchase.total_amount):null};
-      const pr=await this.sb.from('purchases').insert(cleanPurchase).select().single();
+      const invoiceDate=String(purchase.invoice_date||'').trim();
+      const cleanPurchase={
+        supplier_name:purchase.supplier_name,
+        invoice_number:purchase.invoice_number,
+        invoice_date:invoiceDate||null,
+        delivery_order_number:purchase.delivery_order_number||'',
+        purchase_order_number:purchase.purchase_order_number||'',
+        reference_number:purchase.reference_number||'',
+        currency:purchase.currency||'SGD',
+        subtotal:Number.isFinite(Number(purchase.subtotal))?Number(purchase.subtotal):null,
+        gst:Number.isFinite(Number(purchase.gst))?Number(purchase.gst):null,
+        total_amount:Number.isFinite(Number(purchase.total_amount))?Number(purchase.total_amount):null,
+        document_id:docId
+      };
+      const pr=await this.sb.from('purchases').insert(cleanPurchase).select('id,invoice_date,supplier_name,invoice_number').single();
       if(pr.error)throw pr.error;purchaseId=pr.data.id;
+      // Verify that a manually entered invoice date actually persisted in Supabase.
+      // If the first insert response comes back blank, force one explicit update and verify again.
+      if(invoiceDate&&!pr.data.invoice_date){
+        const fix=await this.sb.from('purchases').update({invoice_date:invoiceDate}).eq('id',purchaseId).select('invoice_date').single();
+        if(fix.error)throw fix.error;
+        if(!fix.data?.invoice_date)throw new Error('Invoice date could not be saved. Please check the purchases.invoice_date column in Supabase.');
+      }
       for(const line of lines){
         const sku=String(line.sku||'').trim();
         const itemName=String(line.item_name||'').trim();
@@ -95,7 +115,21 @@ class SupabaseDB{
       throw err;
     }
   }
-  async deleteDocument(docId){const d=state.data.documents.find(x=>x.id===docId);if(!d)throw new Error('Document not found.');const pr=await this.sb.from('purchases').select('id').eq('document_id',docId);if(pr.error)throw pr.error;const purchaseIds=(pr.data||[]).map(x=>x.id);let impactedItemIds=[];if(purchaseIds.length){const pi=await this.sb.from('purchase_items').select('master_item_id').in('purchase_id',purchaseIds);if(pi.error)throw pi.error;impactedItemIds=[...new Set((pi.data||[]).map(x=>x.master_item_id).filter(Boolean))];const delP=await this.sb.from('purchases').delete().in('id',purchaseIds);if(delP.error)throw delP.error;}const delD=await this.sb.from('documents').delete().eq('id',docId);if(delD.error)throw delD.error;for(const itemId of impactedItemIds){const refs=await this.sb.from('purchase_items').select('id',{count:'exact',head:true}).eq('master_item_id',itemId);if(refs.error)throw refs.error;if((refs.count||0)===0){const delItem=await this.sb.from('master_items').delete().eq('id',itemId);if(delItem.error)throw delItem.error;}}const rm=await this.sb.storage.from('inventory-documents').remove([d.storage_path]);if(rm.error)console.warn('Database record deleted but storage cleanup failed:',rm.error);}
+  async deleteDocument(docId){
+    const d=state.data.documents.find(x=>x.id===docId);
+    if(!d)throw new Error('Document not found.');
+    // V6.10 uses a Supabase transaction function so purchase rows, purchase items and
+    // now-unused Master SKUs are cleaned up together instead of leaving zero-quantity SKUs.
+    const rpc=await this.sb.rpc('delete_document_inventory_cascade',{p_document_id:docId});
+    if(rpc.error){
+      if(String(rpc.error.message||'').toLowerCase().includes('delete_document_inventory_cascade')){
+        throw new Error('V6.10 database migration has not been run yet. Run supabase-v6-10-migration.sql in Supabase SQL Editor, then try again.');
+      }
+      throw rpc.error;
+    }
+    const storagePath=rpc.data||d.storage_path;
+    if(storagePath){const rm=await this.sb.storage.from('inventory-documents').remove([storagePath]);if(rm.error)console.warn('Database records deleted but storage cleanup failed:',rm.error);}
+  }
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
@@ -174,7 +208,7 @@ function parseLoud(text){const products=[
 function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84\" x 84\" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
 
 function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.parsed.items.map((x,i)=>`<div class="parsed-row" data-pi="${i}"><div class="parsed-grid"><label>SKU / model<input data-f="sku" value="${esc(x.sku)}"></label><label>Standard item name<input data-f="item_name" value="${esc(x.item_name)}"></label><label>Qty<input type="number" min="0.01" step="0.01" data-f="quantity" value="${x.quantity??1}"></label><label>Unit price<input type="number" step="0.01" data-f="unit_price" value="${x.unit_price??''}"></label><label>Amount<input type="number" step="0.01" data-f="amount" value="${x.amount??''}"></label><label>Description<textarea data-f="description" rows="2">${esc(x.description)}</textarea></label></div><div class="parsed-meta"><label>Category<input data-f="category" value="${esc(x.category||'')}"></label><label>Warranty<input data-f="warranty" value="${esc(x.warranty||'')}"></label><label>Serial numbers<input data-f="serials" value="${esc(x.serials||'')}"></label></div><div class="actions" style="margin-top:8px"><button type="button" data-remove-line="${i}">Remove line</button></div></div>`).join('');}
-function collectParsed(){document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;row.querySelectorAll('[data-f]').forEach(el=>state.parsed.items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});state.parsed.doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:$('pDate').value.trim()||'',delivery_order_number:$('pDo').value.trim(),purchase_order_number:$('pPo').value.trim(),reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};}
+function collectParsed(){document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;row.querySelectorAll('[data-f]').forEach(el=>state.parsed.items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});state.parsed.doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:$('pPo').value.trim(),reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};}
 async function ensureUniqueFilename(file){
   let name=file.name.trim();
   while(await state.db.duplicateFilename(name)){
