@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <div id="authGate" class="auth-gate hidden">
+    <div class="auth-card">
+      <div class="brand-mark">IH</div>
+      <h1>Inventory Hub</h1>
+      <p>Sign in to access the shared inventory.</p>
+      <label>Email<input id="authEmail" type="email" autocomplete="email" /></label>
+      <label>Password<input id="authPassword" type="password" autocomplete="current-password" /></label>
+      <div class="row gap">
+        <button id="signInBtn" class="primary flex1">Sign in</button>
+        <button id="signUpBtn" class="secondary flex1">Create account</button>
+      </div>
+      <p id="authMessage" class="muted small"></p>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">IH</div>
+        <div><strong>Inventory Hub</strong><span id="modeBadge" class="mode-badge">Demo</span></div>
+      </div>
+      <nav>
+        <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+        <button class="nav-btn" data-view="inventory">Inventory</button>
+        <button class="nav-btn" data-view="documents">Documents</button>
+        <button class="nav-btn" data-view="audit">Audit history</button>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="signOutBtn" class="ghost hidden">Sign out</button>
+        <p class="small muted">Shared inventory with standardised invoice data.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageSubtitle">Overview of purchased and current inventory.</p>
+        </div>
+        <div class="top-actions">
+          <button id="importBtn" class="secondary">Import PDF</button>
+          <button id="addItemBtn" class="primary">+ Add item</button>
+        </div>
+      </header>
+
+      <section id="dashboardView" class="view active">
+        <div class="metrics">
+          <article class="metric"><span>Master SKUs</span><strong id="mSku">0</strong></article>
+          <article class="metric"><span>Total purchased</span><strong id="mPurchased">0</strong></article>
+          <article class="metric"><span>Current inventory</span><strong id="mCurrent">0</strong></article>
+          <article class="metric"><span>Documents</span><strong id="mDocs">0</strong></article>
+        </div>
+        <div class="grid-2">
+          <article class="panel">
+            <div class="panel-head"><h2>Inventory summary</h2><button class="link-btn" data-go="inventory">View all</button></div>
+            <div id="dashboardInventory" class="table-wrap"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><h2>Recent activity</h2><button class="link-btn" data-go="audit">Audit log</button></div>
+            <div id="recentAudit" class="activity-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="inventoryView" class="view">
+        <article class="panel">
+          <div class="toolbar">
+            <input id="inventorySearch" class="search" placeholder="Search SKU, item, model, serial, supplier, invoice..." />
+            <select id="categoryFilter"><option value="">All categories</option></select>
+          </div>
+          <div id="inventoryTable" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="documentsView" class="view">
+        <article class="panel">
+          <div class="toolbar"><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div>
+          <div id="documentsTable" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="auditView" class="view">
+        <article class="panel">
+          <div class="toolbar"><input id="auditSearch" class="search" placeholder="Search user, action, item or change..." /></div>
+          <div id="auditTable" class="table-wrap"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="itemDialog" class="dialog">
+    <form method="dialog" id="itemForm">
+      <div class="dialog-head"><div><h2 id="itemDialogTitle">Add item</h2><p>Create or edit a master SKU.</p></div><button value="cancel" class="icon-btn">×</button></div>
+      <input type="hidden" id="itemId" />
+      <div class="form-grid">
+        <label>SKU / Model code<input id="itemSku" required /></label>
+        <label>Standard item name<input id="itemName" required /></label>
+        <label>Category<input id="itemCategory" /></label>
+        <label>Unit<input id="itemUnit" value="pcs" /></label>
+        <label class="span-2">Description<textarea id="itemDescription" rows="3"></textarea></label>
+      </div>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="saveItemBtn" value="default" class="primary">Save item</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="adjustDialog" class="dialog">
+    <form method="dialog" id="adjustForm">
+      <div class="dialog-head"><div><h2>Adjust inventory</h2><p id="adjustItemLabel"></p></div><button value="cancel" class="icon-btn">×</button></div>
+      <input type="hidden" id="adjustItemId" />
+      <div class="form-grid">
+        <label>Reason<select id="adjustType" required><option>Damaged</option><option>Missing</option><option>Disposed</option><option>Other</option></select></label>
+        <label>Quantity to subtract<input id="adjustQty" type="number" min="1" step="1" required /></label>
+        <label>Adjustment date<input id="adjustDate" type="date" required /></label>
+        <label class="span-2">Remarks<textarea id="adjustReason" rows="3" placeholder="Optional details"></textarea></label>
+      </div>
+      <div class="warning-box">This does not alter the original purchase history. It only reduces Current Inventory.</div>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button value="default" class="danger">Subtract inventory</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="importDialog" class="dialog wide">
+    <div class="dialog-head"><div><h2>Import invoice / document</h2><p>PDF → extract/OCR → standardise → review → duplicate check → save.</p></div><button id="closeImportBtn" class="icon-btn">×</button></div>
+    <div id="dropZone" class="drop-zone">
+      <input id="pdfInput" type="file" accept="application/pdf" hidden />
+      <strong>Drop a PDF here</strong><span>or click to choose a file</span>
+    </div>
+    <div id="importProgress" class="progress-wrap hidden"><div class="progress"><span id="progressBar"></span></div><p id="progressText">Reading PDF…</p></div>
+    <div id="reviewArea" class="hidden">
+      <div id="duplicateWarning" class="warning-box hidden"></div>
+      <h3>Document details</h3>
+      <div class="form-grid compact">
+        <label>Supplier<input id="pSupplier" /></label><label>Invoice number<input id="pInvoice" /></label>
+        <label>Invoice date<input id="pDate" type="date" /></label><label>Delivery order<input id="pDo" /></label>
+        <label>Purchase order<input id="pPo" /></label><label>Reference<input id="pRef" /></label>
+        <label>Currency<input id="pCurrency" value="SGD" /></label><label>Subtotal<input id="pSubtotal" type="number" step="0.01" /></label>
+        <label>GST<input id="pGst" type="number" step="0.01" /></label><label>Total amount<input id="pTotal" type="number" step="0.01" /></label>
+      </div>
+      <div class="panel-head import-items-head"><h3>Line items</h3><button id="addParsedItemBtn" class="secondary small-btn">+ Add line</button></div>
+      <div id="parsedItems"></div>
+      <details><summary>Raw extracted text</summary><pre id="rawText" class="raw-text"></pre></details>
+      <div class="dialog-actions"><button id="cancelReviewBtn" class="secondary">Cancel</button><button id="saveImportBtn" class="primary">Confirm & save</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="detailDialog" class="dialog wide">
+    <div class="dialog-head"><div><h2 id="detailTitle">Item</h2><p id="detailSubtitle"></p></div><button id="closeDetailBtn" class="icon-btn">×</button></div>
+    <div id="detailBody"></div>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
