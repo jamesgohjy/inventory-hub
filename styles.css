@@ -92,3 +92,7 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
 #inventorySearch{width:100%;min-width:0}
 #categoryFilter{width:180px;min-width:160px;max-width:180px}
 @media(max-width:760px){#inventoryView .toolbar{grid-template-columns:1fr}#categoryFilter{width:100%;min-width:0;max-width:none}}
+
+/* V6: top global search removed; keep signed-in user aligned right */
+.topbar-user-only{justify-content:flex-end}
+.topbar-user-only .top-actions{margin-left:auto}
