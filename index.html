@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=624" />
+  <link rel="stylesheet" href="styles.css?v=626" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -133,8 +133,21 @@
             <div id="recentAudit" class="activity-list"></div>
           </article>
         </div>
+
+        <section class="release-panel" aria-label="Version updates">
+          <article class="release-card release-current">
+            <div class="release-icon current"><i data-lucide="settings"></i></div>
+            <div class="release-version"><span>Current Version</span><div><strong>v6.26</strong><em class="release-badge latest">Latest</em></div></div>
+            <ul><li>Dashboard patch notes added</li><li>Maintenance records included</li><li>General fixes and performance</li></ul>
+          </article>
+          <article class="release-card release-next">
+            <div class="release-icon upcoming"><i data-lucide="rocket"></i></div>
+            <div class="release-version"><span>Coming Next</span><div><strong>v6.27</strong><em class="release-badge next">Upcoming</em></div></div>
+            <ul><li>Tweaks to maintenance section</li><li>General fixes and performance</li></ul>
+          </article>
+        </section>
       </section>
-        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.25</span></div>
+        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.26</span></div>
 
       <section id="inventoryView" class="view">
         <article class="panel content-panel">
@@ -253,6 +266,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=625"></script>
+  <script type="module" src="app.js?v=626"></script>
 </body>
 </html>
