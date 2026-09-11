@@ -94,3 +94,21 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
 /* V6: top global search removed; keep signed-in user aligned right */
 .topbar-user-only{justify-content:flex-end}
 .topbar-user-only .top-actions{margin-left:auto}
+
+
+/* V6.3: compact inventory/recent-activities search fields and hero positioning */
+#inventoryView .toolbar{display:flex;gap:12px;align-items:center}
+#inventoryView .toolbar .input-icon{flex:0 1 50%;width:50%;min-width:360px}
+#inventorySearch{width:100%;min-width:0}
+#categoryFilter{flex:0 0 160px;width:160px;min-width:160px;max-width:160px}
+#auditView .toolbar{display:flex;align-items:center}
+#auditView .toolbar .input-icon{flex:0 1 50%;width:50%;min-width:320px;max-width:620px}
+#auditSearch{width:100%;min-width:0}
+/* Reveal more of the wording embedded on the right side of the hero image. */
+.hero-projector-img{object-position:72% center}
+@media(max-width:1200px){.hero-projector-img{object-position:78% center}}
+@media(max-width:760px){
+  #inventoryView .toolbar,#auditView .toolbar{display:flex;flex-direction:column;align-items:stretch}
+  #inventoryView .toolbar .input-icon,#auditView .toolbar .input-icon{width:100%;max-width:none;min-width:0;flex:1 1 auto}
+  #categoryFilter{width:100%;min-width:0;max-width:none;flex:1 1 auto}
+}
