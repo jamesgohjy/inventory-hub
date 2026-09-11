@@ -120,7 +120,7 @@
       <section id="inventoryView" class="view">
         <article class="panel content-panel">
           <div class="toolbar">
-            <div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div>
+            <div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" autocomplete="off" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div>
             <select id="categoryFilter"><option value="">All categories</option></select>
           </div>
           <div id="inventoryTable" class="table-wrap"></div>
@@ -136,7 +136,7 @@
 
       <section id="auditView" class="view">
         <article class="panel content-panel">
-          <div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="auditSearch" class="search" placeholder="Search user, action, item or change..." /></div></div>
+          <div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="auditSearch" class="search" autocomplete="off" value="" placeholder="Search user, action, item or change..." /></div></div>
           <div id="auditTable" class="table-wrap"></div>
         </article>
       </section>
