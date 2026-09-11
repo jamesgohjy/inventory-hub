@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.16
-const APP_VERSION='6.16';
+// AV Inventory Hub V6.17
+const APP_VERSION='6.17';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const $ = (id)=>document.getElementById(id);
 const esc = (s='') => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -64,55 +64,18 @@ class SupabaseDB{
   async duplicateFilename(fileName){const {data,error}=await this.sb.from('documents').select('id,file_name').limit(1000);if(error)throw error;return (data||[]).find(x=>fileKey(x.file_name)===fileKey(fileName))||null;}
   async importPurchase(doc,purchase,lines,file){
     const path=`${new Date().getFullYear()}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-    let uploaded=false,docId=null,purchaseId=null;
+    let uploaded=false;
     try{
       const up=await this.sb.storage.from('inventory-documents').upload(path,file,{contentType:'application/pdf'});
-      if(up.error)throw up.error;uploaded=true;
-      const dr=await this.sb.from('documents').insert({...doc,storage_path:path}).select().single();
-      if(dr.error)throw dr.error;docId=dr.data.id;
+      if(up.error)throw up.error; uploaded=true;
       const invoiceDate=String(purchase.invoice_date||'').trim();
-      const cleanPurchase={
-        supplier_name:purchase.supplier_name,
-        invoice_number:purchase.invoice_number,
-        invoice_date:invoiceDate||null,
-        delivery_order_number:purchase.delivery_order_number||'',
-        purchase_order_number:purchase.purchase_order_number||'',
-        reference_number:purchase.reference_number||'',
-        currency:purchase.currency||'SGD',
-        subtotal:Number.isFinite(Number(purchase.subtotal))?Number(purchase.subtotal):null,
-        gst:Number.isFinite(Number(purchase.gst))?Number(purchase.gst):null,
-        total_amount:Number.isFinite(Number(purchase.total_amount))?Number(purchase.total_amount):null,
-        document_id:docId
-      };
-      const pr=await this.sb.from('purchases').insert(cleanPurchase).select('id,invoice_date,supplier_name,invoice_number').single();
-      if(pr.error)throw pr.error;purchaseId=pr.data.id;
-      // Verify that a manually entered invoice date actually persisted in Supabase.
-      // If the first insert response comes back blank, force one explicit update and verify again.
-      if(invoiceDate&&!pr.data.invoice_date){
-        const fix=await this.sb.from('purchases').update({invoice_date:invoiceDate}).eq('id',purchaseId).select('invoice_date').single();
-        if(fix.error)throw fix.error;
-        if(!fix.data?.invoice_date)throw new Error('Invoice date could not be saved. Please check the purchases.invoice_date column in Supabase.');
-      }
-      for(const line of lines){
-        const sku=String(line.sku||'').trim();
-        const itemName=String(line.item_name||'').trim();
-        let item=null;
-        if(sku){const q=await this.sb.from('master_items').select('*').ilike('sku',sku).limit(1);if(q.error)throw q.error;item=q.data?.[0]||null;}
-        if(!item&&itemName){const q2=await this.sb.from('master_items').select('*').ilike('item_name',itemName).limit(1);if(q2.error)throw q2.error;item=q2.data?.[0]||null;}
-        if(!item){const ins=await this.sb.from('master_items').insert({sku:sku||('AUTO-'+Date.now()+'-'+Math.random().toString(36).slice(2,6).toUpperCase()),item_name:itemName||'Unnamed item',description:line.description||'',category:line.category||'',unit:line.unit||'pcs'}).select().single();if(ins.error)throw ins.error;item=ins.data;}
-        const qty=Number(line.quantity);
-        if(!Number.isFinite(qty)||qty<=0)throw new Error(`Invalid quantity for ${itemName||sku||'line item'}.`);
-        const pir=await this.sb.from('purchase_items').insert({purchase_id:purchaseId,master_item_id:item.id,raw_description:line.description||'',quantity:qty,unit_price:line.unit_price===''||line.unit_price==null?null:num(line.unit_price),amount:line.amount===''||line.amount==null?null:num(line.amount),warranty:line.warranty||''}).select().single();
-        if(pir.error)throw pir.error;
-        const sns=parseSerials(line.serials).map(sn=>({purchase_item_id:pir.data.id,master_item_id:item.id,serial_number:sn}));
-        if(sns.length){const sr=await this.sb.from('serial_numbers').insert(sns);if(sr.error)throw sr.error;}
-      }
-      return pr.data;
+      const cleanPurchase={supplier_name:purchase.supplier_name,invoice_number:purchase.invoice_number,invoice_date:invoiceDate||'',delivery_order_number:purchase.delivery_order_number||'',purchase_order_number:'',reference_number:purchase.reference_number||'',currency:purchase.currency||'SGD',subtotal:purchase.subtotal===''||purchase.subtotal==null?'':String(purchase.subtotal),gst:purchase.gst===''||purchase.gst==null?'':String(purchase.gst),total_amount:purchase.total_amount===''||purchase.total_amount==null?'':String(purchase.total_amount)};
+      const rpcLines=lines.map(line=>({...line,quantity:Number(line.quantity),unit_price:line.unit_price===''||line.unit_price==null?'':String(line.unit_price),amount:line.amount===''||line.amount==null?'':String(line.amount),serial_numbers:parseSerials(line.serials)}));
+      const atomic=await this.sb.rpc('import_invoice_atomic',{p_document:{...doc,storage_path:path},p_purchase:cleanPurchase,p_lines:rpcLines});
+      if(atomic.error){if(String(atomic.error.message||'').includes('import_invoice_atomic'))throw new Error('V6.17 database update is required before importing invoices.');throw atomic.error;}
+      return atomic.data;
     }catch(err){
-      // Prevent the old failure mode where the PDF appeared in Documents but no inventory was created.
-      try{if(purchaseId)await this.sb.from('purchases').delete().eq('id',purchaseId);}catch(_e){}
-      try{if(docId)await this.sb.from('documents').delete().eq('id',docId);}catch(_e){}
-      try{if(uploaded)await this.sb.storage.from('inventory-documents').remove([path]);}catch(_e){}
+      if(uploaded){try{await this.sb.storage.from('inventory-documents').remove([path]);}catch(_e){}}
       throw err;
     }
   }
@@ -179,7 +142,16 @@ function openDetail(id){const i=state.data.items.find(x=>x.id===id),s=summary(i)
   $('detailBody').innerHTML=`<div class="detail-cards"><div class="detail-card"><span>Total purchased</span><strong>${s.purchased}</strong></div><div class="detail-card"><span>Total adjustments</span><strong>-${s.adjusted}</strong></div><div class="detail-card"><span>Current inventory</span><strong>${s.current}</strong></div></div><p><strong>Category:</strong> ${esc(i.category||'—')} &nbsp; <strong>Unit:</strong> ${esc(i.unit||'pcs')}</p><p>${esc(i.description||'')}</p><h3>Purchase history</h3>${purchaseRows?`<div class="table-wrap"><table><thead><tr><th>Invoice date</th><th>Supplier</th><th>Invoice</th><th>Qty</th><th>Unit price</th><th>PDF</th></tr></thead><tbody>${purchaseRows}</tbody></table></div>`:'<p class="muted">No purchases recorded.</p>'}<h3>Serial numbers</h3><p>${serials.length?serials.map(esc).join(', '):'<span class="muted">None recorded.</span>'}</p><h3>Adjustments</h3>${adjRows?`<div class="table-wrap"><table><thead><tr><th>Date</th><th>Reason</th><th>Qty</th><th>Remarks</th></tr></thead><tbody>${adjRows}</tbody></table></div>`:'<p class="muted">No adjustments.</p>'}`;$('detailDialog').showModal();}
 
 async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const text=tc.items.map(x=>x.str).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;}
-  let text=pages.join('\n');if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(45*i/pdf.numPages),`OCR page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:1.6});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(95,'Standardising fields…');return text;}
+  let text=pages.join('\n');if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:1.6});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
+function friendlyError(err,context='operation'){
+  const raw=String(err?.message||err||'').toLowerCase();
+  if(raw.includes('duplicate')&&raw.includes('serial'))return 'A serial number already exists. Correct the serial number before saving.';
+  if(raw.includes('row-level security')||raw.includes('permission'))return 'You do not have permission to complete this action. Please contact an administrator.';
+  if(raw.includes('network')||raw.includes('fetch'))return 'Connection problem. Check your internet connection and try again.';
+  if(context==='import')return 'Invoice could not be saved. No inventory changes were committed.';
+  return 'Something went wrong. No changes were made. Please try again.';
+}
+function setHealth(ok,text){const el=$('healthStatus');if(!el)return;el.classList.toggle('offline',!ok);el.innerHTML=`<i></i> ${text}`;}
 function setProgress(p,t){$('importProgress').classList.remove('hidden');$('progressBar').style.width=p+'%';$('progressText').textContent=t;}
 function parseDate(v=''){const s=v.trim();let d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);const m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;return `${y}-${String(+m[2]).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;}return'';}
 function detectInvoiceDate(text,invoice=''){
@@ -269,11 +241,15 @@ async function ensureUniqueFilename(file){
 async function startImport(file){file=await ensureUniqueFilename(file);if(!file)return;state.file=file;if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);state.parsed={...parseInvoice(text),raw:text};const d=state.parsed.doc;$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=text;renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const base=email?email.split('@')[0]:(CFG.mode==='supabase'?'Team Member':'Demo User');const pretty=base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase());if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();}
-async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;setUserIdentity(s);$('authGate').classList.toggle('hidden',!!s);if(!s){window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();window.lucide?.createIcons();}
+async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;setUserIdentity(s);$('authGate').classList.toggle('hidden',!!s);if(!s){window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
 
 $('signInBtn').onclick=async()=>{try{await state.db.signIn($('authEmail').value,$('authPassword').value);$('authGate').classList.add('hidden');state.session=await state.db.session();setUserIdentity(state.session);await reload();}catch(e){$('authMessage').textContent=e.message}};
 $('signUpBtn').onclick=async()=>{try{await state.db.signUp($('authEmail').value,$('authPassword').value);$('authMessage').textContent='Account created. Check your email if confirmation is enabled, then sign in.';}catch(e){$('authMessage').textContent=e.message}};
 $('signOutBtn').onclick=async()=>{await state.db.signOut();location.reload()};
+$('userMenuBtn')?.addEventListener('click',e=>{e.stopPropagation();const m=$('userMenu');m.classList.toggle('hidden');$('userMenuBtn').setAttribute('aria-expanded',String(!m.classList.contains('hidden')));});
+document.addEventListener('click',e=>{if(!e.target.closest('.user-menu-wrap'))$('userMenu')?.classList.add('hidden');});
+$('userSignOutBtn')?.addEventListener('click',async()=>{if(CFG.mode==='supabase')await state.db.signOut();location.reload();});
+$('accountBtn')?.addEventListener('click',()=>{const email=state.session?.user?.email||'Local demo user';toast(`Signed in as ${email}`);$('userMenu')?.classList.add('hidden');});
 document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>showView(b.dataset.go));
 const openImport=()=>{if($('importSteps'))$('importSteps').dataset.step='upload';$('reviewArea').classList.add('hidden');$('importProgress').classList.add('hidden');$('importDialog').showModal();window.lucide?.createIcons();};
 $('sidebarImportBtn').onclick=openImport;
@@ -303,6 +279,6 @@ $('detailDialog').onclick=async e=>{const el=e.target.closest('[data-doc-view]')
 $('importBtn').onclick=openImport;$('closeImportBtn').onclick=()=>$('importDialog').close();$('cancelReviewBtn').onclick=()=>$('importDialog').close();$('dropZone').onclick=()=>$('pdfInput').click();$('pdfInput').onchange=e=>e.target.files[0]&&startImport(e.target.files[0]);
 $('dropZone').ondragover=e=>{e.preventDefault();$('dropZone').classList.add('drag')};$('dropZone').ondragleave=()=>$('dropZone').classList.remove('drag');$('dropZone').ondrop=e=>{e.preventDefault();$('dropZone').classList.remove('drag');const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')startImport(f);else toast('Please drop a PDF file.')};
 $('addParsedItemBtn').onclick=()=>{collectParsed();state.parsed.items.push({sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''});renderParsedItems()};$('parsedItems').onclick=e=>{const b=e.target.closest('[data-remove-line]');if(b){collectParsed();state.parsed.items.splice(+b.dataset.removeLine,1);renderParsedItems()}};
-$('saveImportBtn').onclick=async()=>{collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{d.invoice_date=d.invoice_date||null;const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date);if(dupe&&!state.allowDuplicate)throw new Error('Possible duplicate detected. Choose View existing or Continue anyway before saving.');const allSerials=state.parsed.items.flatMap(x=>parseSerials(x.serials));const repeated=allSerials.filter((x,i,a)=>a.findIndex(y=>norm(y)===norm(x))!==i);if(repeated.length)throw new Error('Duplicate serial number in this invoice: '+repeated[0]);if(state.db.duplicateSerials){const existing=await state.db.duplicateSerials(allSerials.join(','));if(existing.length)throw new Error('Serial number already exists in inventory: '+existing[0]);}if($('importSteps'))$('importSteps').dataset.step='save';const sameFile=await state.db.duplicateFilename(state.file.name);if(sameFile)throw new Error('A document with this filename already exists. Cancel and rename the PDF before saving.');await state.db.importPurchase({file_name:state.file.name,mime_type:state.file.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,state.parsed.items,state.file);state.lastImportCount=state.parsed.items.length;$('importDialog').close();state.file=null;state.parsed=null;state.allowDuplicate=false;await reload();showView('inventory');toast(`Invoice saved. ${state.lastImportCount||0} inventory item${state.lastImportCount===1?'':'s'} updated.`);}catch(err){toast(err.message)}};
+$('saveImportBtn').onclick=async()=>{if(state.importSaving)return;collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{state.importSaving=true;const saveBtn=$('saveImportBtn');saveBtn.disabled=true;saveBtn.textContent='Saving…';setProgress(96,'Saving invoice and inventory…');d.invoice_date=d.invoice_date||null;const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date);if(dupe&&!state.allowDuplicate)throw new Error('Possible duplicate detected. Choose View existing or Continue anyway before saving.');const allSerials=state.parsed.items.flatMap(x=>parseSerials(x.serials));const repeated=allSerials.filter((x,i,a)=>a.findIndex(y=>norm(y)===norm(x))!==i);if(repeated.length)throw new Error('Duplicate serial number in this invoice: '+repeated[0]);if(state.db.duplicateSerials){const existing=await state.db.duplicateSerials(allSerials.join(','));if(existing.length)throw new Error('Serial number already exists in inventory: '+existing[0]);}if($('importSteps'))$('importSteps').dataset.step='save';const sameFile=await state.db.duplicateFilename(state.file.name);if(sameFile)throw new Error('A document with this filename already exists. Cancel and rename the PDF before saving.');await state.db.importPurchase({file_name:state.file.name,mime_type:state.file.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,state.parsed.items,state.file);state.lastImportCount=state.parsed.items.length;$('importDialog').close();state.file=null;state.parsed=null;state.allowDuplicate=false;await reload();showView('inventory');toast(`Invoice saved. ${state.lastImportCount||0} inventory item${state.lastImportCount===1?'':'s'} updated.`);}catch(err){console.error(err);toast(friendlyError(err,'import'));}finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Confirm & save';}if($('importProgress'))$('importProgress').classList.add('hidden');}};
 
 await init();
