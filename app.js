@@ -60,13 +60,40 @@ class SupabaseDB{
   async adjust(x){const {error}=await this.sb.from('inventory_adjustments').insert(x);if(error)throw error;}
   async duplicateInvoice(supplier,invoice){const {data,error}=await this.sb.from('purchases').select('*').ilike('supplier_name',supplier).ilike('invoice_number',invoice).maybeSingle();if(error)throw error;return data;}
   async duplicateFilename(fileName){const {data,error}=await this.sb.from('documents').select('id,file_name').limit(1000);if(error)throw error;return (data||[]).find(x=>fileKey(x.file_name)===fileKey(fileName))||null;}
-  async importPurchase(doc,purchase,lines,file){if(await this.duplicateInvoice(purchase.supplier_name,purchase.invoice_number))throw new Error('This supplier + invoice number already exists.');const path=`${new Date().getFullYear()}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;let up=await this.sb.storage.from('inventory-documents').upload(path,file,{contentType:'application/pdf'});if(up.error)throw up.error;
-    let dr=await this.sb.from('documents').insert({...doc,storage_path:path}).select().single();if(dr.error)throw dr.error;let pr=await this.sb.from('purchases').insert({...purchase,document_id:dr.data.id}).select().single();if(pr.error)throw pr.error;
-    for(const line of lines){let q=await this.sb.from('master_items').select('*').ilike('sku',line.sku||'__none__').maybeSingle();if(q.error)throw q.error;let item=q.data;if(!item&&line.item_name){const q2=await this.sb.from('master_items').select('*').ilike('item_name',line.item_name).maybeSingle();if(q2.error)throw q2.error;item=q2.data;}
-      if(!item){const ins=await this.sb.from('master_items').insert({sku:line.sku||('AUTO-'+Date.now()),item_name:line.item_name||'Unnamed item',description:line.description||'',category:line.category||'',unit:line.unit||'pcs'}).select().single();if(ins.error)throw ins.error;item=ins.data;}
-      const pir=await this.sb.from('purchase_items').insert({purchase_id:pr.data.id,master_item_id:item.id,raw_description:line.description||'',quantity:Number(line.quantity)||1,unit_price:num(line.unit_price),amount:num(line.amount),warranty:line.warranty||''}).select().single();if(pir.error)throw pir.error;
-      const sns=parseSerials(line.serials).map(sn=>({purchase_item_id:pir.data.id,master_item_id:item.id,serial_number:sn}));if(sns.length){const sr=await this.sb.from('serial_numbers').insert(sns);if(sr.error)throw sr.error;}
-    }return pr.data;
+  async importPurchase(doc,purchase,lines,file){
+    if(await this.duplicateInvoice(purchase.supplier_name,purchase.invoice_number))throw new Error('This supplier + invoice number already exists.');
+    const path=`${new Date().getFullYear()}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    let uploaded=false,docId=null,purchaseId=null;
+    try{
+      const up=await this.sb.storage.from('inventory-documents').upload(path,file,{contentType:'application/pdf'});
+      if(up.error)throw up.error;uploaded=true;
+      const dr=await this.sb.from('documents').insert({...doc,storage_path:path}).select().single();
+      if(dr.error)throw dr.error;docId=dr.data.id;
+      const cleanPurchase={...purchase,document_id:docId,invoice_date:purchase.invoice_date||null,delivery_order_number:purchase.delivery_order_number||'',purchase_order_number:purchase.purchase_order_number||'',reference_number:purchase.reference_number||'',subtotal:Number.isFinite(Number(purchase.subtotal))?Number(purchase.subtotal):null,gst:Number.isFinite(Number(purchase.gst))?Number(purchase.gst):null,total_amount:Number.isFinite(Number(purchase.total_amount))?Number(purchase.total_amount):null};
+      const pr=await this.sb.from('purchases').insert(cleanPurchase).select().single();
+      if(pr.error)throw pr.error;purchaseId=pr.data.id;
+      for(const line of lines){
+        const sku=String(line.sku||'').trim();
+        const itemName=String(line.item_name||'').trim();
+        let item=null;
+        if(sku){const q=await this.sb.from('master_items').select('*').ilike('sku',sku).limit(1);if(q.error)throw q.error;item=q.data?.[0]||null;}
+        if(!item&&itemName){const q2=await this.sb.from('master_items').select('*').ilike('item_name',itemName).limit(1);if(q2.error)throw q2.error;item=q2.data?.[0]||null;}
+        if(!item){const ins=await this.sb.from('master_items').insert({sku:sku||('AUTO-'+Date.now()+'-'+Math.random().toString(36).slice(2,6).toUpperCase()),item_name:itemName||'Unnamed item',description:line.description||'',category:line.category||'',unit:line.unit||'pcs'}).select().single();if(ins.error)throw ins.error;item=ins.data;}
+        const qty=Number(line.quantity);
+        if(!Number.isFinite(qty)||qty<=0)throw new Error(`Invalid quantity for ${itemName||sku||'line item'}.`);
+        const pir=await this.sb.from('purchase_items').insert({purchase_id:purchaseId,master_item_id:item.id,raw_description:line.description||'',quantity:qty,unit_price:line.unit_price===''||line.unit_price==null?null:num(line.unit_price),amount:line.amount===''||line.amount==null?null:num(line.amount),warranty:line.warranty||''}).select().single();
+        if(pir.error)throw pir.error;
+        const sns=parseSerials(line.serials).map(sn=>({purchase_item_id:pir.data.id,master_item_id:item.id,serial_number:sn}));
+        if(sns.length){const sr=await this.sb.from('serial_numbers').insert(sns);if(sr.error)throw sr.error;}
+      }
+      return pr.data;
+    }catch(err){
+      // Prevent the old failure mode where the PDF appeared in Documents but no inventory was created.
+      try{if(purchaseId)await this.sb.from('purchases').delete().eq('id',purchaseId);}catch(_e){}
+      try{if(docId)await this.sb.from('documents').delete().eq('id',docId);}catch(_e){}
+      try{if(uploaded)await this.sb.storage.from('inventory-documents').remove([path]);}catch(_e){}
+      throw err;
+    }
   }
   async deleteDocument(docId){const d=state.data.documents.find(x=>x.id===docId);if(!d)throw new Error('Document not found.');const pr=await this.sb.from('purchases').select('id').eq('document_id',docId);if(pr.error)throw pr.error;if(pr.data?.length){const delP=await this.sb.from('purchases').delete().in('id',pr.data.map(x=>x.id));if(delP.error)throw delP.error;}const delD=await this.sb.from('documents').delete().eq('id',docId);if(delD.error)throw delD.error;const rm=await this.sb.storage.from('inventory-documents').remove([d.storage_path]);if(rm.error)console.warn('Database record deleted but storage cleanup failed:',rm.error);}
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
@@ -102,7 +129,7 @@ function auditWho(a){const u=state.session?.user;if(u&&a.changed_by===u.id)retur
 function renderAudit(){const q=norm($('auditSearch').value);const rows=state.data.audit.filter(a=>!q||norm([friendlyAudit(a),auditWho(a),a.changed_by,JSON.stringify(a.new_data),JSON.stringify(a.old_data)].join(' ')).includes(q)).map(a=>`<tr><td>${fmtDT(a.changed_at)}</td><td>${esc(auditWho(a))}</td><td><span class="badge">${esc(a.action)}</span></td><td>${esc(friendlyAudit(a))}</td><td>${esc(changeSummary(a))}</td></tr>`).join('');$('auditTable').innerHTML=rows?`<table><thead><tr><th>Date / time</th><th>Who</th><th>Action</th><th>What</th><th>Change</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No recent activities.</div>';}
 function changeSummary(a){if(a.action!=='UPDATE')return '';const o=a.old_data||{},n=a.new_data||{};return Object.keys(n).filter(k=>JSON.stringify(o[k])!==JSON.stringify(n[k])&&!['updated_at'].includes(k)).map(k=>`${k}: ${o[k]??'—'} → ${n[k]??'—'}`).join('; ');}
 
-function showView(name){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(name+'View').classList.add('active');document.querySelectorAll('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));document.body.dataset.view=name;const map={dashboard:['Dashboard','Overview of purchased and current inventory.'],inventory:['Inventory','Master SKUs with aggregated purchases and inventory adjustments.'],documents:['Documents','Stored invoices and source PDFs.'],audit:['Recent Activities','Track recent inventory, document and system changes.']};$('pageTitle').textContent=map[name][0];$('pageSubtitle').textContent=map[name][1];window.lucide?.createIcons();}
+function showView(name){if(name==='audit'&&$('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(name+'View').classList.add('active');document.querySelectorAll('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));document.body.dataset.view=name;const map={dashboard:['Dashboard','Overview of purchased and current inventory.'],inventory:['Inventory','Master SKUs with aggregated purchases and inventory adjustments.'],documents:['Documents','Stored invoices and source PDFs.'],audit:['Recent Activities','Track recent inventory, document and system changes.']};$('pageTitle').textContent=map[name][0];$('pageSubtitle').textContent=map[name][1];window.lucide?.createIcons();}
 
 function openItem(id=null){$('itemForm').reset();$('itemUnit').value='pcs';$('itemId').value=id||'';$('itemDialogTitle').textContent=id?'Edit item':'Add item';if(id){const i=state.data.items.find(x=>x.id===id);$('itemSku').value=i.sku;$('itemName').value=i.item_name;$('itemCategory').value=i.category||'';$('itemUnit').value=i.unit||'pcs';$('itemDescription').value=i.description||'';}$('itemDialog').showModal();}
 function openAdjust(id){const i=state.data.items.find(x=>x.id===id),s=summary(i);$('adjustForm').reset();$('adjustItemId').value=id;$('adjustDate').value=today();$('adjustItemLabel').textContent=`${i.sku} · ${i.item_name} · Current inventory: ${s.current}`;$('adjustQty').max=Math.max(0,s.current);$('adjustDialog').showModal();}
@@ -118,15 +145,19 @@ function parseDate(v=''){const s=v.trim();let d=new Date(s);if(!isNaN(d))return 
 function first(re,text,group=1){const m=text.match(re);return m?m[group].trim():'';}
 function parseInvoice(text){const flat=text.replace(/\r/g,'');let supplier='';if(/Loud Technologies Asia/i.test(flat))supplier='Loud Technologies Asia Pte Ltd';else if(/AV\s+MEDIA\s+PTE\s+LTD/i.test(flat))supplier='AV Media Pte Ltd';else supplier=first(/([A-Z][A-Za-z0-9 &.,'-]+Pte\.?\s*Ltd\.?)/i,flat);
   let invoice='';
+  // Supplier-aware patterns first so multi-part values such as "INV LTA-00215840" are not truncated to "INV".
+  if(/Loud Technologies Asia/i.test(flat)) invoice=first(/\b(INV\s+LTA[- ]?\d+)\b/i,flat);
+  if(!invoice&&/AV\s+MEDIA/i.test(flat)) invoice=first(/\b(VIN\d{2}[- ]?\d+)\b/i,flat);
   const invoicePatterns=[
-    /(?:Invoice\s*(?:No\.?|Number|#)|Inv\s*(?:No\.?|#))\s*[:#-]?\s*\n?\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i,
-    /(?:Tax\s+Invoice|Invoice)\s*[:#-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i,
-    /\b(INV[-\s]?[A-Z0-9][A-Z0-9._\/-]{3,})\b/i
+    /(?:Invoice\s*(?:No\.?|Number|#)|Inv\s*(?:No\.?|#))\s*[:#-]?\s*(?:\n\s*)?((?:INV\s+)?[A-Z0-9][A-Z0-9._\/-]{2,}(?:\s+[A-Z0-9][A-Z0-9._\/-]{2,})?)/i,
+    /(?:Tax\s+Invoice|Invoice)\s*[:#-]\s*((?:INV\s+)?[A-Z0-9][A-Z0-9._\/-]{2,}(?:\s+[A-Z0-9][A-Z0-9._\/-]{2,})?)/i,
+    /\b(INV\s+[A-Z0-9][A-Z0-9._\/-]{3,})\b/i,
+    /\b([A-Z]{2,6}\d{1,4}[-/][A-Z0-9-]{3,})\b/i
   ];
-  for(const re of invoicePatterns){invoice=first(re,flat);if(invoice)break;}
-  invoice=String(invoice||'').trim().split(/\n/)[0].trim();
+  if(!invoice){for(const re of invoicePatterns){const candidate=first(re,flat);if(candidate&&!/^(INV|INVOICE)$/i.test(candidate)){invoice=candidate;break;}}}
+  invoice=String(invoice||'').replace(/\s+/g,' ').trim();
   // Never accept common invoice headings/labels as an invoice number.
-  if(/^(sold\s*to|bill\s*to|ship\s*to|invoice|invoice\s*(no|number)|date)$/i.test(invoice)) invoice='';
+  if(/^(sold\s*to|bill\s*to|ship\s*to|invoice|inv|invoice\s*(no|number)|date)$/i.test(invoice)) invoice='';
   let date=parseDate(first(/Invoice\s*Date\s*\n?\s*([^\n]+)/i,flat)||first(/\bDATE\b\s*\n?\s*([^\n]+)/i,flat));
   const subtotal=num(first(/Subtotal\s*\n?\s*([\d,.]+)/i,flat)||first(/SUB\s*TOTAL\s*(?:SGD)?\s*([\d,.]+)/i,flat));const gst=num(first(/(?:GST\s*9%|Total Local supply of goods and services 9%)\s*(?:SGD)?\s*\n?\s*([\d,.]+)/i,flat));const total=num(first(/(?:Invoice Total SGD|AMOUNT\s*SGD)\s*\n?\s*([\d,.]+)/i,flat));
   const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:'',purchase_order_number:first(/P\/?O\s*NO\.?\s*\n?\s*([^\n]+)/i,flat),reference_number:first(/(?:Reference|REF\.\s*NO\.)\s*\n?\s*([^\n]+)/i,flat),currency:'SGD',subtotal,gst,total_amount:total};
@@ -181,6 +212,6 @@ $('detailDialog').onclick=async e=>{const el=e.target.closest('[data-doc-view]')
 $('importBtn').onclick=openImport;$('closeImportBtn').onclick=()=>$('importDialog').close();$('cancelReviewBtn').onclick=()=>$('importDialog').close();$('dropZone').onclick=()=>$('pdfInput').click();$('pdfInput').onchange=e=>e.target.files[0]&&startImport(e.target.files[0]);
 $('dropZone').ondragover=e=>{e.preventDefault();$('dropZone').classList.add('drag')};$('dropZone').ondragleave=()=>$('dropZone').classList.remove('drag');$('dropZone').ondrop=e=>{e.preventDefault();$('dropZone').classList.remove('drag');const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')startImport(f);else toast('Please drop a PDF file.')};
 $('addParsedItemBtn').onclick=()=>{collectParsed();state.parsed.items.push({sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''});renderParsedItems()};$('parsedItems').onclick=e=>{const b=e.target.closest('[data-remove-line]');if(b){collectParsed();state.parsed.items.splice(+b.dataset.removeLine,1);renderParsedItems()}};
-$('saveImportBtn').onclick=async()=>{collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number);if(dupe)throw new Error('Duplicate blocked: this supplier + invoice number already exists.');const sameFile=await state.db.duplicateFilename(state.file.name);if(sameFile)throw new Error('A document with this filename already exists. Cancel and rename the PDF before saving.');await state.db.importPurchase({file_name:state.file.name,mime_type:state.file.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,state.parsed.items,state.file);$('importDialog').close();await reload();showView('inventory');toast('Invoice imported and inventory updated.');}catch(err){toast(err.message)}};
+$('saveImportBtn').onclick=async()=>{collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number);if(dupe)throw new Error('Duplicate blocked: this supplier + invoice number already exists.');const sameFile=await state.db.duplicateFilename(state.file.name);if(sameFile)throw new Error('A document with this filename already exists. Cancel and rename the PDF before saving.');await state.db.importPurchase({file_name:state.file.name,mime_type:state.file.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,state.parsed.items,state.file);$('importDialog').close();state.file=null;state.parsed=null;await reload();showView('inventory');toast('Invoice imported and inventory updated.');}catch(err){toast(err.message)}};
 
 await init();
