@@ -46,7 +46,7 @@
         <button class="nav-btn" data-view="inventory"><i data-lucide="package"></i><span>Inventory</span></button>
         <button id="sidebarImportBtn" class="nav-action"><i data-lucide="upload"></i><span>Import Invoice</span></button>
         <button class="nav-btn" data-view="documents"><i data-lucide="file-text"></i><span>Documents</span></button>
-        <button class="nav-btn" data-view="audit"><i data-lucide="history"></i><span>Audit History</span></button>
+        <button class="nav-btn" data-view="audit"><i data-lucide="history"></i><span>Recent Activities</span></button>
       </nav>
 
       <div class="sidebar-footer">
@@ -57,12 +57,7 @@
     </aside>
 
     <main class="main">
-      <header class="topbar">
-        <div class="global-search-wrap">
-          <i data-lucide="search"></i>
-          <input id="globalSearch" placeholder="Search inventory, invoice, supplier..." aria-label="Global search" />
-          <span class="search-hint">Enter</span>
-        </div>
+      <header class="topbar topbar-user-only">
         <div class="top-actions">
           <div class="user-chip">
             <div id="userAvatar" class="avatar">AV</div>
