@@ -1,5 +1,5 @@
 // AV Inventory Hub V6.19
-const APP_VERSION='6.19';
+const APP_VERSION='6.20';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const $ = (id)=>document.getElementById(id);
 const esc = (s='') => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
