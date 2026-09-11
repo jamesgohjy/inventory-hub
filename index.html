@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=67" />
+  <link rel="stylesheet" href="styles.css?v=617" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -59,9 +59,16 @@
     <main class="main">
       <header class="topbar topbar-user-only">
         <div class="top-actions">
-          <div class="user-chip">
-            <div id="userAvatar" class="avatar">AV</div>
-            <div class="user-copy"><strong id="userName">Team Member</strong><span id="userEmail">AV Inventory</span></div>
+          <div class="user-menu-wrap">
+            <button id="userMenuBtn" class="user-chip user-chip-btn" type="button" aria-expanded="false">
+              <div id="userAvatar" class="avatar">AV</div>
+              <div class="user-copy"><strong id="userName">Team Member</strong><span id="userEmail">AV Inventory</span></div>
+              <i data-lucide="chevron-down"></i>
+            </button>
+            <div id="userMenu" class="user-menu hidden">
+              <button id="accountBtn" type="button"><i data-lucide="user-round"></i> Account</button>
+              <button id="userSignOutBtn" type="button"><i data-lucide="log-out"></i> Sign out</button>
+            </div>
           </div>
         </div>
       </header>
@@ -116,7 +123,7 @@
           </article>
         </div>
       </section>
-        <div class="dashboard-meta"><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.16</span></div>
+        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.17</span></div>
 
       <section id="inventoryView" class="view">
         <article class="panel content-panel">
@@ -208,6 +215,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=615"></script>
+  <script type="module" src="app.js?v=617"></script>
 </body>
 </html>
