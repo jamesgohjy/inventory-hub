@@ -280,3 +280,46 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
 @media(max-width:700px){.health-summary{align-items:flex-start;flex-direction:column}.attention-row{grid-template-columns:34px 1fr}.attention-row button{grid-column:2}.stocktake-toolbar{flex-direction:column;align-items:stretch}.stocktake-toolbar .input-icon{width:100%;min-width:0}}
 
 /* V6.32 document refresh hotfix */
+
+/* V6.33 — role-based access + side-by-side invoice review */
+.role-hidden{display:none!important}
+.user-role{display:inline-flex;align-items:center;width:max-content;margin-top:2px;padding:2px 6px;border-radius:999px;background:#eaf3ff;color:#175cd3;font-size:8px;font-weight:800;letter-spacing:.02em;text-transform:uppercase}
+.role-guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:-2px 0 14px}
+.role-guide span{border:1px solid #dfe7ef;background:#f8fbfe;border-radius:10px;padding:10px;color:#667085;font-size:10px;line-height:1.35}
+.role-guide strong{display:block;color:#23384d;font-size:11px;margin-bottom:2px}
+.role-you{display:inline-flex;padding:3px 7px;border-radius:999px;background:#eaf3ff;color:#175cd3;font-size:9px;font-weight:700}
+
+.dialog.import-dialog{width:min(1480px,98vw);max-width:none;height:min(900px,94vh);padding:18px;overflow:hidden}
+.dialog.import-dialog #reviewArea{height:calc(100% - 112px);min-height:0}
+.invoice-review-split{display:grid;grid-template-columns:minmax(420px,1fr) minmax(520px,1.08fr);gap:14px;height:100%;min-height:0}
+.invoice-preview-pane,.parsed-review-pane{border:1px solid #dfe7ef;border-radius:12px;background:#fff;min-height:0;overflow:hidden}
+.invoice-preview-pane{display:flex;flex-direction:column;background:#f3f6f9}
+.invoice-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#fff;border-bottom:1px solid #dfe7ef}
+.invoice-preview-head>div:first-child strong{display:block;color:#23384d;font-size:12px}
+.invoice-preview-head>div:first-child span{display:block;color:#7b8794;font-size:9px;margin-top:2px}
+.pdf-controls{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.pdf-controls .icon-btn{width:30px;height:30px;background:#f2f5f8}
+.pdf-controls .icon-btn svg{width:14px;height:14px}
+.pdf-controls span{font-size:9px;font-weight:700;color:#667085;min-width:42px;text-align:center}
+.pdf-fit-btn{height:30px;padding:0 9px;font-size:9px}
+.invoice-pdf-frame{display:block;width:100%;height:100%;min-height:0;border:0;background:#e9edf2}
+.parsed-review-pane{overflow:auto;padding:13px 14px 18px}
+.parsed-review-pane .form-grid.compact{grid-template-columns:repeat(2,minmax(0,1fr))}
+.parsed-review-pane .parsed-grid{grid-template-columns:1.1fr 1.5fr .65fr .75fr .75fr}
+.parsed-review-pane .raw-text{max-height:180px}
+
+@media(max-width:1100px){
+  .dialog.import-dialog{height:min(920px,96vh);overflow:auto}
+  .dialog.import-dialog #reviewArea{height:auto}
+  .invoice-review-split{grid-template-columns:1fr;height:auto}
+  .invoice-preview-pane{height:520px}
+  .parsed-review-pane{overflow:visible}
+}
+@media(max-width:700px){
+  .dialog.import-dialog{padding:12px;width:98vw}
+  .invoice-preview-pane{height:430px}
+  .invoice-preview-head{align-items:flex-start;flex-direction:column}
+  .pdf-controls{justify-content:flex-start}
+  .parsed-review-pane .form-grid.compact{grid-template-columns:1fr}
+  .role-guide{grid-template-columns:1fr}
+}
