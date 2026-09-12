@@ -387,3 +387,31 @@ html,body{max-width:100%;overflow-x:hidden}
 @media (max-width:1024px){
   .main{margin-left:0!important}
 }
+\n\n/* V6.40 UI refinements */
+.topbar-user-only .user-menu-wrap{display:flex;align-items:center}
+.topbar-user-only .user-chip-btn{display:grid;grid-template-columns:38px minmax(0,1fr) 16px;align-items:center;column-gap:10px;min-width:205px;padding:5px 4px 5px 6px}
+.topbar-user-only .user-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:7px;row-gap:1px;max-width:none;min-width:0;align-items:center;text-align:left}
+.topbar-user-only .user-copy strong{grid-column:1 / -1;line-height:1.2}
+.topbar-user-only .user-copy span{grid-column:1;line-height:1.2;min-width:0}
+.topbar-user-only .user-copy .user-role{grid-column:2;grid-row:2;margin:0;align-self:center}
+.topbar-user-only .user-chip-btn>svg{margin-left:0;justify-self:end}
+
+/* Let Inventory row action popovers extend beyond the table frame. */
+#inventoryTable{overflow:visible}
+#inventoryTable .action-menu>div{z-index:1600}
+
+/* Maintenance search mirrors Inventory search sizing. */
+#maintenanceView .maintenance-toolbar{display:flex;gap:12px;align-items:center}
+#maintenanceView .maintenance-toolbar .input-icon{flex:0 1 50%;width:50%;min-width:360px;max-width:none;margin-right:auto}
+
+/* Recent Activities: dropdowns and calendar are half-width on desktop. */
+#auditView .audit-toolbar #auditUser,
+#auditView .audit-toolbar #auditAction,
+#auditView .audit-toolbar #auditDate{flex:0 0 50%;width:50%;max-width:650px;min-width:0}
+
+@media(max-width:760px){
+  #inventoryTable{overflow:auto}
+  #maintenanceView .maintenance-toolbar{flex-direction:column;align-items:stretch}
+  #maintenanceView .maintenance-toolbar .input-icon{width:100%;max-width:none;min-width:0;flex:1 1 auto}
+  #auditView .audit-toolbar #auditUser,#auditView .audit-toolbar #auditAction,#auditView .audit-toolbar #auditDate{width:100%;max-width:none;flex:1 1 auto}
+}
