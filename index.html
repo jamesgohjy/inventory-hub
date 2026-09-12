@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=627" />
+  <link rel="stylesheet" href="styles.css?v=6272" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -60,6 +60,27 @@
         <button class="nav-btn" data-view="audit"><i data-lucide="history"></i><span>Recent Activities</span></button>
         <button id="patchNotesBtn" class="nav-action patch-notes-nav" type="button" aria-expanded="false"><i data-lucide="notebook-tabs"></i><span>Patch Notes</span></button>
       </nav>
+
+      <section id="patchNotesPanel" class="sidebar-patch-panel hidden" aria-label="Patch notes" aria-live="polite">
+        <div class="sidebar-patch-head">
+          <span>Release Notes</span>
+          <strong>Patch Notes</strong>
+        </div>
+        <article class="sidebar-release-card current">
+          <div class="sidebar-release-title">
+            <span class="sidebar-release-icon current"><i data-lucide="settings"></i></span>
+            <div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v6.27</strong><em class="release-badge latest">Latest</em></div></div>
+          </div>
+          <ul id="releaseCurrentNotes"></ul>
+        </article>
+        <article class="sidebar-release-card upcoming">
+          <div class="sidebar-release-title">
+            <span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span>
+            <div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v6.28</strong><em class="release-badge next">Upcoming</em></div></div>
+          </div>
+          <ul id="releaseUpcomingNotes"></ul>
+        </article>
+      </section>
 
       <div class="sidebar-footer">
         <div class="footer-rule"></div>
@@ -253,26 +274,9 @@
     <div id="detailBody"></div>
   </dialog>
 
-  <div id="patchNotesBackdrop" class="patch-notes-backdrop hidden" aria-hidden="true"></div>
-  <section id="patchNotesDrawer" class="patch-notes-drawer hidden" aria-label="Patch notes" aria-live="polite">
-    <div class="patch-drawer-head"><div><span class="patch-kicker">AV Inventory Hub</span><h2>Patch Notes</h2></div><button id="closePatchNotesBtn" class="patch-close" type="button" aria-label="Close patch notes"><i data-lucide="x"></i></button></div>
-    <div class="release-panel drawer-release-panel">
-      <article class="release-card release-current">
-        <div class="release-icon current"><i data-lucide="settings"></i></div>
-        <div class="release-version"><span>Current Version</span><div><strong id="releaseCurrentVersion">v6.27</strong><em class="release-badge latest">Latest</em></div></div>
-        <ul id="releaseCurrentNotes"></ul>
-      </article>
-      <article class="release-card release-next">
-        <div class="release-icon upcoming"><i data-lucide="rocket"></i></div>
-        <div class="release-version"><span>Coming Next</span><div><strong id="releaseUpcomingVersion">v6.28</strong><em class="release-badge next">Upcoming</em></div></div>
-        <ul id="releaseUpcomingNotes"></ul>
-      </article>
-    </div>
-  </section>
-
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=627"></script>
+  <script type="module" src="app.js?v=6272"></script>
 </body>
 </html>
