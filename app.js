@@ -1,10 +1,9 @@
-// AV Inventory Hub V6.36 — owner Admin lock + live workspace status + signup hardening
-const APP_VERSION='6.36';
+// AV Inventory Hub V6.37 — clearer authentication email rate-limit messaging
+const APP_VERSION='6.37';
 const RELEASE_CURRENT_NOTES=[
-  'Workspace owner Admin role is permanently protected',
-  'Connection indicator now shows Live, Reconnecting or Offline',
-  'Signup handling separates provider throttling from local attempts',
-  'General authentication reliability fixes'
+  'Password reset now shows a clear message when the authentication email service is rate-limited',
+  'Account creation now gives the same email-service limit guidance without consuming local signup attempts',
+  'Rate-limit messages now advise users to retry after the limit clears or contact an administrator'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
@@ -573,7 +572,7 @@ async function submitSignIn(){
 }
 signInBtn.onclick=submitSignIn;authPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitSignIn();}});
 $('togglePasswordBtn').onclick=()=>{const show=authPassword.type==='password';authPassword.type=show?'text':'password';$('togglePasswordBtn').setAttribute('aria-label',show?'Hide password':'Show password');$('togglePasswordBtn').innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();};
-$('forgotPasswordBtn').onclick=async()=>{const email=authEmail.value.trim();if(!validEmail(email)){$('emailError').classList.remove('hidden');setAuthMessage('Enter your email address first so we can send the reset link.');return;}try{if(!state.db.resetPassword)throw new Error();await state.db.resetPassword(email);setAuthMessage('Password reset email sent. Check your inbox.','success');}catch(e){setAuthMessage('We could not send the reset email. Please try again.');}};
+$('forgotPasswordBtn').onclick=async()=>{const email=authEmail.value.trim();if(!validEmail(email)){$('emailError').classList.remove('hidden');setAuthMessage('Enter your email address first so we can send the reset link.');return;}try{if(!state.db.resetPassword)throw new Error();await state.db.resetPassword(email);setAuthMessage('Password reset email sent. Check your inbox.','success');}catch(e){if(isProviderRateLimitError(e)){setAuthMessage('Password reset email is temporarily limited by the authentication service. Please wait for the email-service limit to clear, then try again or contact your administrator for assistance.');return;}setAuthMessage('We could not send the reset email. Please try again.');}};
 function toggleRecoveryVisibility(input,button,label){if(!input||!button)return;const show=input.type==='password';input.type=show?'text':'password';button.setAttribute('aria-label',show?`Hide ${label}`:`Show ${label}`);button.innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();}
 $('toggleRecoveryPasswordBtn')?.addEventListener('click',()=>toggleRecoveryVisibility(recoveryPassword,$('toggleRecoveryPasswordBtn'),'new password'));
 $('toggleRecoveryConfirmBtn')?.addEventListener('click',()=>toggleRecoveryVisibility(recoveryPasswordConfirm,$('toggleRecoveryConfirmBtn'),'confirmed password'));
@@ -663,7 +662,7 @@ $('signUpBtn').onclick=async()=>{
     const msg=String(e?.message||'');
     const providerLimited=isProviderSignupLimit(e);
     if(providerLimited){
-      setAuthMessage('Account creation email is temporarily limited by the authentication service. This does not use one of your 2 local signup attempts. Please wait for the email-service limit to clear, then try again.');
+      setAuthMessage('Account creation email is temporarily limited by the authentication service. This does not use one of your 2 local signup attempts. Please wait for the email-service limit to clear, then try again or contact your administrator for assistance.');
     }else{
       const locked=recordSignupFailure();
       if(!locked){
