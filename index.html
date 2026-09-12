@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=6300" />
+  <link rel="stylesheet" href="styles.css?v=6310" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -69,14 +69,14 @@
         <article class="sidebar-release-card current">
           <div class="sidebar-release-title">
             <span class="sidebar-release-icon current"><i data-lucide="settings"></i></span>
-            <div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v6.30</strong><em class="release-badge latest">Latest</em></div></div>
+            <div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v6.31</strong><em class="release-badge latest">Latest</em></div></div>
           </div>
           <ul id="releaseCurrentNotes"></ul>
         </article>
         <article class="sidebar-release-card upcoming">
           <div class="sidebar-release-title">
             <span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span>
-            <div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v6.31</strong><em class="release-badge next">Upcoming</em></div></div>
+            <div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v6.32</strong><em class="release-badge next">Upcoming</em></div></div>
           </div>
           <ul id="releaseUpcomingNotes"></ul>
         </article>
@@ -145,6 +145,27 @@
           </article>
         </div>
 
+        <article class="panel automation-centre" id="automationCentre">
+          <div class="panel-head automation-head">
+            <div><h2>Automation Centre</h2><p class="muted">Automatic checks that keep inventory records clean and ready for reference.</p></div>
+            <div class="automation-head-actions"><span id="dataHealthScore" class="health-score">Data health —</span><button id="runHealthCheckBtn" class="secondary small-btn" type="button"><i data-lucide="refresh-cw"></i> Run check</button></div>
+          </div>
+          <div class="automation-grid">
+            <button id="needsAttentionCard" class="automation-card attention" type="button">
+              <span class="automation-icon"><i data-lucide="circle-alert"></i></span>
+              <span><small>Needs Attention</small><strong id="needsAttentionCount">0</strong><em id="needsAttentionSummary">No issues detected</em></span>
+            </button>
+            <button id="stockTakeCard" class="automation-card stocktake" type="button">
+              <span class="automation-icon"><i data-lucide="clipboard-check"></i></span>
+              <span><small>Stock Take</small><strong>Compare</strong><em>System quantity vs physical count</em></span>
+            </button>
+            <div class="automation-card intelligence">
+              <span class="automation-icon"><i data-lucide="sparkles"></i></span>
+              <span><small>Import Intelligence</small><strong id="importRuleSummary">Supplier rules active</strong><em>SKU matching + document linking</em></span>
+            </div>
+          </div>
+        </article>
+
         <div class="grid-2 dashboard-grid">
           <article class="panel inventory-preview-panel">
             <div class="panel-head"><h2>Recent Inventory Items</h2><button class="link-btn" data-go="inventory">View all <i data-lucide="arrow-right"></i></button></div>
@@ -158,13 +179,15 @@
 
 
       </section>
-        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.27</span></div>
+        <div class="dashboard-meta"><span id="healthStatus" class="health-status"><i></i> Checking connection…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 6.31</span></div>
 
       <section id="inventoryView" class="view">
         <article class="panel content-panel">
           <div class="toolbar">
             <div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" autocomplete="off" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div>
             <select id="categoryFilter"><option value="">All categories</option></select>
+            <button id="inventoryHealthBtn" class="secondary toolbar-btn" type="button"><i data-lucide="shield-check"></i> Data Health</button>
+            <button id="inventoryStockTakeBtn" class="primary toolbar-btn" type="button"><i data-lucide="clipboard-check"></i> Stock Take</button>
           </div>
           <div id="inventoryTable" class="table-wrap"></div>
         </article>
@@ -236,7 +259,7 @@
     <div id="importProgress" class="progress-wrap hidden"><div class="progress"><span id="progressBar"></span></div><p id="progressText">Reading PDF…</p></div>
     <div id="reviewArea" class="hidden">
       <div id="duplicateWarning" class="warning-box hidden"></div>
-      <h3>Document details</h3>
+      <div class="import-review-heading"><h3>Document details</h3><span id="supplierRuleStatus" class="supplier-rule-badge"><i data-lucide="scan-text"></i> Generic OCR rules</span></div>
       <div class="form-grid compact">
         <label>Supplier <span class="confidence high">check</span><input id="pSupplier" /></label><label>Invoice number <span class="confidence high">check</span><input id="pInvoice" /></label>
         <label>Invoice date<input id="pDate" type="date" /><small id="invoiceDateStatus" class="date-status"></small></label><label>Delivery order<input id="pDo" /></label>
@@ -274,6 +297,25 @@
     <div id="detailBody"></div>
   </dialog>
 
+  <dialog id="attentionDialog" class="dialog wide">
+    <div class="dialog-head"><div><h2>Needs Attention</h2><p>Records that may need review before they become harder to find later.</p></div><button id="closeAttentionBtn" class="icon-btn" type="button"><i data-lucide="x"></i></button></div>
+    <div id="attentionSummary" class="health-summary"></div>
+    <div id="attentionList" class="attention-list"></div>
+  </dialog>
+
+  <dialog id="healthDialog" class="dialog wide">
+    <div class="dialog-head"><div><h2>Data Health Check</h2><p>Automatic checks for incomplete, duplicate-looking or suspicious records.</p></div><button id="closeHealthBtn" class="icon-btn" type="button"><i data-lucide="x"></i></button></div>
+    <div id="healthDialogSummary" class="health-summary"></div>
+    <div id="healthIssueTable" class="table-wrap"></div>
+  </dialog>
+
+  <dialog id="stockTakeDialog" class="dialog wide stocktake-dialog">
+    <div class="dialog-head"><div><h2>Stock Take Mode</h2><p>Enter the physical count. The app will compare it with Current Inventory and flag differences.</p></div><button id="closeStockTakeBtn" class="icon-btn" type="button"><i data-lucide="x"></i></button></div>
+    <div class="stocktake-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="stockTakeSearch" type="search" placeholder="Search SKU or equipment..." /></div><button id="clearStockTakeBtn" class="secondary" type="button">Clear counts</button><button id="copyStockTakeBtn" class="primary" type="button"><i data-lucide="copy"></i> Copy differences</button></div>
+    <div id="stockTakeSummary" class="health-summary"></div>
+    <div id="stockTakeTable" class="table-wrap"></div>
+  </dialog>
+
   <div id="idleWarning" class="idle-warning hidden" role="alertdialog" aria-modal="true" aria-labelledby="idleWarningTitle">
     <div class="idle-warning-card">
       <div class="idle-warning-icon"><i data-lucide="clock-3"></i></div>
@@ -288,6 +330,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=6300"></script>
+  <script type="module" src="app.js?v=6310"></script>
 </body>
 </html>
