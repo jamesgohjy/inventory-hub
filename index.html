@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=6272" />
+  <link rel="stylesheet" href="styles.css?v=6280" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -69,14 +69,14 @@
         <article class="sidebar-release-card current">
           <div class="sidebar-release-title">
             <span class="sidebar-release-icon current"><i data-lucide="settings"></i></span>
-            <div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v6.27</strong><em class="release-badge latest">Latest</em></div></div>
+            <div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v6.28</strong><em class="release-badge latest">Latest</em></div></div>
           </div>
           <ul id="releaseCurrentNotes"></ul>
         </article>
         <article class="sidebar-release-card upcoming">
           <div class="sidebar-release-title">
             <span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span>
-            <div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v6.28</strong><em class="release-badge next">Upcoming</em></div></div>
+            <div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v6.29</strong><em class="release-badge next">Upcoming</em></div></div>
           </div>
           <ul id="releaseUpcomingNotes"></ul>
         </article>
@@ -274,9 +274,20 @@
     <div id="detailBody"></div>
   </dialog>
 
+  <div id="idleWarning" class="idle-warning hidden" role="alertdialog" aria-modal="true" aria-labelledby="idleWarningTitle">
+    <div class="idle-warning-card">
+      <div class="idle-warning-icon"><i data-lucide="clock-3"></i></div>
+      <div class="idle-warning-copy">
+        <strong id="idleWarningTitle">Still there?</strong>
+        <p>No activity was detected. You will be signed out automatically in 5 minutes.</p>
+      </div>
+      <button id="staySignedInBtn" class="primary" type="button">Stay signed in</button>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=6272"></script>
+  <script type="module" src="app.js?v=6280"></script>
 </body>
 </html>
