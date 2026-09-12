@@ -415,3 +415,38 @@ html,body{max-width:100%;overflow-x:hidden}
   #maintenanceView .maintenance-toolbar .input-icon{width:100%;max-width:none;min-width:0;flex:1 1 auto}
   #auditView .audit-toolbar #auditUser,#auditView .audit-toolbar #auditAction,#auditView .audit-toolbar #auditDate{width:100%;max-width:none;flex:1 1 auto}
 }
+
+
+/* V6.41 — standardised filter sizing and document sorting */
+#auditView .audit-toolbar{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  align-items:center;
+}
+#auditView .audit-toolbar .input-icon,
+#auditView .audit-toolbar #auditUser,
+#auditView .audit-toolbar #auditAction,
+#auditView .audit-toolbar #auditDate{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  flex:none;
+}
+
+/* Maintenance: search stays Inventory-sized; outcome dropdown is half that width. */
+#maintenanceView .maintenance-toolbar .input-icon{flex:0 1 50%;width:50%;min-width:360px;max-width:none;margin-right:0}
+#maintenanceView .maintenance-toolbar #maintenanceOutcome{flex:0 0 25%;width:25%;min-width:150px;max-width:260px;margin-right:auto}
+
+/* Documents: search + chronological sort control. */
+#documentsView .documents-toolbar{display:flex;align-items:center;gap:12px}
+#documentsView .documents-toolbar .input-icon{flex:0 1 50%;width:50%;min-width:360px;max-width:720px}
+#documentsView #documentSort{flex:0 0 auto;min-width:210px;max-width:260px}
+
+@media(max-width:760px){
+  #auditView .audit-toolbar{grid-template-columns:1fr}
+  #maintenanceView .maintenance-toolbar .input-icon,
+  #maintenanceView .maintenance-toolbar #maintenanceOutcome{width:100%;max-width:none;min-width:0;flex:1 1 auto}
+  #documentsView .documents-toolbar{flex-direction:column;align-items:stretch}
+  #documentsView .documents-toolbar .input-icon,#documentsView #documentSort{width:100%;max-width:none;min-width:0;flex:1 1 auto}
+}
