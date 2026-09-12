@@ -1,10 +1,10 @@
-// AV Inventory Hub V6.33 — role-based access + side-by-side invoice review
-const APP_VERSION='6.33';
+// AV Inventory Hub V6.34 — authentication callback fixes
+const APP_VERSION='6.34';
 const RELEASE_CURRENT_NOTES=[
-  'Added role-based access (Admin, Editor, Viewer)',
-  'Added side-by-side invoice PDF review',
-  'Role permissions are enforced in Supabase policies',
-  'General fixes and performance'
+  'Email confirmation now returns users to manual sign in',
+  'Fixed password recovery and new-password flow',
+  'Separated confirmation, recovery and normal sign-in sessions',
+  'General authentication fixes'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
@@ -16,6 +16,19 @@ const RELEASE_UPCOMING_NOTES=[
 const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
 const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
+const authUrlParams=()=>{
+  const search=new URLSearchParams(location.search||'');
+  const hash=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+  return {
+    action:(search.get('auth_action')||hash.get('auth_action')||'').toLowerCase(),
+    type:(search.get('type')||hash.get('type')||'').toLowerCase(),
+    hasCode:search.has('code')||hash.has('code')
+  };
+};
+const initialAuthParams=authUrlParams();
+let authFlowMode=initialAuthParams.action==='recovery'||initialAuthParams.type==='recovery'?'recovery':(initialAuthParams.action==='confirm'||['signup','email','email_change'].includes(initialAuthParams.type)?'confirm':null);
+const authRedirectUrl=(action)=>{const u=new URL(location.origin+location.pathname);u.searchParams.set('auth_action',action);return u.toString();};
+function cleanAuthCallbackUrl(){history.replaceState({},document.title,location.pathname);}
 const $ = (id)=>document.getElementById(id);
 const esc = (s='') => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nowIso = ()=>new Date().toISOString();
@@ -67,9 +80,10 @@ class SupabaseDB{
   async currentUser(){const {data,error}=await this.sb.auth.getUser();if(error)throw error;return data.user||null;}
   onAuthStateChange(cb){return this.sb.auth.onAuthStateChange(cb);}
   async signIn(email,password){const {error}=await this.sb.auth.signInWithPassword({email,password});if(error)throw error;}
-  async resetPassword(email){const {error}=await this.sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;}
-  async signUp(email,password){const displayName=prettyEmailName(email);const {data,error}=await this.sb.auth.signUp({email,password,options:{data:{display_name:displayName},emailRedirectTo:location.origin+location.pathname}});if(error)throw error;if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0)throw new Error('An account already exists for this email.');return data;}
-  async resendConfirmation(email){const {error}=await this.sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;}
+  async resetPassword(email){const {error}=await this.sb.auth.resetPasswordForEmail(email,{redirectTo:authRedirectUrl('recovery')});if(error)throw error;}
+  async signUp(email,password){const displayName=prettyEmailName(email);const {data,error}=await this.sb.auth.signUp({email,password,options:{data:{display_name:displayName},emailRedirectTo:authRedirectUrl('confirm')}});if(error)throw error;if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0)throw new Error('An account already exists for this email.');return data;}
+  async resendConfirmation(email){const {error}=await this.sb.auth.resend({type:'signup',email,options:{emailRedirectTo:authRedirectUrl('confirm')}});if(error)throw error;}
+  async updatePassword(password){const {data,error}=await this.sb.auth.updateUser({password});if(error)throw error;return data;}
   async signOut(){await this.sb.auth.signOut();}
   async profileForUser(id){if(!id)return null;const {data,error}=await this.sb.from('profiles').select('id,email,display_name,app_confirmed,role').eq('id',id).maybeSingle();if(error)throw error;return data||null;}
   async ensureProfile(){const {error}=await this.sb.rpc('ensure_inventory_profile');if(error)throw error;}
@@ -381,6 +395,33 @@ function setUserIdentity(session){const email=session?.user?.email||'';const pre
 function applyRoleUI(){const editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();for(const id of ['sidebarImportBtn','importBtn','addMaintenanceBtn'])$(id)?.classList.toggle('role-hidden',!editable);$('manageRolesBtn')?.classList.toggle('hidden',!admin);document.body.dataset.role=currentRole();}
 function renderTeamRoles(){const rows=(state.data?.profiles||[]).map(p=>`<tr><td><strong>${esc(p.display_name||'Team Member')}</strong><br><span class="muted">${esc(p.email||'—')}</span></td><td>${p.id===state.session?.user?.id?'<span class="role-you">You</span>':''}</td><td><select data-role-user="${p.id}" ${p.id===state.session?.user?.id?'title="You can change your own role, but keep at least one Admin account."':''}><option value="admin" ${p.role==='admin'?'selected':''}>Admin</option><option value="editor" ${p.role==='editor'?'selected':''}>Editor</option><option value="viewer" ${(!p.role||p.role==='viewer')?'selected':''}>Viewer</option></select></td><td><button class="secondary small-btn" data-save-role="${p.id}">Save</button></td></tr>`).join('');$('teamRolesTable').innerHTML=rows?`<table><thead><tr><th>Member</th><th></th><th>Role</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No team profiles found.</div>';window.lucide?.createIcons();}
 function openTeamRoles(){if(!canManageRoles()){toast('Only Admins can manage member roles.');return;}renderTeamRoles();$('teamRolesDialog').showModal();}
+function showLoginPanel(message='',kind='success'){
+  authFlowMode=null;
+  $('loginPanel')?.classList.remove('hidden');
+  $('recoveryPanel')?.classList.add('hidden');
+  $('authGate')?.classList.remove('hidden');
+  clearLoginPassword();
+  if(message)setAuthMessage(message,kind);
+  window.lucide?.createIcons();
+}
+function showRecoveryPanel(message=''){
+  authFlowMode='recovery';
+  $('loginPanel')?.classList.add('hidden');
+  $('recoveryPanel')?.classList.remove('hidden');
+  $('authGate')?.classList.remove('hidden');
+  if($('recoveryPassword'))$('recoveryPassword').value='';
+  if($('recoveryPasswordConfirm'))$('recoveryPasswordConfirm').value='';
+  if(updatePasswordBtn)updatePasswordBtn.disabled=!state.session;
+  if(state.session)cleanAuthCallbackUrl();
+  setRecoveryMessage(message);
+  window.lucide?.createIcons();
+}
+async function finishEmailConfirmationCallback(){
+  try{await state.db.signOut();}catch(_){ }
+  state.session=null;state.profile=null;
+  cleanAuthCallbackUrl();
+  showLoginPanel('Email confirmed. Please sign in manually to continue.','success');
+}
 async function requireConfirmedProfile(session){
   if(CFG.mode!=='supabase'||!session?.user)return true;
   try{
@@ -419,9 +460,74 @@ async function requireConfirmedProfile(session){
     return false;
   }
 }
-async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';if(CFG.mode==='supabase'&&state.db.onAuthStateChange){state.db.onAuthStateChange((event,session)=>{if(!session?.user||!['SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED','INITIAL_SESSION'].includes(event))return;setTimeout(async()=>{const ok=await requireConfirmedProfile(session);if(!ok)return;state.session=session;$('authGate').classList.add('hidden');setUserIdentity(state.session);},0);});}$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');renderReleasePanel();if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}$('authGate').classList.toggle('hidden',!!state.session);if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();armIdleTimers();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
+async function init(){
+  if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}
+  state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();
+  await state.db.init();
+  $('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';
+  if(CFG.mode==='supabase'&&state.db.onAuthStateChange){
+    state.db.onAuthStateChange((event,session)=>{
+      setTimeout(async()=>{
+        if(event==='PASSWORD_RECOVERY'){
+          authFlowMode='recovery';
+          state.session=session||await state.db.session();
+          showRecoveryPanel();
+          return;
+        }
+        if(authFlowMode==='confirm'&&session?.user&&['SIGNED_IN','INITIAL_SESSION','TOKEN_REFRESHED','USER_UPDATED'].includes(event)){
+          await finishEmailConfirmationCallback();
+          return;
+        }
+        if(authFlowMode==='recovery'){
+          if(session?.user){state.session=session;showRecoveryPanel();}
+          return;
+        }
+        if(!session?.user||!['SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED','INITIAL_SESSION'].includes(event))return;
+        const ok=await requireConfirmedProfile(session);
+        if(!ok)return;
+        state.session=session;
+        $('authGate').classList.add('hidden');
+        setUserIdentity(state.session);
+      },0);
+    });
+  }
+  $('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');
+  renderReleasePanel();
+  if(CFG.mode==='supabase'){
+    if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}
+    const s=await state.db.session();
+    if(authFlowMode==='confirm'){
+      state.session=s;
+      if(s)await finishEmailConfirmationCallback();
+      else{
+        $('authGate').classList.remove('hidden');
+        $('loginPanel')?.classList.remove('hidden');
+        $('recoveryPanel')?.classList.add('hidden');
+        setAuthMessage('Completing email confirmation…','success');
+      }
+      return;
+    }
+    if(authFlowMode==='recovery'){
+      state.session=s;
+      showRecoveryPanel(s?'':'Preparing secure password reset…');
+      window.lucide?.createIcons();
+      return;
+    }
+    state.session=s;
+    if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}
+    $('authGate').classList.toggle('hidden',!!state.session);
+    if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}
+  }else setUserIdentity(null);
+  await reload();
+  armIdleTimers();
+  setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');
+  window.lucide?.createIcons();
+}
+
 
 const authEmail=$('authEmail'),authPassword=$('authPassword'),signInBtn=$('signInBtn'),authMessage=$('authMessage');
+const recoveryPassword=$('recoveryPassword'),recoveryPasswordConfirm=$('recoveryPasswordConfirm'),recoveryMessage=$('recoveryMessage'),updatePasswordBtn=$('updatePasswordBtn');
+function setRecoveryMessage(msg='',kind='error'){if(!recoveryMessage)return;recoveryMessage.textContent=msg;recoveryMessage.classList.toggle('hidden',!msg);recoveryMessage.style.color=kind==='success'?'#168447':'#c62828';}
 
 function clearLoginPassword(){if(authPassword){authPassword.value='';authPassword.type='password';updateAuthState();}}
 // Never retain or restore a password when the login screen is shown.
@@ -456,6 +562,27 @@ async function submitSignIn(){
 signInBtn.onclick=submitSignIn;authPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitSignIn();}});
 $('togglePasswordBtn').onclick=()=>{const show=authPassword.type==='password';authPassword.type=show?'text':'password';$('togglePasswordBtn').setAttribute('aria-label',show?'Hide password':'Show password');$('togglePasswordBtn').innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();};
 $('forgotPasswordBtn').onclick=async()=>{const email=authEmail.value.trim();if(!validEmail(email)){$('emailError').classList.remove('hidden');setAuthMessage('Enter your email address first so we can send the reset link.');return;}try{if(!state.db.resetPassword)throw new Error();await state.db.resetPassword(email);setAuthMessage('Password reset email sent. Check your inbox.','success');}catch(e){setAuthMessage('We could not send the reset email. Please try again.');}};
+function toggleRecoveryVisibility(input,button,label){if(!input||!button)return;const show=input.type==='password';input.type=show?'text':'password';button.setAttribute('aria-label',show?`Hide ${label}`:`Show ${label}`);button.innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();}
+$('toggleRecoveryPasswordBtn')?.addEventListener('click',()=>toggleRecoveryVisibility(recoveryPassword,$('toggleRecoveryPasswordBtn'),'new password'));
+$('toggleRecoveryConfirmBtn')?.addEventListener('click',()=>toggleRecoveryVisibility(recoveryPasswordConfirm,$('toggleRecoveryConfirmBtn'),'confirmed password'));
+updatePasswordBtn?.addEventListener('click',async()=>{
+  const pw=recoveryPassword?.value||'',confirmPw=recoveryPasswordConfirm?.value||'';
+  setRecoveryMessage();
+  if(pw.length<6){setRecoveryMessage('Password must contain at least 6 characters.');return;}
+  if(pw!==confirmPw){setRecoveryMessage('The passwords do not match.');return;}
+  updatePasswordBtn.disabled=true;const old=updatePasswordBtn.textContent;updatePasswordBtn.textContent='Updating…';
+  try{
+    if(!state.db.updatePassword)throw new Error('Password recovery is unavailable.');
+    await state.db.updatePassword(pw);
+    try{await state.db.signOut();}catch(_){ }
+    state.session=null;state.profile=null;
+    cleanAuthCallbackUrl();
+    showLoginPanel('Password updated. Sign in manually with your new password.','success');
+  }catch(e){
+    console.error('Password update failed',e);
+    setRecoveryMessage('We could not update the password. Open the latest reset link again and try once more.');
+  }finally{updatePasswordBtn.disabled=false;updatePasswordBtn.textContent=old;}
+});
 const SIGNUP_COOLDOWN_MS=5*60*1000;
 const SIGNUP_COOLDOWN_KEY='av-inventory-signup-cooldown-until';
 const SIGNUP_ATTEMPTS_KEY='av-inventory-signup-failed-attempts';
