@@ -1,9 +1,10 @@
-// AV Inventory Hub V6.37 — clearer authentication email rate-limit messaging
-const APP_VERSION='6.37';
+// AV Inventory Hub V6.38 — responsive desktop viewport fit
+const APP_VERSION='6.38';
 const RELEASE_CURRENT_NOTES=[
-  'Password reset now shows a clear message when the authentication email service is rate-limited',
-  'Account creation now gives the same email-service limit guidance without consuming local signup attempts',
-  'Rate-limit messages now advise users to retry after the limit clears or contact an administrator'
+  'Dashboard now fits scaled 1920×1080 laptop displays without cutting off the right side',
+  'Desktop spacing and card sizing adapt automatically to narrower browser viewports',
+  'Removed legacy sidebar offsets that could cause horizontal clipping',
+  'Authentication email rate-limit guidance from V6.37 is preserved'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
