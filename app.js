@@ -1,17 +1,17 @@
-// AV Inventory Hub V6.29 — signup cooldown + confirmation hardening + 10-minute inactivity timeout
-const APP_VERSION='6.29';
+// AV Inventory Hub V6.30 — signup attempt protection + auth anti-spam + login password hardening
+const APP_VERSION='6.30';
 const RELEASE_CURRENT_NOTES=[
-  'Added 5-minute signup retry countdown',
-  'Strengthened email-confirmation enforcement',
-  'Changed inactivity auto logout to 10 minutes',
-  'Password clears after sign out',
+  'Improved signup attempt and cooldown handling',
+  'Added sign-in and signup anti-spam protection',
+  'Password always clears on login screen',
   'General fixes and performance'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 const RELEASE_UPCOMING_NOTES=[
   'Maintenance section tweaks',
   'Performance and bug fixes',
-  'Tweaks to login UI background'
+  'Tweaks to login UI background',
+  'Improving the activity window on Dashboard page'
 ];
 const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
 const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
@@ -391,52 +391,109 @@ async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSea
 const authEmail=$('authEmail'),authPassword=$('authPassword'),signInBtn=$('signInBtn'),authMessage=$('authMessage');
 
 function clearLoginPassword(){if(authPassword){authPassword.value='';authPassword.type='password';updateAuthState();}}
-window.addEventListener('pageshow',()=>{clearLoginPassword();setTimeout(clearLoginPassword,100);});
+// Never retain or restore a password when the login screen is shown.
+clearLoginPassword();
+window.addEventListener('DOMContentLoaded',()=>{clearLoginPassword();setTimeout(clearLoginPassword,100);setTimeout(clearLoginPassword,500);},{once:true});
+window.addEventListener('load',()=>{clearLoginPassword();setTimeout(clearLoginPassword,150);},{once:true});
+window.addEventListener('pageshow',()=>{clearLoginPassword();setTimeout(clearLoginPassword,100);setTimeout(clearLoginPassword,500);});
 function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim());}
 function setAuthMessage(msg='',kind='error'){authMessage.textContent=msg;authMessage.classList.toggle('hidden',!msg);authMessage.style.color=kind==='success'?'#168447':'#c62828';}
 function updateAuthState(showErrors=false){const email=authEmail.value.trim(),pw=authPassword.value;signInBtn.disabled=!(email&&pw);if(showErrors){$('emailError').classList.toggle('hidden',!email||validEmail(email));$('passwordError').classList.toggle('hidden',!!pw);}else{$('emailError').classList.add('hidden');$('passwordError').classList.add('hidden');}}
 authEmail.addEventListener('input',()=>{updateAuthState();setAuthMessage();});authPassword.addEventListener('input',()=>{updateAuthState();setAuthMessage();});authEmail.addEventListener('blur',()=>{$('emailError').classList.toggle('hidden',!authEmail.value||validEmail(authEmail.value));});
-async function submitSignIn(){updateAuthState(true);if(!validEmail(authEmail.value)||!authPassword.value)return;const original='Sign in';signInBtn.disabled=true;signInBtn.textContent='Signing in…';setAuthMessage();try{await state.db.signIn(authEmail.value.trim(),authPassword.value);state.session=await state.db.session();if(!await requireConfirmedProfile(state.session))return;$('authGate').classList.add('hidden');setUserIdentity(state.session);await reload();armIdleTimers();}catch(e){const msg=String(e?.message||'');setAuthMessage(msg.includes('V6.27')?msg:'Email or password is incorrect.');}finally{signInBtn.textContent=original;updateAuthState();}}
+let signInBusy=false;
+async function submitSignIn(){
+  if(signInBusy)return;
+  updateAuthState(true);
+  if(!validEmail(authEmail.value)||!authPassword.value)return;
+  signInBusy=true;
+  const original='Sign in';
+  signInBtn.disabled=true;signInBtn.textContent='Signing in…';setAuthMessage();
+  try{
+    await state.db.signIn(authEmail.value.trim(),authPassword.value);
+    state.session=await state.db.session();
+    if(!await requireConfirmedProfile(state.session))return;
+    $('authGate').classList.add('hidden');setUserIdentity(state.session);await reload();armIdleTimers();
+  }catch(e){
+    const msg=String(e?.message||'');
+    setAuthMessage(msg.includes('security update')?msg:'Email or password is incorrect.');
+  }finally{
+    signInBusy=false;signInBtn.textContent=original;updateAuthState();
+  }
+}
 signInBtn.onclick=submitSignIn;authPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitSignIn();}});
 $('togglePasswordBtn').onclick=()=>{const show=authPassword.type==='password';authPassword.type=show?'text':'password';$('togglePasswordBtn').setAttribute('aria-label',show?'Hide password':'Show password');$('togglePasswordBtn').innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();};
 $('forgotPasswordBtn').onclick=async()=>{const email=authEmail.value.trim();if(!validEmail(email)){$('emailError').classList.remove('hidden');setAuthMessage('Enter your email address first so we can send the reset link.');return;}try{if(!state.db.resetPassword)throw new Error();await state.db.resetPassword(email);setAuthMessage('Password reset email sent. Check your inbox.','success');}catch(e){setAuthMessage('We could not send the reset email. Please try again.');}};
 const SIGNUP_COOLDOWN_MS=5*60*1000;
 const SIGNUP_COOLDOWN_KEY='av-inventory-signup-cooldown-until';
-let signupCooldownInterval=null;
+const SIGNUP_ATTEMPTS_KEY='av-inventory-signup-failed-attempts';
+const SIGNUP_ALLOWED_FAILURES=2; // the 3rd failed signup starts cooldown
+let signupCooldownInterval=null,signupBusy=false;
 function signupCooldownUntil(){return Number(localStorage.getItem(SIGNUP_COOLDOWN_KEY)||0);}
-function clearSignupCooldown(){localStorage.removeItem(SIGNUP_COOLDOWN_KEY);if(signupCooldownInterval){clearInterval(signupCooldownInterval);signupCooldownInterval=null;}}
+function signupFailedAttempts(){return Math.max(0,Number(localStorage.getItem(SIGNUP_ATTEMPTS_KEY)||0));}
+function setSignupFailedAttempts(n){localStorage.setItem(SIGNUP_ATTEMPTS_KEY,String(Math.max(0,n||0)));}
+function clearSignupCooldown(resetAttempts=true){
+  localStorage.removeItem(SIGNUP_COOLDOWN_KEY);
+  if(resetAttempts)localStorage.removeItem(SIGNUP_ATTEMPTS_KEY);
+  if(signupCooldownInterval){clearInterval(signupCooldownInterval);signupCooldownInterval=null;}
+}
 function formatCooldown(ms){const total=Math.max(0,Math.ceil(ms/1000)),m=Math.floor(total/60),sec=total%60;return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
 function refreshSignupCooldown(){
-  const btn=$('signUpBtn'),remaining=signupCooldownUntil()-Date.now();
-  if(remaining<=0){clearSignupCooldown();if(btn){btn.disabled=false;btn.textContent='Create account';}if(authMessage?.dataset?.cooldown==='1'){setAuthMessage();delete authMessage.dataset.cooldown;}return false;}
+  const btn=$('signUpBtn'),until=signupCooldownUntil(),remaining=until-Date.now();
+  if(!until||remaining<=0){
+    // Expired cooldown is a clean slate: the next failure is attempt 1, not an immediate re-lock.
+    if(until)clearSignupCooldown(true);
+    if(btn&&!signupBusy){btn.disabled=false;btn.textContent='Create account';}
+    if(authMessage?.dataset?.cooldown==='1'){setAuthMessage();delete authMessage.dataset.cooldown;}
+    return false;
+  }
   if(btn){btn.disabled=true;btn.textContent=`Try again in ${formatCooldown(remaining)}`;}
-  if(authMessage){authMessage.dataset.cooldown='1';setAuthMessage(`Too many signup attempts. You can try creating an account again in ${formatCooldown(remaining)}.`);}
+  if(authMessage){authMessage.dataset.cooldown='1';setAuthMessage(`Too many failed signup attempts. You can try creating an account again in ${formatCooldown(remaining)}.`);}
   return true;
 }
-function startSignupCooldown(){localStorage.setItem(SIGNUP_COOLDOWN_KEY,String(Date.now()+SIGNUP_COOLDOWN_MS));refreshSignupCooldown();if(signupCooldownInterval)clearInterval(signupCooldownInterval);signupCooldownInterval=setInterval(refreshSignupCooldown,1000);}
+function startSignupCooldown(){
+  localStorage.setItem(SIGNUP_COOLDOWN_KEY,String(Date.now()+SIGNUP_COOLDOWN_MS));
+  refreshSignupCooldown();
+  if(signupCooldownInterval)clearInterval(signupCooldownInterval);
+  signupCooldownInterval=setInterval(refreshSignupCooldown,1000);
+}
+function recordSignupFailure(){
+  const failures=signupFailedAttempts()+1;
+  setSignupFailedAttempts(failures);
+  if(failures>=SIGNUP_ALLOWED_FAILURES+1){startSignupCooldown();return true;}
+  return false;
+}
 if(refreshSignupCooldown()) signupCooldownInterval=setInterval(refreshSignupCooldown,1000);
 $('signUpBtn').onclick=async()=>{
-  if(refreshSignupCooldown())return;
+  if(signupBusy||refreshSignupCooldown())return;
   updateAuthState(true);
   const email=authEmail.value.trim(),pw=authPassword.value;
   if(!validEmail(email)){setAuthMessage('Enter a valid email address.');return;}
   if(!pw||pw.length<6){setAuthMessage('Password must contain at least 6 characters.');return;}
-  const btn=$('signUpBtn');btn.disabled=true;const oldText=btn.textContent;btn.textContent='Creating…';setAuthMessage();
+  const btn=$('signUpBtn'),oldText=btn.textContent;
+  signupBusy=true;btn.disabled=true;btn.textContent='Creating…';setAuthMessage();
   try{
     await state.db.signUp(email,pw);
-    // Always clear any session produced during signup. Access is granted only after
-    // the database sees the real email-confirmation transition and promotes the profile.
+    // Successful signup resets the failed-attempt counter and clears any stale cooldown.
+    clearSignupCooldown(true);
+    // Always clear any session produced during signup. Access is granted only after email confirmation.
     try{await state.db.signOut();}catch(_){ }
-    state.session=null;state.profile=null;authPassword.value='';authPassword.type='password';
+    state.session=null;state.profile=null;clearLoginPassword();
     $('authGate').classList.remove('hidden');
     setAuthMessage('Account created. Check your email and confirm your account before signing in.','success');
   }catch(e){
     const msg=String(e?.message||'');
-    if(/already registered|already exists|user already/i.test(msg)) setAuthMessage('An account already exists for this email. Try signing in or reset the password.');
-    else if(/password/i.test(msg)) setAuthMessage(msg);
-    else if(/rate|limit|too many|signup attempts/i.test(msg)){startSignupCooldown();}
-    else setAuthMessage(msg||'We could not create the account. Please try again.');
-  }finally{if(!refreshSignupCooldown()){btn.disabled=false;btn.textContent=oldText;}}
+    const locked=recordSignupFailure();
+    if(!locked){
+      const used=signupFailedAttempts(),left=Math.max(0,(SIGNUP_ALLOWED_FAILURES+1)-used);
+      if(/already registered|already exists|user already/i.test(msg)) setAuthMessage(`An account already exists for this email. Try signing in or reset the password. ${left} signup attempt${left===1?'':'s'} remaining before cooldown.`);
+      else if(/password/i.test(msg)) setAuthMessage(`${msg} ${left} signup attempt${left===1?'':'s'} remaining before cooldown.`);
+      else if(/rate|limit|too many|signup attempts/i.test(msg)) setAuthMessage(`The signup service is temporarily limiting requests. Please wait briefly and try again. ${left} local attempt${left===1?'':'s'} remaining before cooldown.`);
+      else setAuthMessage(`${msg||'We could not create the account. Please try again.'} ${left} signup attempt${left===1?'':'s'} remaining before cooldown.`);
+    }
+  }finally{
+    signupBusy=false;
+    if(!refreshSignupCooldown()){btn.disabled=false;btn.textContent=oldText;}
+  }
 };
 // Inactivity security: warn after 5 minutes, auto sign out after 10 minutes.
 const IDLE_WARNING_MS=5*60*1000;
