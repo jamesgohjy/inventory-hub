@@ -1,16 +1,17 @@
-// AV Inventory Hub V6.28 — signup fix + inactivity timeout
-const APP_VERSION='6.28';
+// AV Inventory Hub V6.29 — signup cooldown + confirmation hardening + 10-minute inactivity timeout
+const APP_VERSION='6.29';
 const RELEASE_CURRENT_NOTES=[
-  'Fixed new-user account creation',
-  'Added 15-minute inactivity auto logout',
-  'Added 5-minute inactivity warning',
-  'Improved email-confirmation enforcement',
+  'Added 5-minute signup retry countdown',
+  'Strengthened email-confirmation enforcement',
+  'Changed inactivity auto logout to 10 minutes',
+  'Password clears after sign out',
   'General fixes and performance'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 const RELEASE_UPCOMING_NOTES=[
   'Maintenance section tweaks',
-  'Performance and bug fixes'
+  'Performance and bug fixes',
+  'Tweaks to login UI background'
 ];
 const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
 const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
@@ -361,8 +362,9 @@ async function requireConfirmedProfile(session){
       setAuthMessage('Email confirmation is required before dashboard access. Please confirm the registration email, then sign in.');
       return false;
     }
-    // Create/synchronise the app profile only after Auth confirms the email.
-    if(state.db.ensureProfile) await state.db.ensureProfile();
+    // The app profile must have been promoted by the database confirmation trigger.
+    // Do not auto-promote here: this prevents a newly-created account from bypassing
+    // the confirmation-email step even if a cached or auto-confirmed Auth session exists.
     const profile=await state.db.profileForUser(freshUser?.id||session.user.id);
     state.profile=profile;
     if(profile?.app_confirmed===true){
@@ -380,13 +382,16 @@ async function requireConfirmedProfile(session){
     try{await state.db.signOut();}catch(_){}
     state.session=null;state.profile=null;
     $('authGate').classList.remove('hidden');
-    setAuthMessage('V6.27 security update is required. Run supabase-v6-27-security-hotfix.sql, then try again.');
+    setAuthMessage('V6.29 security update is required. Run supabase-v6-29-auth-hardening.sql, then try again.');
     return false;
   }
 }
 async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';if(CFG.mode==='supabase'&&state.db.onAuthStateChange){state.db.onAuthStateChange((event,session)=>{if(!session?.user||!['SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED','INITIAL_SESSION'].includes(event))return;setTimeout(async()=>{const ok=await requireConfirmedProfile(session);if(!ok)return;state.session=session;$('authGate').classList.add('hidden');setUserIdentity(state.session);},0);});}$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');renderReleasePanel();if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}$('authGate').classList.toggle('hidden',!!state.session);if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();armIdleTimers();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
 
 const authEmail=$('authEmail'),authPassword=$('authPassword'),signInBtn=$('signInBtn'),authMessage=$('authMessage');
+
+function clearLoginPassword(){if(authPassword){authPassword.value='';authPassword.type='password';updateAuthState();}}
+window.addEventListener('pageshow',()=>{clearLoginPassword();setTimeout(clearLoginPassword,100);});
 function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim());}
 function setAuthMessage(msg='',kind='error'){authMessage.textContent=msg;authMessage.classList.toggle('hidden',!msg);authMessage.style.color=kind==='success'?'#168447':'#c62828';}
 function updateAuthState(showErrors=false){const email=authEmail.value.trim(),pw=authPassword.value;signInBtn.disabled=!(email&&pw);if(showErrors){$('emailError').classList.toggle('hidden',!email||validEmail(email));$('passwordError').classList.toggle('hidden',!!pw);}else{$('emailError').classList.add('hidden');$('passwordError').classList.add('hidden');}}
@@ -395,36 +400,53 @@ async function submitSignIn(){updateAuthState(true);if(!validEmail(authEmail.val
 signInBtn.onclick=submitSignIn;authPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitSignIn();}});
 $('togglePasswordBtn').onclick=()=>{const show=authPassword.type==='password';authPassword.type=show?'text':'password';$('togglePasswordBtn').setAttribute('aria-label',show?'Hide password':'Show password');$('togglePasswordBtn').innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();};
 $('forgotPasswordBtn').onclick=async()=>{const email=authEmail.value.trim();if(!validEmail(email)){$('emailError').classList.remove('hidden');setAuthMessage('Enter your email address first so we can send the reset link.');return;}try{if(!state.db.resetPassword)throw new Error();await state.db.resetPassword(email);setAuthMessage('Password reset email sent. Check your inbox.','success');}catch(e){setAuthMessage('We could not send the reset email. Please try again.');}};
+const SIGNUP_COOLDOWN_MS=5*60*1000;
+const SIGNUP_COOLDOWN_KEY='av-inventory-signup-cooldown-until';
+let signupCooldownInterval=null;
+function signupCooldownUntil(){return Number(localStorage.getItem(SIGNUP_COOLDOWN_KEY)||0);}
+function clearSignupCooldown(){localStorage.removeItem(SIGNUP_COOLDOWN_KEY);if(signupCooldownInterval){clearInterval(signupCooldownInterval);signupCooldownInterval=null;}}
+function formatCooldown(ms){const total=Math.max(0,Math.ceil(ms/1000)),m=Math.floor(total/60),sec=total%60;return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function refreshSignupCooldown(){
+  const btn=$('signUpBtn'),remaining=signupCooldownUntil()-Date.now();
+  if(remaining<=0){clearSignupCooldown();if(btn){btn.disabled=false;btn.textContent='Create account';}if(authMessage?.dataset?.cooldown==='1'){setAuthMessage();delete authMessage.dataset.cooldown;}return false;}
+  if(btn){btn.disabled=true;btn.textContent=`Try again in ${formatCooldown(remaining)}`;}
+  if(authMessage){authMessage.dataset.cooldown='1';setAuthMessage(`Too many signup attempts. You can try creating an account again in ${formatCooldown(remaining)}.`);}
+  return true;
+}
+function startSignupCooldown(){localStorage.setItem(SIGNUP_COOLDOWN_KEY,String(Date.now()+SIGNUP_COOLDOWN_MS));refreshSignupCooldown();if(signupCooldownInterval)clearInterval(signupCooldownInterval);signupCooldownInterval=setInterval(refreshSignupCooldown,1000);}
+if(refreshSignupCooldown()) signupCooldownInterval=setInterval(refreshSignupCooldown,1000);
 $('signUpBtn').onclick=async()=>{
+  if(refreshSignupCooldown())return;
   updateAuthState(true);
   const email=authEmail.value.trim(),pw=authPassword.value;
   if(!validEmail(email)){setAuthMessage('Enter a valid email address.');return;}
   if(!pw||pw.length<6){setAuthMessage('Password must contain at least 6 characters.');return;}
   const btn=$('signUpBtn');btn.disabled=true;const oldText=btn.textContent;btn.textContent='Creating…';setAuthMessage();
   try{
-    const data=await state.db.signUp(email,pw);
-    // With email confirmation enabled Supabase normally returns no active session.
-    // Explicitly sign out if one exists so dashboard access still requires confirmation.
+    await state.db.signUp(email,pw);
+    // Always clear any session produced during signup. Access is granted only after
+    // the database sees the real email-confirmation transition and promotes the profile.
     try{await state.db.signOut();}catch(_){ }
-    state.session=null;state.profile=null;
+    state.session=null;state.profile=null;authPassword.value='';authPassword.type='password';
     $('authGate').classList.remove('hidden');
     setAuthMessage('Account created. Check your email and confirm your account before signing in.','success');
   }catch(e){
     const msg=String(e?.message||'');
     if(/already registered|already exists|user already/i.test(msg)) setAuthMessage('An account already exists for this email. Try signing in or reset the password.');
     else if(/password/i.test(msg)) setAuthMessage(msg);
-    else if(/rate|limit|too many/i.test(msg)) setAuthMessage('Too many signup attempts. Please wait a moment and try again.');
+    else if(/rate|limit|too many|signup attempts/i.test(msg)){startSignupCooldown();}
     else setAuthMessage(msg||'We could not create the account. Please try again.');
-  }finally{btn.disabled=false;btn.textContent=oldText;}
+  }finally{if(!refreshSignupCooldown()){btn.disabled=false;btn.textContent=oldText;}}
 };
-// Inactivity security: warn after 10 minutes, auto sign out after 15 minutes.
-const IDLE_WARNING_MS=10*60*1000;
-const IDLE_LOGOUT_MS=15*60*1000;
+// Inactivity security: warn after 5 minutes, auto sign out after 10 minutes.
+const IDLE_WARNING_MS=5*60*1000;
+const IDLE_LOGOUT_MS=10*60*1000;
 let idleWarningTimer=null,idleLogoutTimer=null,idleLastActivity=Date.now();
 function hideIdleWarning(){$('idleWarning')?.classList.add('hidden');}
 function clearIdleTimers(){if(idleWarningTimer)clearTimeout(idleWarningTimer);if(idleLogoutTimer)clearTimeout(idleLogoutTimer);idleWarningTimer=idleLogoutTimer=null;}
 async function idleAutoLogout(){
   clearIdleTimers();hideIdleWarning();
+  if(authPassword){authPassword.value='';authPassword.type='password';}
   try{if(CFG.mode==='supabase')await state.db.signOut();}catch(_){ }
   state.session=null;state.profile=null;
   location.reload();
@@ -448,10 +470,10 @@ function registerUserActivity(){
 }
 ['pointerdown','keydown','scroll','touchstart','mousemove'].forEach(evt=>document.addEventListener(evt,registerUserActivity,{passive:true}));
 $('staySignedInBtn')?.addEventListener('click',()=>{idleLastActivity=Date.now();hideIdleWarning();armIdleTimers();});
-$('signOutBtn').onclick=async()=>{await state.db.signOut();location.reload()};
+$('signOutBtn').onclick=async()=>{if(authPassword){authPassword.value='';authPassword.type='password';}await state.db.signOut();location.reload()};
 $('userMenuBtn')?.addEventListener('click',e=>{e.stopPropagation();const m=$('userMenu');m.classList.toggle('hidden');$('userMenuBtn').setAttribute('aria-expanded',String(!m.classList.contains('hidden')));});
 document.addEventListener('click',e=>{if(!e.target.closest('.user-menu-wrap'))$('userMenu')?.classList.add('hidden');});
-$('userSignOutBtn')?.addEventListener('click',async()=>{if(CFG.mode==='supabase')await state.db.signOut();location.reload();});
+$('userSignOutBtn')?.addEventListener('click',async()=>{if(authPassword){authPassword.value='';authPassword.type='password';}if(CFG.mode==='supabase')await state.db.signOut();location.reload();});
 $('accountBtn')?.addEventListener('click',()=>{const email=state.session?.user?.email||'Local demo user';toast(`Signed in as ${email}`);$('userMenu')?.classList.add('hidden');});
 document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>showView(b.dataset.go));
 $('patchNotesBtn')?.addEventListener('click',togglePatchNotes);
