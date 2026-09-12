@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.41 — standardized filters and document date sorting
-const APP_VERSION='6.41';
+// AV Inventory Hub V6.43 — reliable document chronological sorting and layout refinements
+const APP_VERSION='6.43';
 const RELEASE_CURRENT_NOTES=[
   'Standardised Recent Activities search, user, action and date control widths',
   'Reduced the Maintenance outcome dropdown width',
@@ -263,8 +263,36 @@ function renderInventory(){const q=norm($('inventorySearch').value),cat=$('categ
   const rows=filtered.map(i=>{const s=summary(i),serials=itemSerials(i.id),hasInvoice=itemInvoices(i.id).some(p=>p.document_id);return `<tr><td><button class="item-link" data-detail="${i.id}"><strong>${esc(i.sku)}</strong><span>${esc(i.item_name)}</span></button></td><td>${esc(i.category||'—')}</td><td class="qty">${s.purchased}</td><td class="qty ${s.current<0?'negative':''}"><strong>${s.current}</strong></td><td>${esc(itemSuppliers(i.id).join(', ')||'—')}</td><td class="actions-menu-cell"><details class="action-menu"><summary aria-label="Actions">⋯</summary><div><button data-detail="${i.id}">View details</button>${editable?`<button data-quick-maint="${i.id}">Add maintenance</button>`:''}<button data-quick-invoice="${i.id}" ${hasInvoice?'':'disabled'}>View invoice</button><button data-copy-serials="${i.id}" ${serials.length?'':'disabled'}>Copy serial${serials.length===1?'':'s'}</button>${editable?`<button data-adjust="${i.id}">Adjust inventory</button><button data-edit="${i.id}">Edit</button><button data-delete="${i.id}">Delete</button>`:''}</div></details></td></tr>`}).join('');$('inventoryTable').innerHTML=rows?`<table><thead><tr><th>SKU / item</th><th>Category</th><th>Total purchased <span class="info-tip" title="Everything ever purchased from saved invoices.">ⓘ</span></th><th>Current inventory <span class="info-tip" title="Total Purchased minus inventory adjustments.">ⓘ</span></th><th>Supplier</th><th>Quick actions</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="empty-state"><strong>No inventory items found.</strong><span>Try clearing your search${editable?' or import an invoice':''}.</span>${editable?'<button class="primary" data-empty-import>Import invoice</button>':''}</div>`;}
 
 
-function renderDocuments(){const q=norm($('documentSearch').value),editable=canEdit(),sort=$('documentSort')?.value||'newest';const docs=state.data.documents.filter(d=>!q||norm([d.file_name,d.supplier_name,d.invoice_number,...linkedItemsForDocument(d.id).map(i=>i.sku+' '+i.item_name)].join(' ')).includes(q)).slice().sort((a,b)=>{const at=new Date(a.uploaded_at||0).getTime()||0,bt=new Date(b.uploaded_at||0).getTime()||0;return sort==='oldest'?at-bt:bt-at;});const rows=docs.map(d=>{const linked=linkedItemsForDocument(d.id);return `<tr><td>${esc(d.file_name)}</td><td>${esc(d.supplier_name||'—')}</td><td>${esc(d.invoice_number||'—')}</td><td><span class="linked-count" title="${esc(linked.map(i=>i.sku+' · '+i.item_name).join(' | '))}">${linked.length} item${linked.length===1?'':'s'}</span></td><td>${fmtDT(d.uploaded_at)}</td><td class="actions"><button data-doc-view="${d.id}">View</button><button data-doc-download="${d.id}">Download</button>${editable?`<button class="danger-outline" data-doc-delete="${d.id}">Delete</button>`:''}</td></tr>`}).join('');$('documentsTable').innerHTML=rows?`<table><thead><tr><th>File</th><th>Supplier</th><th>Invoice</th><th>Linked equipment</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No documents found.</div>';}
-
+function documentInvoiceDate(d){
+  const purchases=(state.data?.purchases||[]).filter(p=>String(p.document_id||'')===String(d.id||''));
+  const dated=purchases.find(p=>/^\d{4}-\d{2}-\d{2}$/.test(String(p.invoice_date||'')));
+  return dated?.invoice_date||'';
+}
+function documentSortTime(d){
+  const invoiceDate=documentInvoiceDate(d);
+  if(invoiceDate){
+    const m=invoiceDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(m)return Date.UTC(+m[1],+m[2]-1,+m[3]);
+  }
+  const t=Date.parse(d.uploaded_at||'');
+  return Number.isFinite(t)?t:0;
+}
+function renderDocuments(){
+  const q=norm($('documentSearch').value),editable=canEdit(),sort=$('documentSort')?.value||'newest';
+  const docs=state.data.documents
+    .filter(d=>!q||norm([d.file_name,d.supplier_name,d.invoice_number,documentInvoiceDate(d),...linkedItemsForDocument(d.id).map(i=>i.sku+' '+i.item_name)].join(' ')).includes(q))
+    .slice()
+    .sort((a,b)=>{
+      const at=documentSortTime(a),bt=documentSortTime(b);
+      if(at===bt)return String(a.file_name||'').localeCompare(String(b.file_name||''));
+      return sort==='oldest'?at-bt:bt-at;
+    });
+  const rows=docs.map(d=>{
+    const linked=linkedItemsForDocument(d.id),invoiceDate=documentInvoiceDate(d);
+    return `<tr><td>${esc(d.file_name)}</td><td>${esc(d.supplier_name||'—')}</td><td>${esc(d.invoice_number||'—')}</td><td>${invoiceDate?fmtDate(invoiceDate):'—'}</td><td><span class="linked-count" title="${esc(linked.map(i=>i.sku+' · '+i.item_name).join(' | '))}">${linked.length} item${linked.length===1?'':'s'}</span></td><td>${fmtDT(d.uploaded_at)}</td><td class="actions"><button data-doc-view="${d.id}">View</button><button data-doc-download="${d.id}">Download</button>${editable?`<button class="danger-outline" data-doc-delete="${d.id}">Delete</button>`:''}</td></tr>`
+  }).join('');
+  $('documentsTable').innerHTML=rows?`<table><thead><tr><th>File</th><th>Supplier</th><th>Invoice</th><th>Invoice date</th><th>Linked equipment</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No documents found.</div>';
+}
 function maintenanceItem(id){return state.data.items.find(i=>i.id===id);}
 function renderMaintenance(){const q=norm($('maintenanceSearch')?.value||''),out=$('maintenanceOutcome')?.value||'',editable=canEdit();const rows=(state.data.maintenance||[]).filter(r=>{const i=maintenanceItem(r.master_item_id)||{};return(!q||norm([i.sku,i.item_name,r.serial_number,r.issue,r.action_taken,r.outcome,r.notes].join(' ')).includes(q))&&(!out||r.outcome===out)}).map(r=>{const i=maintenanceItem(r.master_item_id)||{};return `<tr><td>${fmtDate(r.maintenance_date)}</td><td><strong>${esc(i.sku||'—')}</strong><br><span class="muted">${esc(i.item_name||'Unknown item')}</span></td><td>${esc(r.serial_number||'—')}</td><td>${esc(r.issue)}</td><td>${esc(r.action_taken)}</td><td><span class="badge maintenance-badge">${esc(r.outcome)}</span></td><td>${esc(r.notes||'—')}</td><td>${editable?`<div class="maintenance-actions"><button class="icon-btn" title="Edit" data-maint-edit="${r.id}"><i data-lucide="pencil"></i></button><button class="icon-btn danger-icon" title="Delete" data-maint-delete="${r.id}"><i data-lucide="trash-2"></i></button></div>`:'<span class="muted">Read only</span>'}</td></tr>`}).join('');$('maintenanceTable').innerHTML=rows?`<table><thead><tr><th>Date</th><th>Equipment / SKU</th><th>Serial Number</th><th>Issue / Problem</th><th>Action Taken</th><th>Outcome</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No maintenance records yet.</div>';window.lucide?.createIcons();}
 function populateMaintenanceItems(selected=''){if(!$('maintenanceItem'))return;$('maintenanceItem').innerHTML='<option value="">Select equipment...</option>'+state.data.items.map(i=>`<option value="${i.id}" ${i.id===selected?'selected':''}>${esc(i.sku)} · ${esc(i.item_name)}</option>`).join('');populateMaintenanceSerials();}
