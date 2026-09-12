@@ -1,9 +1,9 @@
-// AV Inventory Hub V6.38 — responsive desktop viewport fit
-const APP_VERSION='6.38';
+// AV Inventory Hub V6.39 — full-height sidebar rail fix
+const APP_VERSION='6.39';
 const RELEASE_CURRENT_NOTES=[
-  'Dashboard now fits scaled 1920×1080 laptop displays without cutting off the right side',
-  'Desktop spacing and card sizing adapt automatically to narrower browser viewports',
-  'Removed legacy sidebar offsets that could cause horizontal clipping',
+  'Navy sidebar background now stays aligned with the full dashboard page height',
+  'Sidebar navigation remains sticky while the blue rail continues behind longer content',
+  'Responsive 1920×1080 viewport improvements from V6.38 are preserved',
   'Authentication email rate-limit guidance from V6.37 is preserved'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
