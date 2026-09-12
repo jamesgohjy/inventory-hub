@@ -1,15 +1,16 @@
-// AV Inventory Hub V6.27 — updated security + sidebar patch notes
-const APP_VERSION='6.27';
+// AV Inventory Hub V6.28 — signup fix + inactivity timeout
+const APP_VERSION='6.28';
 const RELEASE_CURRENT_NOTES=[
-  'Fixed email-confirmation enforcement',
-  'Moved Patch Notes into the sidebar',
-  'Fixed member names in Recent Activities',
-  'Fixed upcoming version display',
+  'Fixed new-user account creation',
+  'Added 15-minute inactivity auto logout',
+  'Added 5-minute inactivity warning',
+  'Improved email-confirmation enforcement',
   'General fixes and performance'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 const RELEASE_UPCOMING_NOTES=[
-  'Patch notes to be announced'
+  'Maintenance section tweaks',
+  'Performance and bug fixes'
 ];
 const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
 const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
@@ -70,6 +71,7 @@ class SupabaseDB{
   async resendConfirmation(email){const {error}=await this.sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;}
   async signOut(){await this.sb.auth.signOut();}
   async profileForUser(id){if(!id)return null;const {data,error}=await this.sb.from('profiles').select('id,email,display_name,app_confirmed').eq('id',id).maybeSingle();if(error)throw error;return data||null;}
+  async ensureProfile(){const {error}=await this.sb.rpc('ensure_inventory_profile');if(error)throw error;}
   async load(){
     const [items,purchases,purchaseItems,serials,adjustments,documents,maintenance,audit,profiles]=await Promise.all([
       this.sb.from('master_items').select('*').order('item_name'),this.sb.from('purchases').select('*').order('invoice_date',{ascending:false}),this.sb.from('purchase_items').select('*'),this.sb.from('serial_numbers').select('*'),this.sb.from('inventory_adjustments').select('*'),this.sb.from('documents').select('*').order('uploaded_at',{ascending:false}),this.sb.from('maintenance_records').select('*').order('maintenance_date',{ascending:false}),this.sb.from('audit_log').select('*').order('changed_at',{ascending:false}).limit(500),this.sb.from('profiles').select('id,email,display_name')
@@ -351,9 +353,19 @@ async function requireConfirmedProfile(session){
     // Always ask Supabase for a fresh user record instead of trusting a cached session.
     const freshUser=await state.db.currentUser();
     const emailConfirmed=!!freshUser?.email_confirmed_at;
+    if(!emailConfirmed){
+      await state.db.signOut();
+      state.session=null;state.profile=null;
+      $('authGate').classList.remove('hidden');
+      setUserIdentity(null);
+      setAuthMessage('Email confirmation is required before dashboard access. Please confirm the registration email, then sign in.');
+      return false;
+    }
+    // Create/synchronise the app profile only after Auth confirms the email.
+    if(state.db.ensureProfile) await state.db.ensureProfile();
     const profile=await state.db.profileForUser(freshUser?.id||session.user.id);
     state.profile=profile;
-    if(emailConfirmed&&profile?.app_confirmed===true){
+    if(profile?.app_confirmed===true){
       state.session={...session,user:freshUser};
       return true;
     }
@@ -361,7 +373,7 @@ async function requireConfirmedProfile(session){
     state.session=null;state.profile=null;
     $('authGate').classList.remove('hidden');
     setUserIdentity(null);
-    setAuthMessage('Email confirmation is required before dashboard access. Please confirm the registration email, then sign in.');
+    setAuthMessage('Your account could not be activated yet. Confirm your email and try signing in again.');
     return false;
   }catch(e){
     console.error('Confirmation check failed',e);
@@ -372,18 +384,70 @@ async function requireConfirmedProfile(session){
     return false;
   }
 }
-async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';if(CFG.mode==='supabase'&&state.db.onAuthStateChange){state.db.onAuthStateChange((event,session)=>{if(!session?.user||!['SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED','INITIAL_SESSION'].includes(event))return;setTimeout(async()=>{const ok=await requireConfirmedProfile(session);if(!ok)return;state.session=session;$('authGate').classList.add('hidden');setUserIdentity(state.session);},0);});}$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');renderReleasePanel();if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}$('authGate').classList.toggle('hidden',!!state.session);if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
+async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';if(CFG.mode==='supabase'&&state.db.onAuthStateChange){state.db.onAuthStateChange((event,session)=>{if(!session?.user||!['SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED','INITIAL_SESSION'].includes(event))return;setTimeout(async()=>{const ok=await requireConfirmedProfile(session);if(!ok)return;state.session=session;$('authGate').classList.add('hidden');setUserIdentity(state.session);},0);});}$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');renderReleasePanel();if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}$('authGate').classList.toggle('hidden',!!state.session);if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();armIdleTimers();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
 
 const authEmail=$('authEmail'),authPassword=$('authPassword'),signInBtn=$('signInBtn'),authMessage=$('authMessage');
 function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim());}
 function setAuthMessage(msg='',kind='error'){authMessage.textContent=msg;authMessage.classList.toggle('hidden',!msg);authMessage.style.color=kind==='success'?'#168447':'#c62828';}
 function updateAuthState(showErrors=false){const email=authEmail.value.trim(),pw=authPassword.value;signInBtn.disabled=!(email&&pw);if(showErrors){$('emailError').classList.toggle('hidden',!email||validEmail(email));$('passwordError').classList.toggle('hidden',!!pw);}else{$('emailError').classList.add('hidden');$('passwordError').classList.add('hidden');}}
 authEmail.addEventListener('input',()=>{updateAuthState();setAuthMessage();});authPassword.addEventListener('input',()=>{updateAuthState();setAuthMessage();});authEmail.addEventListener('blur',()=>{$('emailError').classList.toggle('hidden',!authEmail.value||validEmail(authEmail.value));});
-async function submitSignIn(){updateAuthState(true);if(!validEmail(authEmail.value)||!authPassword.value)return;const original='Sign in';signInBtn.disabled=true;signInBtn.textContent='Signing in…';setAuthMessage();try{await state.db.signIn(authEmail.value.trim(),authPassword.value);state.session=await state.db.session();if(!await requireConfirmedProfile(state.session))return;$('authGate').classList.add('hidden');setUserIdentity(state.session);await reload();}catch(e){const msg=String(e?.message||'');setAuthMessage(msg.includes('V6.27')?msg:'Email or password is incorrect.');}finally{signInBtn.textContent=original;updateAuthState();}}
+async function submitSignIn(){updateAuthState(true);if(!validEmail(authEmail.value)||!authPassword.value)return;const original='Sign in';signInBtn.disabled=true;signInBtn.textContent='Signing in…';setAuthMessage();try{await state.db.signIn(authEmail.value.trim(),authPassword.value);state.session=await state.db.session();if(!await requireConfirmedProfile(state.session))return;$('authGate').classList.add('hidden');setUserIdentity(state.session);await reload();armIdleTimers();}catch(e){const msg=String(e?.message||'');setAuthMessage(msg.includes('V6.27')?msg:'Email or password is incorrect.');}finally{signInBtn.textContent=original;updateAuthState();}}
 signInBtn.onclick=submitSignIn;authPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitSignIn();}});
 $('togglePasswordBtn').onclick=()=>{const show=authPassword.type==='password';authPassword.type=show?'text':'password';$('togglePasswordBtn').setAttribute('aria-label',show?'Hide password':'Show password');$('togglePasswordBtn').innerHTML=`<i data-lucide="${show?'eye-off':'eye'}"></i>`;window.lucide?.createIcons();};
 $('forgotPasswordBtn').onclick=async()=>{const email=authEmail.value.trim();if(!validEmail(email)){$('emailError').classList.remove('hidden');setAuthMessage('Enter your email address first so we can send the reset link.');return;}try{if(!state.db.resetPassword)throw new Error();await state.db.resetPassword(email);setAuthMessage('Password reset email sent. Check your inbox.','success');}catch(e){setAuthMessage('We could not send the reset email. Please try again.');}};
-$('signUpBtn').onclick=async()=>{updateAuthState(true);if(!validEmail(authEmail.value)||!authPassword.value)return;try{await state.db.signUp(authEmail.value.trim(),authPassword.value);await state.db.signOut();state.session=null;setAuthMessage('Account created. You must confirm the registration email before dashboard access.','success');}catch(e){setAuthMessage('We could not create the account. Check the email and password and try again.');}};
+$('signUpBtn').onclick=async()=>{
+  updateAuthState(true);
+  const email=authEmail.value.trim(),pw=authPassword.value;
+  if(!validEmail(email)){setAuthMessage('Enter a valid email address.');return;}
+  if(!pw||pw.length<6){setAuthMessage('Password must contain at least 6 characters.');return;}
+  const btn=$('signUpBtn');btn.disabled=true;const oldText=btn.textContent;btn.textContent='Creating…';setAuthMessage();
+  try{
+    const data=await state.db.signUp(email,pw);
+    // With email confirmation enabled Supabase normally returns no active session.
+    // Explicitly sign out if one exists so dashboard access still requires confirmation.
+    try{await state.db.signOut();}catch(_){ }
+    state.session=null;state.profile=null;
+    $('authGate').classList.remove('hidden');
+    setAuthMessage('Account created. Check your email and confirm your account before signing in.','success');
+  }catch(e){
+    const msg=String(e?.message||'');
+    if(/already registered|already exists|user already/i.test(msg)) setAuthMessage('An account already exists for this email. Try signing in or reset the password.');
+    else if(/password/i.test(msg)) setAuthMessage(msg);
+    else if(/rate|limit|too many/i.test(msg)) setAuthMessage('Too many signup attempts. Please wait a moment and try again.');
+    else setAuthMessage(msg||'We could not create the account. Please try again.');
+  }finally{btn.disabled=false;btn.textContent=oldText;}
+};
+// Inactivity security: warn after 10 minutes, auto sign out after 15 minutes.
+const IDLE_WARNING_MS=10*60*1000;
+const IDLE_LOGOUT_MS=15*60*1000;
+let idleWarningTimer=null,idleLogoutTimer=null,idleLastActivity=Date.now();
+function hideIdleWarning(){$('idleWarning')?.classList.add('hidden');}
+function clearIdleTimers(){if(idleWarningTimer)clearTimeout(idleWarningTimer);if(idleLogoutTimer)clearTimeout(idleLogoutTimer);idleWarningTimer=idleLogoutTimer=null;}
+async function idleAutoLogout(){
+  clearIdleTimers();hideIdleWarning();
+  try{if(CFG.mode==='supabase')await state.db.signOut();}catch(_){ }
+  state.session=null;state.profile=null;
+  location.reload();
+}
+function showIdleWarning(){
+  if(CFG.mode!=='supabase'||!state.session||!$('authGate')?.classList.contains('hidden'))return;
+  $('idleWarning')?.classList.remove('hidden');
+}
+function armIdleTimers(){
+  clearIdleTimers();
+  if(CFG.mode!=='supabase'||!state.session||!$('authGate')?.classList.contains('hidden'))return;
+  idleWarningTimer=setTimeout(showIdleWarning,IDLE_WARNING_MS);
+  idleLogoutTimer=setTimeout(idleAutoLogout,IDLE_LOGOUT_MS);
+}
+function registerUserActivity(){
+  if(CFG.mode!=='supabase'||!state.session)return;
+  const now=Date.now();
+  // Throttle noisy mousemove/scroll activity while still resetting promptly.
+  if(now-idleLastActivity<1000)return;
+  idleLastActivity=now;hideIdleWarning();armIdleTimers();
+}
+['pointerdown','keydown','scroll','touchstart','mousemove'].forEach(evt=>document.addEventListener(evt,registerUserActivity,{passive:true}));
+$('staySignedInBtn')?.addEventListener('click',()=>{idleLastActivity=Date.now();hideIdleWarning();armIdleTimers();});
 $('signOutBtn').onclick=async()=>{await state.db.signOut();location.reload()};
 $('userMenuBtn')?.addEventListener('click',e=>{e.stopPropagation();const m=$('userMenu');m.classList.toggle('hidden');$('userMenuBtn').setAttribute('aria-expanded',String(!m.classList.contains('hidden')));});
 document.addEventListener('click',e=>{if(!e.target.closest('.user-menu-wrap'))$('userMenu')?.classList.add('hidden');});
