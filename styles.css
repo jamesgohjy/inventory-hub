@@ -481,3 +481,9 @@ html,body{max-width:100%;overflow-x:hidden}
     justify-self:start;
   }
 }
+
+/* V6.44 reliability feedback */
+.optimistic-flash{animation:v644flash .8s ease-out}
+@keyframes v644flash{0%{background:#e8f4ff}100%{background:transparent}}
+.team-display-name{width:min(220px,100%);padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-weight:700;color:var(--ink);background:#fff}
+button:disabled{cursor:not-allowed;opacity:.62}
