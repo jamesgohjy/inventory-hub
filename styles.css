@@ -281,7 +281,7 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
 
 /* V6.32 document refresh hotfix */
 
-/* V6.33 — role-based access + side-by-side invoice review */
+/* V6.34 — authentication callback fixes */
 .role-hidden{display:none!important}
 .user-role{display:inline-flex;align-items:center;width:max-content;margin-top:2px;padding:2px 6px;border-radius:999px;background:#eaf3ff;color:#175cd3;font-size:8px;font-weight:800;letter-spacing:.02em;text-transform:uppercase}
 .role-guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:-2px 0 14px}
@@ -323,3 +323,9 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
   .parsed-review-pane .form-grid.compact{grid-template-columns:1fr}
   .role-guide{grid-template-columns:1fr}
 }
+
+/* V6.34 — dedicated password recovery state */
+.auth-recovery label{display:block;font-size:12px;font-weight:700;color:#263247;margin:14px 0 6px}
+.auth-recovery .auth-input-wrap{margin-bottom:2px}
+.auth-recovery .auth-signin{margin-top:20px}
+.auth-recovery .auth-message{margin-top:10px}
