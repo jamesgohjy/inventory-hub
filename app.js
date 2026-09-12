@@ -1,18 +1,18 @@
-// AV Inventory Hub V6.27
+// AV Inventory Hub V6.27 — updated security + sidebar patch notes
 const APP_VERSION='6.27';
 const RELEASE_CURRENT_NOTES=[
-  'Fixed registered member names in Recent Activities',
-  'Added sidebar Patch Notes bottom drawer',
-  'Email confirmation required before dashboard access',
+  'Fixed email-confirmation enforcement',
+  'Moved Patch Notes into the sidebar',
+  'Fixed member names in Recent Activities',
+  'Fixed upcoming version display',
   'General fixes and performance'
 ];
-// Upcoming notes are intentionally manual. Edit this list for the next release preview.
+// Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 const RELEASE_UPCOMING_NOTES=[
-  'Tweaks to maintenance section',
-  'General fixes and performance'
+  'Patch notes to be announced'
 ];
-const nextPatchVersion=(v)=>{const parts=String(v).split('.').map(Number);return `${parts[0]||0}.${parts[1]||0}.${(parts[2]||0)+1}`;};
-const RELEASE_UPCOMING_VERSION=nextPatchVersion(APP_VERSION);
+const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
+const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const $ = (id)=>document.getElementById(id);
 const esc = (s='') => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -62,6 +62,8 @@ class LocalDB{
 class SupabaseDB{
   async init(){const {createClient}=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');this.sb=createClient(CFG.supabaseUrl,CFG.supabaseAnonKey);}
   async session(){return (await this.sb.auth.getSession()).data.session;}
+  async currentUser(){const {data,error}=await this.sb.auth.getUser();if(error)throw error;return data.user||null;}
+  onAuthStateChange(cb){return this.sb.auth.onAuthStateChange(cb);}
   async signIn(email,password){const {error}=await this.sb.auth.signInWithPassword({email,password});if(error)throw error;}
   async resetPassword(email){const {error}=await this.sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;}
   async signUp(email,password){const displayName=prettyEmailName(email);const {data,error}=await this.sb.auth.signUp({email,password,options:{data:{display_name:displayName},emailRedirectTo:location.origin+location.pathname}});if(error)throw error;return data;}
@@ -229,10 +231,11 @@ function renderReleasePanel(){
   if($('releaseUpcomingNotes'))$('releaseUpcomingNotes').innerHTML=RELEASE_UPCOMING_NOTES.map(x=>`<li>${esc(x)}</li>`).join('');
   if($('appVersion'))$('appVersion').textContent=`Version ${APP_VERSION}`;
 }
-function openPatchNotes(){if(document.body.dataset.view!=='dashboard')showView('dashboard');renderReleasePanel();$('patchNotesBackdrop')?.classList.remove('hidden');$('patchNotesDrawer')?.classList.remove('hidden');$('patchNotesBtn')?.setAttribute('aria-expanded','true');document.body.classList.add('patch-notes-open');window.lucide?.createIcons();}
-function closePatchNotes(){$('patchNotesBackdrop')?.classList.add('hidden');$('patchNotesDrawer')?.classList.add('hidden');$('patchNotesBtn')?.setAttribute('aria-expanded','false');document.body.classList.remove('patch-notes-open');}
+function openPatchNotes(){renderReleasePanel();$('patchNotesPanel')?.classList.remove('hidden');$('patchNotesBtn')?.setAttribute('aria-expanded','true');window.lucide?.createIcons();}
+function closePatchNotes(){$('patchNotesPanel')?.classList.add('hidden');$('patchNotesBtn')?.setAttribute('aria-expanded','false');}
+function togglePatchNotes(){const open=$('patchNotesBtn')?.getAttribute('aria-expanded')==='true';open?closePatchNotes():openPatchNotes();}
 
-function showView(name){if(name==='audit'&&$('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(name+'View').classList.add('active');if($('appVersion'))$('appVersion').textContent=`Version ${APP_VERSION}`;
+function showView(name){closePatchNotes();if(name==='audit'&&$('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(name+'View').classList.add('active');if($('appVersion'))$('appVersion').textContent=`Version ${APP_VERSION}`;
 document.querySelectorAll('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));document.body.dataset.view=name;const map={dashboard:['Dashboard','Overview of purchased and current inventory.'],inventory:['Inventory','Master SKUs with aggregated purchases and inventory adjustments.'],documents:['Documents','Stored invoices and source PDFs.'],maintenance:['Maintenance','Track equipment faults, repairs and service history.'],audit:['Recent Activities','Track recent inventory, document and system changes.']};$('pageTitle').textContent=map[name][0];$('pageSubtitle').textContent=map[name][1];window.lucide?.createIcons();}
 
 function openItem(id=null){$('itemForm').reset();$('itemUnit').value='pcs';$('itemId').value=id||'';$('itemDialogTitle').textContent=id?'Edit item':'Add item';if(id){const i=state.data.items.find(x=>x.id===id);$('itemSku').value=i.sku;$('itemName').value=i.item_name;$('itemCategory').value=i.category||'';$('itemUnit').value=i.unit||'pcs';$('itemDescription').value=i.description||'';}$('itemDialog').showModal();}
@@ -342,8 +345,34 @@ async function ensureUniqueFilename(file){
 async function startImport(file){if(!file)return;state.file=file;if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);state.parsed={...parseInvoice(text),raw:text};const d=state.parsed.doc;$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=text;renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();}
-async function requireConfirmedProfile(session){if(CFG.mode!=='supabase'||!session?.user)return true;try{const profile=await state.db.profileForUser(session.user.id);state.profile=profile;if(profile?.app_confirmed===true)return true;await state.db.signOut();state.session=null;state.profile=null;$('authGate').classList.remove('hidden');setAuthMessage('Email confirmation is required before dashboard access. Please confirm the registration email, then sign in.');return false;}catch(e){await state.db.signOut();state.session=null;state.profile=null;$('authGate').classList.remove('hidden');setAuthMessage('V6.27 database update is required. Run supabase-v6-27-migration.sql, then try again.');return false;}}
-async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');renderReleasePanel();if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}$('authGate').classList.toggle('hidden',!!state.session);if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
+async function requireConfirmedProfile(session){
+  if(CFG.mode!=='supabase'||!session?.user)return true;
+  try{
+    // Always ask Supabase for a fresh user record instead of trusting a cached session.
+    const freshUser=await state.db.currentUser();
+    const emailConfirmed=!!freshUser?.email_confirmed_at;
+    const profile=await state.db.profileForUser(freshUser?.id||session.user.id);
+    state.profile=profile;
+    if(emailConfirmed&&profile?.app_confirmed===true){
+      state.session={...session,user:freshUser};
+      return true;
+    }
+    await state.db.signOut();
+    state.session=null;state.profile=null;
+    $('authGate').classList.remove('hidden');
+    setUserIdentity(null);
+    setAuthMessage('Email confirmation is required before dashboard access. Please confirm the registration email, then sign in.');
+    return false;
+  }catch(e){
+    console.error('Confirmation check failed',e);
+    try{await state.db.signOut();}catch(_){}
+    state.session=null;state.profile=null;
+    $('authGate').classList.remove('hidden');
+    setAuthMessage('V6.27 security update is required. Run supabase-v6-27-security-hotfix.sql, then try again.');
+    return false;
+  }
+}
+async function init(){if($('auditSearch')){$('auditSearch').value='';$('auditSearch').setAttribute('value','');}state.db=CFG.mode==='supabase'?new SupabaseDB():new LocalDB();await state.db.init();$('modeBadge').textContent=CFG.mode==='supabase'?'Shared workspace':'Demo mode';if(CFG.mode==='supabase'&&state.db.onAuthStateChange){state.db.onAuthStateChange((event,session)=>{if(!session?.user||!['SIGNED_IN','TOKEN_REFRESHED','USER_UPDATED','INITIAL_SESSION'].includes(event))return;setTimeout(async()=>{const ok=await requireConfirmedProfile(session);if(!ok)return;state.session=session;$('authGate').classList.add('hidden');setUserIdentity(state.session);},0);});}$('signOutBtn').classList.toggle('hidden',CFG.mode!=='supabase');renderReleasePanel();if(CFG.mode==='supabase'){if(!CFG.supabaseUrl||!CFG.supabaseAnonKey){alert('Supabase mode is selected but config.js is incomplete.');return;}const s=await state.db.session();state.session=s;if(s&&!await requireConfirmedProfile(s)){window.lucide?.createIcons();return;}$('authGate').classList.toggle('hidden',!!state.session);if(!state.session){setUserIdentity(null);window.lucide?.createIcons();return;}}else setUserIdentity(null);await reload();setHealth(true,CFG.mode==='supabase'?'Connected':'Demo mode');window.lucide?.createIcons();}
 
 const authEmail=$('authEmail'),authPassword=$('authPassword'),signInBtn=$('signInBtn'),authMessage=$('authMessage');
 function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim());}
@@ -361,8 +390,8 @@ document.addEventListener('click',e=>{if(!e.target.closest('.user-menu-wrap'))$(
 $('userSignOutBtn')?.addEventListener('click',async()=>{if(CFG.mode==='supabase')await state.db.signOut();location.reload();});
 $('accountBtn')?.addEventListener('click',()=>{const email=state.session?.user?.email||'Local demo user';toast(`Signed in as ${email}`);$('userMenu')?.classList.add('hidden');});
 document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>showView(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>showView(b.dataset.go));
-$('patchNotesBtn')?.addEventListener('click',openPatchNotes);$('closePatchNotesBtn')?.addEventListener('click',closePatchNotes);$('patchNotesBackdrop')?.addEventListener('click',closePatchNotes);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('patchNotesDrawer')?.classList.contains('hidden'))closePatchNotes();});
-const openImport=()=>{if($('importSteps'))$('importSteps').dataset.step='upload';$('reviewArea').classList.add('hidden');$('importProgress').classList.add('hidden');$('importDialog').showModal();window.lucide?.createIcons();};
+$('patchNotesBtn')?.addEventListener('click',togglePatchNotes);
+const openImport=()=>{closePatchNotes();if($('importSteps'))$('importSteps').dataset.step='upload';$('reviewArea').classList.add('hidden');$('importProgress').classList.add('hidden');$('importDialog').showModal();window.lucide?.createIcons();};
 $('sidebarImportBtn').onclick=openImport;
 // Global top search was removed in V6; no listener is required.
 $('dashboardInventory').onclick=e=>{const card=e.target.closest('[data-detail]');if(card)openDetail(card.dataset.detail);};
