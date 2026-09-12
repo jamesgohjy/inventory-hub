@@ -417,7 +417,7 @@ html,body{max-width:100%;overflow-x:hidden}
 }
 
 
-/* V6.41 — standardised filter sizing and document sorting */
+/* V6.42 — standardised controls, maintenance sizing and reliable document sorting */
 #auditView .audit-toolbar{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -449,4 +449,35 @@ html,body{max-width:100%;overflow-x:hidden}
   #maintenanceView .maintenance-toolbar #maintenanceOutcome{width:100%;max-width:none;min-width:0;flex:1 1 auto}
   #documentsView .documents-toolbar{flex-direction:column;align-items:stretch}
   #documentsView .documents-toolbar .input-icon,#documentsView #documentSort{width:100%;max-width:none;min-width:0;flex:1 1 auto}
+}
+
+
+/* V6.42 final sizing overrides */
+#auditView .audit-toolbar{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#auditView .audit-toolbar .input-icon,
+#auditView .audit-toolbar #auditUser,
+#auditView .audit-toolbar #auditAction,
+#auditView .audit-toolbar #auditDate{width:100%;max-width:none;min-width:0;height:44px;box-sizing:border-box}
+#maintenanceView .maintenance-toolbar{display:grid;grid-template-columns:minmax(360px,2fr) minmax(150px,1fr);gap:12px;justify-content:start;align-items:center}
+#maintenanceView .maintenance-toolbar .input-icon,
+#maintenanceView .maintenance-toolbar #maintenanceOutcome{width:100%;max-width:none;min-width:0;margin:0;box-sizing:border-box}
+#documentsView .documents-toolbar{display:flex;align-items:center;gap:12px}
+#documentsView #documentSort{min-width:230px}
+@media(max-width:760px){
+  #auditView .audit-toolbar{grid-template-columns:1fr}
+  #maintenanceView .maintenance-toolbar{grid-template-columns:1fr}
+}
+
+
+/* V6.43 — compact Recent Activities date filter */
+@media(min-width:761px){
+  #auditView .audit-toolbar{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  }
+  #auditView .audit-toolbar #auditDate{
+    width:190px;
+    max-width:190px;
+    min-width:170px;
+    justify-self:start;
+  }
 }
