@@ -1,10 +1,12 @@
-// AV Inventory Hub V6.39 — full-height sidebar rail fix
-const APP_VERSION='6.39';
+// AV Inventory Hub V6.40 — inventory, maintenance and activity UI fixes
+const APP_VERSION='6.40';
 const RELEASE_CURRENT_NOTES=[
-  'Navy sidebar background now stays aligned with the full dashboard page height',
-  'Sidebar navigation remains sticky while the blue rail continues behind longer content',
-  'Responsive 1920×1080 viewport improvements from V6.38 are preserved',
-  'Authentication email rate-limit guidance from V6.37 is preserved'
+  'Cleaned up the top-right signed-in user profile alignment',
+  'Removed Stock Take from the Inventory toolbar',
+  'Inventory action menus now open without being clipped by the table',
+  'Maintenance search now matches the Inventory search field size',
+  'Recent Activities date filtering now uses Singapore local dates',
+  'Recent Activities user, action and calendar filters are 50% width'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
@@ -35,6 +37,7 @@ const nowIso = ()=>new Date().toISOString();
 const today = ()=>new Date().toISOString().slice(0,10);
 const fmtDate=(v)=>v?new Date(String(v).slice(0,10)+'T00:00:00').toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'}):'—';
 const fmtDT=(v)=>v?new Date(v).toLocaleString('en-SG',{dateStyle:'medium',timeStyle:'short'}):'—';
+const singaporeDateKey=(v)=>{if(!v)return '';const d=new Date(v);if(Number.isNaN(d.getTime()))return '';const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);const get=t=>parts.find(p=>p.type===t)?.value||'';return `${get('year')}-${get('month')}-${get('day')}`;};
 const money=(n,c='SGD')=> n===null||n===undefined||n===''?'—':new Intl.NumberFormat('en-SG',{style:'currency',currency:c||'SGD'}).format(Number(n));
 const uid=()=>crypto.randomUUID();
 const norm=(s='')=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -271,7 +274,7 @@ function populateMaintenanceItems(selected=''){if(!$('maintenanceItem'))return;$
 function populateMaintenanceSerials(selected=''){const id=$('maintenanceItem')?.value;$('maintenanceSerial').innerHTML='<option value="">None / not applicable</option>'+(state.data.serials||[]).filter(x=>x.master_item_id===id).map(x=>`<option ${x.serial_number===selected?'selected':''}>${esc(x.serial_number)}</option>`).join('');}
 function openMaintenance(id='',prefillItemId=''){if(!requireEdit())return;const r=(state.data.maintenance||[]).find(x=>x.id===id);const itemId=prefillItemId||(!r&&(state.data.items||[]).some(x=>x.id===id)?id:'');if(itemId&&!r)id='';$('maintenanceForm').reset();$('maintenanceId').value=id;$('maintenanceDate').value=r?.maintenance_date||today();populateMaintenanceItems(r?.master_item_id||itemId||'');if(r){populateMaintenanceSerials(r.serial_number||'');$('maintenanceIssue').value=r.issue||'';$('maintenanceAction').value=r.action_taken||'';$('maintenanceResult').value=r.outcome||'Repaired';$('maintenanceNotes').value=r.notes||'';}else if(itemId){populateMaintenanceSerials('');}$('maintenanceDialogTitle').textContent=r?'Edit Maintenance Record':'Add Maintenance Record';$('maintenanceDialog').showModal();}
 
-function renderAudit(){const q=norm($('auditSearch').value),uf=$('auditUser')?.value||'',af=$('auditAction')?.value||'',df=$('auditDate')?.value||'';const prepared=consolidatedAudit();let list=prepared.filter(a=>{const actionGroup=a.entity_type==='inventory_adjustments'?'ADJUST':a.action;return(!q||norm([friendlyAudit(a),auditWho(a),JSON.stringify(a.new_data),JSON.stringify(a.old_data)].join(' ')).includes(q))&&(!uf||auditWho(a)===uf)&&(!af||actionGroup===af)&&(!df||String(a.changed_at||'').slice(0,10)===df)});const users=[...new Set(prepared.map(auditWho).filter(Boolean))].sort();if($('auditUser')){const keep=$('auditUser').value;$('auditUser').innerHTML='<option value="">All users</option>'+users.map(u=>`<option ${u===keep?'selected':''} value="${esc(u)}">${esc(u)}</option>`).join('');}const rows=list.map(a=>{const [label,cls]=auditLabel(a);return `<tr><td>${fmtDT(a.changed_at)}</td><td>${esc(auditWho(a))}</td><td><span class="badge ${cls}">${label}</span></td><td>${esc(friendlyAudit(a))}</td></tr>`}).join('');$('auditTable').innerHTML=rows?`<table><thead><tr><th>Date / time</th><th>Who</th><th>Status</th><th>What</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No recent activities.</div>';}
+function renderAudit(){const q=norm($('auditSearch').value),uf=$('auditUser')?.value||'',af=$('auditAction')?.value||'',df=$('auditDate')?.value||'';const prepared=consolidatedAudit();let list=prepared.filter(a=>{const actionGroup=a.entity_type==='inventory_adjustments'?'ADJUST':a.action;return(!q||norm([friendlyAudit(a),auditWho(a),JSON.stringify(a.new_data),JSON.stringify(a.old_data)].join(' ')).includes(q))&&(!uf||auditWho(a)===uf)&&(!af||actionGroup===af)&&(!df||singaporeDateKey(a.changed_at)===df)});const users=[...new Set(prepared.map(auditWho).filter(Boolean))].sort();if($('auditUser')){const keep=$('auditUser').value;$('auditUser').innerHTML='<option value="">All users</option>'+users.map(u=>`<option ${u===keep?'selected':''} value="${esc(u)}">${esc(u)}</option>`).join('');}const rows=list.map(a=>{const [label,cls]=auditLabel(a);return `<tr><td>${fmtDT(a.changed_at)}</td><td>${esc(auditWho(a))}</td><td><span class="badge ${cls}">${label}</span></td><td>${esc(friendlyAudit(a))}</td></tr>`}).join('');$('auditTable').innerHTML=rows?`<table><thead><tr><th>Date / time</th><th>Who</th><th>Status</th><th>What</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No recent activities.</div>';}
 
 function changeSummary(a){if(a.action!=='UPDATE')return '';const o=a.old_data||{},n=a.new_data||{};return Object.keys(n).filter(k=>JSON.stringify(o[k])!==JSON.stringify(n[k])&&!['updated_at'].includes(k)).map(k=>`${k.replaceAll('_',' ')}: ${o[k]??'—'} → ${n[k]??'—'}`).join('; ');}
 
