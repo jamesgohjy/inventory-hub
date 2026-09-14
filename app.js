@@ -1,7 +1,8 @@
-// AV Inventory Hub V6.53 — OCR text/layout arbitration and save-ready invoice parsing
-const APP_VERSION='6.53';
+// AV Inventory Hub V6.54 — OCR text/layout arbitration and save-ready invoice parsing
+const APP_VERSION='6.54';
 const RELEASE_CURRENT_NOTES=[
-  'Save-ready scanned-invoice parsing with OCR text/layout arbitration and verified line-item extraction',
+  'Multi-pass browser OCR arbitration now scores the actual parsed invoice result before review',
+  'Numbered-row fallback recovers invoice line items even when OCR damages the table header',
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
   'Double-submission protection for inventory, maintenance, document delete and role updates',
@@ -48,6 +49,7 @@ const canonicalSupplier=(s='')=>{
   const n=norm(s);
   if(n.includes('loud technologies asia')) return 'Loud Technologies Asia Pte Ltd';
   if(n.includes('av media')) return 'AV Media Pte Ltd';
+  if(n.includes('maxxmedia international')) return 'Maxxmedia International Pte Ltd';
   return String(s).replace(/\bPTE\.?\s*LTD\.?\b/i,'Pte Ltd').replace(/\s+/g,' ').trim();
 };
 const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2500)};
@@ -150,7 +152,7 @@ class SupabaseDB{
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
-const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null};
+const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null};
 const prettyEmailName=(email='')=>{const base=String(email||'').split('@')[0];return base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase()).trim()||'Team Member';};
 const currentRole=()=>CFG.mode==='supabase'?(state.profile?.role||'viewer'):'admin';
 const canEdit=()=>['admin','editor'].includes(currentRole());
@@ -489,48 +491,55 @@ function ocrTextQuality(text=''){
 }
 async function extractPdf(file){
   setProgress(5,'Loading PDF…');
+  state.ocrCandidates=null;
   const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
   const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;
   let pages=[],layouts=[],chars=0;
   for(let i=1;i<=pdf.numPages;i++){
-    setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);
+    setProgress(10+Math.round(30*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);
     const p=await pdf.getPage(i),tc=await p.getTextContent(),layout=textContentToLayout(tc,i);
     layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;
   }
   let text=pages.join('\n');state.pdfLayout=layouts;
   if(chars<80){
     if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');
-    pages=[];const ocrLayouts=[],worker=await Tesseract.createWorker('eng');
+    const modes=[
+      {key:'auto',label:'AUTO',psm:Tesseract.PSM?.AUTO??'3',texts:[],layouts:[]},
+      {key:'column',label:'SINGLE_COLUMN',psm:Tesseract.PSM?.SINGLE_COLUMN??'4',texts:[],layouts:[]},
+      {key:'block',label:'SINGLE_BLOCK',psm:Tesseract.PSM?.SINGLE_BLOCK??'6',texts:[],layouts:[]}
+    ];
+    const worker=await Tesseract.createWorker('eng');
     try{
-      await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});
       for(let i=1;i<=pdf.numPages;i++){
-        setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);
         const p=await pdf.getPage(i),vp=p.getViewport({scale:2.5}),c=document.createElement('canvas');
-        c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
-        const r1=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
-        const l1=ocrResultToLayout(r1.data||{},i,c.height);
-        await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.SINGLE_COLUMN??4,preserve_interword_spaces:'1'});
-        const r2=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
-        const l2=ocrResultToLayout(r2.data||{},i,c.height);
-        const candidates=[
-          {r:r1,layout:l1,score:ocrTextQuality(r1.data?.text||'')+layoutInvoiceQuality(l1)},
-          {r:r2,layout:l2,score:ocrTextQuality(r2.data?.text||'')+layoutInvoiceQuality(l2)}
-        ].sort((a,b)=>b.score-a.score||ocrTextQuality(b.r.data?.text||'')-ocrTextQuality(a.r.data?.text||''));
-        const chosen=candidates[0];
-        await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});
-        ocrLayouts.push(chosen.layout);
-        // IMPORTANT: parse invoice headers and line items from Tesseract's natural OCR text.
-        // Positional layout remains available as a fallback, but reconstructing all text from
-        // bounding boxes can scramble labels/values and previously produced IHK3-86SA as invoice no.
-        const naturalText=String(chosen.r.data?.text||'').trim();
-        const reconstructed=chosen.layout.rows?.map(x=>x.text).join('\n').trim();
-        pages.push(naturalText||reconstructed);
+        c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;
+        for(let mi=0;mi<modes.length;mi++){
+          const mode=modes[mi];
+          const pct=40+Math.round(42*((i-1)*modes.length+mi+1)/(pdf.numPages*modes.length));
+          setProgress(pct,`Running OCR ${mode.label}… page ${i} of ${pdf.numPages}`);
+          await worker.setParameters({tessedit_pageseg_mode:mode.psm,preserve_interword_spaces:'1',user_defined_dpi:'180'});
+          const r=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
+          const layout=ocrResultToLayout(r.data||{},i,c.height);
+          mode.layouts.push(layout);
+          const natural=String(r.data?.text||'').trim();
+          const reconstructed=layout.rows?.map(x=>x.text).join('\n').trim();
+          mode.texts.push(natural||reconstructed);
+        }
       }
     }finally{await worker.terminate();}
-    text=pages.join('\n');state.pdfLayout=ocrLayouts;
+    const candidates=modes.map(m=>{
+      const candidateText=m.texts.join('\n').trim();
+      const score=ocrTextQuality(candidateText)+m.layouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0);
+      return {source:m.key,label:m.label,text:candidateText,layout:m.layouts,score};
+    }).filter(x=>x.text);
+    if(!candidates.length)throw new Error('OCR could not read enough text from this PDF.');
+    candidates.sort((a,b)=>b.score-a.score);
+    state.ocrCandidates=candidates;
+    text=candidates[0].text;state.pdfLayout=candidates[0].layout;
   }
-  setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;
+  setProgress(84,'Comparing OCR results…');await new Promise(r=>setTimeout(r,80));
+  setProgress(94,'Preparing review…');return text;
 }
 
 function friendlyError(err,context='operation'){
@@ -854,6 +863,69 @@ function parseGenericInvoiceItems(text){
   }
   return items;
 }
+
+function parseNumberedInvoiceRows(text){
+  const lines=normalizePdfText(text).split('\n').map(x=>x.trim()).filter(Boolean);
+  const stop=/\b(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\s*@|grand\s+total|amount\s+due)\b/i;
+  const startLike=/^\s*\d{1,3}\s+.+\d+[.,]\d{2}\s+\d+[.,]\d{2}\s*[\])|}.,;:]*\s*$/;
+  const starts=[];
+  for(let i=0;i<lines.length;i++){
+    if(stop.test(lines[i]))break;
+    if(startLike.test(lines[i]))starts.push(i);
+  }
+  if(!starts.length)return [];
+  const out=[];
+  for(let si=0;si<starts.length;si++){
+    const idx=starts[si],next=si+1<starts.length?starts[si+1]:lines.length;
+    let block=[];
+    for(let j=idx;j<next;j++){if(j>idx&&stop.test(lines[j]))break;block.push(lines[j]);}
+    if(!block.length)continue;
+    const firstLine=block[0].replace(/^\s*\d{1,3}\s+/,'').trim();
+    const m=firstLine.match(/^(.+?)\s+(?:(\d{1,3}|[|Iil!])\s+)?(\d+(?:[.,]\d{2}))\s+(\d+(?:[.,]\d{2}))\s*[\])|}.,;:]*\s*$/);
+    if(!m)continue;
+    let desc=m[1].trim(),qtyRaw=m[2]||'',price=Number(m[3].replace(',','.')),amount=Number(m[4].replace(',','.'));
+    let qty=/^\d+$/.test(qtyRaw)?Number(qtyRaw):null;
+    if((qty===null||qty<=0)&&price>0&&amount>=0){const q=amount/price,r=Math.round(q);if(r>=1&&r<=999&&Math.abs(q-r)<0.02)qty=r;}
+    const continuation=block.slice(1).filter(x=>!stop.test(x)&&!/^\s*\d{1,3}\s+.+\d+[.,]\d{2}\s+\d+[.,]\d{2}/.test(x));
+    if(continuation.length)desc+=' '+continuation.join(' ');
+    desc=cleanInvoiceDescription(desc.replace(/^\|+|\|+$/g,'').trim());
+    if(desc&&qty>0&&Number.isFinite(price)&&Number.isFinite(amount))out.push(normalizeParsedInvoiceItem({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''}));
+  }
+  return out;
+}
+function validParsedItems(items=[]){return (items||[]).filter(x=>String(x.item_name||'').trim()&&Number(x.quantity)>0);}
+function invoiceParseQuality(parsed){
+  const d=parsed?.doc||{},items=validParsedItems(parsed?.items||[]);let score=0;
+  if(d.supplier_name)score+=20;if(d.invoice_number)score+=25;if(d.invoice_date)score+=20;if(d.reference_number)score+=6;if(d.currency)score+=4;
+  if(Number.isFinite(Number(d.subtotal)))score+=15;if(Number.isFinite(Number(d.gst)))score+=15;if(Number.isFinite(Number(d.total_amount)))score+=15;
+  score+=invoiceItemsQuality(items,d.subtotal);
+  if(Number.isFinite(Number(d.subtotal))&&Number.isFinite(Number(d.gst))&&Number.isFinite(Number(d.total_amount))&&Math.abs((Number(d.subtotal)+Number(d.gst))-Number(d.total_amount))<0.02)score+=35;
+  return score;
+}
+function parseBestInvoice(primaryText){
+  const originalLayout=state.pdfLayout,pool=[{source:'primary',text:primaryText,layout:originalLayout},...(state.ocrCandidates||[])],seen=new Set(),results=[];
+  for(const c of pool){
+    const t=String(c.text||'').trim();if(!t)continue;const key=t.replace(/\s+/g,' ').slice(0,4000);if(seen.has(key))continue;seen.add(key);
+    state.pdfLayout=c.layout||[];
+    try{const parsed=parseInvoice(t);results.push({source:c.source||'candidate',text:t,layout:c.layout||[],parsed,score:invoiceParseQuality(parsed)});}catch(_e){}
+  }
+  if(!results.length){state.pdfLayout=originalLayout;return parseInvoice(primaryText);}
+  results.sort((a,b)=>b.score-a.score);const best=results[0],doc={...best.parsed.doc};
+  for(const field of ['supplier_name','invoice_number','invoice_date','delivery_order_number','reference_number','currency']){if(doc[field])continue;const hit=results.find(r=>r.parsed.doc?.[field]);if(hit)doc[field]=hit.parsed.doc[field];}
+  const completeMoney=results.find(r=>['subtotal','gst','total_amount'].every(k=>Number.isFinite(Number(r.parsed.doc?.[k])))&&Math.abs((Number(r.parsed.doc.subtotal)+Number(r.parsed.doc.gst))-Number(r.parsed.doc.total_amount))<0.02);
+  if(completeMoney){doc.subtotal=completeMoney.parsed.doc.subtotal;doc.gst=completeMoney.parsed.doc.gst;doc.total_amount=completeMoney.parsed.doc.total_amount;}
+  else for(const field of ['subtotal','gst','total_amount'])if(!Number.isFinite(Number(doc[field]))){const hit=results.find(r=>Number.isFinite(Number(r.parsed.doc?.[field])));if(hit)doc[field]=hit.parsed.doc[field];}
+  const choices=results.map(r=>({r,items:validParsedItems(r.parsed.items),q:invoiceItemsQuality(validParsedItems(r.parsed.items),doc.subtotal)})).sort((a,b)=>b.q-a.q),itemChoice=choices[0];
+  const items=itemChoice?.items||[];
+  if(items.length&&(!Number.isFinite(Number(doc.subtotal))||Number(doc.subtotal)<=0))doc.subtotal=Math.round(items.reduce((n,x)=>n+(Number(x.amount)||0),0)*100)/100;
+  const allText=results.map(r=>r.text).join('\n'),rateMatch=allText.match(/\bGST\s*@?\s*(\d+(?:\.\d+)?)\s*%/i),rate=rateMatch?Number(rateMatch[1]):null;
+  if(!Number.isFinite(Number(doc.gst))&&Number.isFinite(Number(doc.subtotal))&&Number.isFinite(rate))doc.gst=Math.round(Number(doc.subtotal)*rate)/100;
+  if(!Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.gst)))doc.total_amount=Math.round((Number(doc.subtotal)+Number(doc.gst))*100)/100;
+  if(!Number.isFinite(Number(doc.gst))&&Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.subtotal)))doc.gst=Math.round((Number(doc.total_amount)-Number(doc.subtotal))*100)/100;
+  if(!Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.gst)))doc.subtotal=Math.round((Number(doc.total_amount)-Number(doc.gst))*100)/100;
+  const chosen=itemChoice?.r||best;state.pdfLayout=chosen.layout||best.layout||originalLayout;
+  return {...best.parsed,doc,items:items.length?items:best.parsed.items,rawText:chosen.text,ocrSelection:{source:chosen.source,score:chosen.score,candidates:results.map(r=>({source:r.source,score:r.score,items:validParsedItems(r.parsed.items).length}))}};
+}
 function parseInvoice(text){
   const flat=normalizePdfText(text);
   const signals=invoiceSignals(flat);
@@ -942,8 +1014,9 @@ function parseInvoice(text){
   else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);
   if(!items.length){
     const generic=parseGenericInvoiceItems(flat).map(normalizeParsedInvoiceItem);
+    const numbered=parseNumberedInvoiceRows(flat).map(normalizeParsedInvoiceItem);
     const layout=(state.pdfLayout?.length?parseLayoutInvoiceItems():[]).map(normalizeParsedInvoiceItem);
-    items=[generic,layout].sort((a,b)=>invoiceItemsQuality(b,subtotal)-invoiceItemsQuality(a,subtotal))[0]||[];
+    items=[generic,numbered,layout].sort((a,b)=>invoiceItemsQuality(b,subtotal)-invoiceItemsQuality(a,subtotal))[0]||[];
   }
   if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
   return{doc,items,rule:supplierRuleForText(flat),invoiceSignals:signals};
@@ -978,10 +1051,10 @@ async function ensureUniqueFilename(file){
   return new File([file],name,{type:file.type||'application/pdf',lastModified:file.lastModified});
 }
 
-function cleanupPdfPreview(){if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}state.pdfLayout=null;if($('invoicePdfFrame'))$('invoicePdfFrame').src='about:blank';}
+function cleanupPdfPreview(){if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}state.pdfLayout=null;state.ocrCandidates=null;if($('invoicePdfFrame'))$('invoicePdfFrame').src='about:blank';}
 function updatePdfPreview(){const frame=$('invoicePdfFrame');if(!frame||!state.pdfPreviewUrl)return;frame.src=`${state.pdfPreviewUrl}#page=${Math.max(1,state.pdfPreviewPage||1)}&zoom=${encodeURIComponent(state.pdfPreviewZoom||'page-width')}`;if($('pdfPageLabel'))$('pdfPageLabel').textContent=`Page ${Math.max(1,state.pdfPreviewPage||1)}`;}
 function setPdfZoom(value){state.pdfPreviewZoom=value;updatePdfPreview();}
-async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);state.parsed={...parseInvoice(text),raw:text};const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=text;renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
+async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);const parsedBest=parseBestInvoice(text);state.parsed={...parsedBest,raw:parsedBest.rawText||text};const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userRole'))$('userRole').textContent=currentRole().replace(/^./,c=>c.toUpperCase());if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();applyRoleUI();}
 function applyRoleUI(){const editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();for(const id of ['sidebarImportBtn','importBtn','addMaintenanceBtn'])$(id)?.classList.toggle('role-hidden',!editable);$('manageRolesBtn')?.classList.toggle('hidden',!admin);document.body.dataset.role=currentRole();}
