@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.50 — scanned-PDF OCR accuracy and invoice table reconciliation
-const APP_VERSION='6.50';
+// AV Inventory Hub V6.51 — OCR positional table parsing for scanned invoices
+const APP_VERSION='6.51';
 const RELEASE_CURRENT_NOTES=[
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
@@ -371,8 +371,41 @@ function textContentToLayout(tc,pageNumber=1){
   return {page:pageNumber,rows:rows.filter(r=>r.text),items,median,yTolerance};
 }
 function textContentToLines(tc){return textContentToLayout(tc).rows.map(r=>r.text).join('\n');}
+function tsvToLayout(tsv,pageNumber=1,pageHeight=0){
+  const raw=String(tsv||'').split(/\r?\n/);
+  const words=[];
+  for(let i=1;i<raw.length;i++){
+    if(!raw[i].trim())continue;
+    const parts=raw[i].split('\t');
+    if(parts.length<12)continue;
+    const level=Number(parts[0]),block=Number(parts[2]),par=Number(parts[3]),line=Number(parts[4]);
+    if(level!==5)continue;
+    const left=Number(parts[6]),top=Number(parts[7]),width=Number(parts[8]),height=Number(parts[9]),conf=Number(parts[10]);
+    const text=parts.slice(11).join('\t').trim();
+    if(!text||![left,top,width,height].every(Number.isFinite))continue;
+    words.push({text,x:left,y:(pageHeight||0)-top,w:width,h:height,top,conf:Number.isFinite(conf)?conf:0,_line:`${block}:${par}:${line}`});
+  }
+  if(!words.length)return {page:pageNumber,rows:[],items:[]};
+  const heights=words.map(x=>x.h).filter(x=>x>0).sort((a,b)=>a-b);
+  const median=heights.length?heights[Math.floor(heights.length/2)]:16;
+  const groups=new Map();
+  for(const word of words){if(!groups.has(word._line))groups.set(word._line,[]);groups.get(word._line).push(word);}
+  const rows=[];
+  for(const items of groups.values()){
+    items.sort((a,b)=>a.x-b.x);
+    const top=Math.min(...items.map(x=>x.top));
+    let out='',prev=null;
+    for(const item of items){
+      if(prev){const gap=item.x-(prev.x+Math.max(prev.w,0));out+=gap>Math.max(12,median*1.3)?'    ':' ';}
+      out+=item.text;prev=item;
+    }
+    rows.push({y:(pageHeight||0)-top,items:items.map(({_line,top,...x})=>x),text:out.trim()});
+  }
+  rows.sort((a,b)=>b.y-a.y);
+  return {page:pageNumber,rows:rows.filter(r=>r.text),items:words.map(({_line,top,...x})=>x),median,yTolerance:Math.max(3,median*0.55),source:'ocr'};
+}
 async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],layouts=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const layout=textContentToLayout(tc,i);layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;}
-  let text=pages.join('\n');state.pdfLayout=layouts;if(chars<80){state.pdfLayout=null;if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:2.5});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
+  let text=pages.join('\n');state.pdfLayout=layouts;if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];const ocrLayouts=[];const worker=await Tesseract.createWorker('eng');try{await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:2.5});const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await worker.recognize(c,{}, {text:true,tsv:true});pages.push(r.data.text||'');ocrLayouts.push(tsvToLayout(r.data.tsv||'',i,c.height));}}finally{await worker.terminate();}text=pages.join('\n');state.pdfLayout=ocrLayouts;}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
 function friendlyError(err,context='operation'){
   const raw=String(err?.message||err||'').toLowerCase();
   if(raw.includes('duplicate')&&raw.includes('serial'))return 'A serial number already exists. Correct the serial number before saving.';
@@ -519,43 +552,56 @@ function layoutHeaderValue(labelRe,valueRe){
 function parseLayoutInvoiceItems(){
   const pages=state.pdfLayout||[];
   const out=[];
+  const token=(v='')=>String(v||'').replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g,'').trim();
+  const reconcileQty=(qty,price,amount)=>{
+    if(!(price>0)||!(amount>=0))return qty;
+    const ratio=amount/price,rounded=Math.round(ratio);
+    if(rounded>=1&&rounded<=999&&Math.abs(ratio-rounded)<0.015){
+      if(qty===null||qty<=0||Math.abs(qty-rounded)>0.001)return rounded;
+    }
+    return qty;
+  };
   for(const pg of pages){
     const rows=pg.rows||[];
     const header=rows.find(r=>/\bdescription\b/i.test(r.text)&&/\b(?:units?|qty|quantity)\b/i.test(r.text)&&/\bprice\b/i.test(r.text)&&/\bamount\b/i.test(r.text));
     if(!header)continue;
-    const pickX=(re)=>{const it=header.items.find(x=>re.test(x.text));return it?it.x:null;};
+    const pickX=(re)=>{const it=header.items.find(x=>re.test(token(x.text)));return it?it.x:null;};
     const xSerial=pickX(/^(?:sr\.?\s*no\.?|no\.?#?)$/i)??Math.min(...header.items.map(i=>i.x));
-    const xDesc=pickX(/description/i),xQty=pickX(/^(?:units?|qty|quantity)$/i),xPrice=pickX(/^price$/i),xAmount=pickX(/^amount$/i);
+    const xDesc=pickX(/^description$/i),xQty=pickX(/^(?:units?|qty|quantity)$/i),xPrice=pickX(/^price$/i),xAmount=pickX(/^amount$/i);
     if([xDesc,xQty,xPrice,xAmount].some(v=>v===null))continue;
-    const bSD=(xSerial+xDesc)/2,bDQ=(xDesc+xQty)/2,bQP=(xQty+xPrice)/2,bPA=(xPrice+xAmount)/2;
-    const stop=rows.find(r=>r.y<header.y&&/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|total\b)/i.test(r.text));
+    const bSD=(xSerial+xDesc)/2;
+    const qtyStart=xQty-Math.max(20,(xPrice-xQty)*0.25);
+    const bQP=(xQty+xPrice)/2,bPA=(xPrice+xAmount)/2;
+    const stop=rows.find(r=>r.y<header.y&&/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|total\b)/i.test(r.text.replace(/^[^A-Za-z]+/,'')));
     const stopY=stop?stop.y:-Infinity;
     const anchors=[];
     for(const r of rows){
       if(!(r.y<header.y&&r.y>stopY))continue;
-      const sn=r.items.find(it=>it.x<bSD&&/^\d{1,3}$/.test(it.text.trim()));
-      if(sn)anchors.push({row:r,n:Number(sn.text)});
+      const sn=r.items.find(it=>it.x<bSD&&/^\d{1,3}$/.test(token(it.text)));
+      if(sn)anchors.push({row:r,n:Number(token(sn.text))});
     }
     anchors.sort((a,b)=>b.row.y-a.row.y);
     const seenY=[];
-    const uniq=anchors.filter(a=>seenY.every(y=>Math.abs(y-a.row.y)>2)&&(seenY.push(a.row.y),true));
+    const uniq=anchors.filter(a=>seenY.every(y=>Math.abs(y-a.row.y)>Math.max(2,pg.yTolerance||2))&&(seenY.push(a.row.y),true));
     for(let i=0;i<uniq.length;i++){
-      const topY=uniq[i].row.y+3;
-      const bottomY=i+1<uniq.length?uniq[i+1].row.y+3:stopY;
+      const tol=Math.max(3,pg.yTolerance||3);
+      const topY=uniq[i].row.y+tol;
+      const bottomY=i+1<uniq.length?uniq[i+1].row.y+tol:stopY;
       const group=rows.filter(r=>r.y<=topY&&r.y>bottomY&&r.y<header.y);
       const descParts=[];let qty=null,price=null,amount=null;
       for(const r of group.sort((a,b)=>b.y-a.y)){
-        const descTokens=r.items.filter(it=>it.x>=bSD&&it.x<bDQ).map(it=>it.text.trim()).filter(Boolean);
+        const descTokens=r.items.filter(it=>it.x>=bSD&&it.x<qtyStart).map(it=>it.text.trim()).filter(Boolean);
         if(descTokens.length)descParts.push(descTokens.join(' '));
-        const qVals=r.items.filter(it=>it.x>=bDQ&&it.x<bQP).flatMap(it=>[...String(it.text).matchAll(/\d+(?:\.\d+)?/g)].map(m=>Number(m[0]))).filter(Number.isFinite);
+        const qVals=r.items.filter(it=>it.x>=qtyStart&&it.x<bQP).flatMap(it=>[...token(it.text).matchAll(/\d+(?:\.\d+)?/g)].map(m=>Number(m[0]))).filter(Number.isFinite);
         if(qty===null&&qVals.length)qty=qVals[0];
-        const pVals=r.items.filter(it=>it.x>=bQP&&it.x<bPA).flatMap(it=>decimalMoneyCandidates(it.text));
+        const pVals=r.items.filter(it=>it.x>=bQP&&it.x<bPA).flatMap(it=>decimalMoneyCandidates(token(it.text)));
         if(price===null&&pVals.length)price=pVals[pVals.length-1];
-        const aVals=r.items.filter(it=>it.x>=bPA).flatMap(it=>decimalMoneyCandidates(it.text));
+        const aVals=r.items.filter(it=>it.x>=bPA).flatMap(it=>decimalMoneyCandidates(token(it.text)));
         if(amount===null&&aVals.length)amount=aVals[aVals.length-1];
       }
-      const desc=descParts.join(' ').replace(/\s+/g,' ').trim();
-      if(desc&&(qty!==null||price!==null||amount!==null))out.push({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty??1,unit_price:price,amount,warranty:'',serials:''});
+      qty=reconcileQty(qty,price,amount);
+      const desc=descParts.join(' ').replace(/HUAWE[\]\|]/gi,'HUAWEI').replace(/\boverseas[_ ]+Hi-/gi,'overseas Hi-').replace(/\s+\|\|\s+/g,' II ').replace(/\s+/g,' ').replace(/^\|+|\|+$/g,'').trim();
+      if(desc&&price!==null&&amount!==null)out.push({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty??1,unit_price:price,amount,warranty:'',serials:''});
     }
   }
   return out;
