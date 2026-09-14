@@ -1,6 +1,7 @@
-// AV Inventory Hub V6.51 — OCR positional table parsing for scanned invoices
-const APP_VERSION='6.51';
+// AV Inventory Hub V6.52 — hardened OCR layout recovery and validated invoice parsing
+const APP_VERSION='6.52';
 const RELEASE_CURRENT_NOTES=[
+  'Hardened scanned-invoice OCR with two-pass layout reconstruction and validated line-item extraction',
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
   'Double-submission protection for inventory, maintenance, document delete and role updates',
@@ -371,41 +372,145 @@ function textContentToLayout(tc,pageNumber=1){
   return {page:pageNumber,rows:rows.filter(r=>r.text),items,median,yTolerance};
 }
 function textContentToLines(tc){return textContentToLayout(tc).rows.map(r=>r.text).join('\n');}
-function tsvToLayout(tsv,pageNumber=1,pageHeight=0){
-  const raw=String(tsv||'').split(/\r?\n/);
-  const words=[];
-  for(let i=1;i<raw.length;i++){
-    if(!raw[i].trim())continue;
-    const parts=raw[i].split('\t');
-    if(parts.length<12)continue;
-    const level=Number(parts[0]),block=Number(parts[2]),par=Number(parts[3]),line=Number(parts[4]);
-    if(level!==5)continue;
-    const left=Number(parts[6]),top=Number(parts[7]),width=Number(parts[8]),height=Number(parts[9]),conf=Number(parts[10]);
-    const text=parts.slice(11).join('\t').trim();
-    if(!text||![left,top,width,height].every(Number.isFinite))continue;
-    words.push({text,x:left,y:(pageHeight||0)-top,w:width,h:height,top,conf:Number.isFinite(conf)?conf:0,_line:`${block}:${par}:${line}`});
-  }
-  if(!words.length)return {page:pageNumber,rows:[],items:[]};
-  const heights=words.map(x=>x.h).filter(x=>x>0).sort((a,b)=>a-b);
+function wordsToLayout(words,pageNumber=1,pageHeight=0,source='ocr'){
+  const clean=(words||[]).map(w=>{
+    const text=String(w.text||'').trim();
+    const x=Number(w.x??w.left??0),top=Number(w.top??0),w0=Number(w.w??w.width??0),h=Number(w.h??w.height??0);
+    if(!text||![x,top,w0,h].every(Number.isFinite))return null;
+    return {text,x,top,w:w0,h,y:(pageHeight||0)-top,conf:Number.isFinite(Number(w.conf))?Number(w.conf):0};
+  }).filter(Boolean);
+  if(!clean.length)return {page:pageNumber,rows:[],items:[],source};
+  const heights=clean.map(x=>x.h).filter(x=>x>0).sort((a,b)=>a-b);
   const median=heights.length?heights[Math.floor(heights.length/2)]:16;
-  const groups=new Map();
-  for(const word of words){if(!groups.has(word._line))groups.set(word._line,[]);groups.get(word._line).push(word);}
+  const tol=Math.max(4,median*0.70);
+  const sorted=[...clean].sort((a,b)=>a.top-b.top||a.x-b.x);
   const rows=[];
-  for(const items of groups.values()){
-    items.sort((a,b)=>a.x-b.x);
-    const top=Math.min(...items.map(x=>x.top));
+  for(const word of sorted){
+    const cy=word.top+word.h/2;
+    let best=null,bestD=Infinity;
+    for(const row of rows){const d=Math.abs(row.cy-cy);if(d<=tol&&d<bestD){best=row;bestD=d;}}
+    if(!best){best={cy,items:[]};rows.push(best);}
+    best.items.push(word);
+    best.cy=best.items.reduce((a,x)=>a+x.top+x.h/2,0)/best.items.length;
+  }
+  const outRows=rows.map(row=>{
+    const items=row.items.sort((a,b)=>a.x-b.x);
     let out='',prev=null;
     for(const item of items){
       if(prev){const gap=item.x-(prev.x+Math.max(prev.w,0));out+=gap>Math.max(12,median*1.3)?'    ':' ';}
       out+=item.text;prev=item;
     }
-    rows.push({y:(pageHeight||0)-top,items:items.map(({_line,top,...x})=>x),text:out.trim()});
-  }
-  rows.sort((a,b)=>b.y-a.y);
-  return {page:pageNumber,rows:rows.filter(r=>r.text),items:words.map(({_line,top,...x})=>x),median,yTolerance:Math.max(3,median*0.55),source:'ocr'};
+    const top=Math.min(...items.map(x=>x.top));
+    return {y:(pageHeight||0)-top,items:items.map(({top,...x})=>x),text:out.trim()};
+  }).filter(r=>r.text).sort((a,b)=>b.y-a.y);
+  return {page:pageNumber,rows:outRows,items:clean.map(({top,...x})=>x),median,yTolerance:tol,source};
 }
-async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],layouts=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const layout=textContentToLayout(tc,i);layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;}
-  let text=pages.join('\n');state.pdfLayout=layouts;if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];const ocrLayouts=[];const worker=await Tesseract.createWorker('eng');try{await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:2.5});const c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await worker.recognize(c,{}, {text:true,tsv:true});pages.push(r.data.text||'');ocrLayouts.push(tsvToLayout(r.data.tsv||'',i,c.height));}}finally{await worker.terminate();}text=pages.join('\n');state.pdfLayout=ocrLayouts;}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
+function tsvToLayout(tsv,pageNumber=1,pageHeight=0){
+  const raw=String(tsv||'').split(/\r?\n/),words=[];
+  for(let i=1;i<raw.length;i++){
+    if(!raw[i].trim())continue;
+    const parts=raw[i].split('\t');
+    if(parts.length<12||Number(parts[0])!==5)continue;
+    const left=Number(parts[6]),top=Number(parts[7]),width=Number(parts[8]),height=Number(parts[9]),conf=Number(parts[10]);
+    const text=parts.slice(11).join('\t').trim();
+    if(!text||![left,top,width,height].every(Number.isFinite))continue;
+    words.push({text,x:left,top,w:width,h:height,conf});
+  }
+  return wordsToLayout(words,pageNumber,pageHeight,'ocr-tsv');
+}
+function blocksToLayout(blocks,pageNumber=1,pageHeight=0){
+  const words=[];
+  const walk=(node)=>{
+    if(!node)return;
+    if(Array.isArray(node)){node.forEach(walk);return;}
+    if(typeof node!=='object')return;
+    const text=String(node.text||node.symbol||'').trim();
+    const b=node.bbox||node.boundingBox||node.box;
+    if(text&&b){
+      const x0=Number(b.x0??b.left??b.x??0),y0=Number(b.y0??b.top??b.y??0);
+      const x1=Number(b.x1??(b.right??(x0+Number(b.width||0)))),y1=Number(b.y1??(b.bottom??(y0+Number(b.height||0))));
+      if([x0,y0,x1,y1].every(Number.isFinite)&&x1>x0&&y1>y0&&!/\s/.test(text))words.push({text,x:x0,top:y0,w:x1-x0,h:y1-y0,conf:node.confidence??node.conf??0});
+    }
+    for(const k of ['blocks','paragraphs','lines','words','symbols'])if(node[k])walk(node[k]);
+  };
+  walk(blocks);
+  const dedup=[],seen=new Set();
+  for(const w of words){const key=[w.text,Math.round(w.x),Math.round(w.top),Math.round(w.w),Math.round(w.h)].join('|');if(!seen.has(key)){seen.add(key);dedup.push(w);}}
+  return wordsToLayout(dedup,pageNumber,pageHeight,'ocr-blocks');
+}
+function hocrToLayout(hocr,pageNumber=1,pageHeight=0){
+  const words=[];
+  const html=String(hocr||'');
+  const re=/<span[^>]*class=["'][^"']*ocrx_word[^"']*["'][^>]*title=["'][^"']*bbox\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi;
+  let m;
+  const strip=v=>String(v||'').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/\s+/g,' ').trim();
+  while((m=re.exec(html))){const x0=+m[1],y0=+m[2],x1=+m[3],y1=+m[4],text=strip(m[5]);if(text&&x1>x0&&y1>y0)words.push({text,x:x0,top:y0,w:x1-x0,h:y1-y0,conf:0});}
+  return wordsToLayout(words,pageNumber,pageHeight,'ocr-hocr');
+}
+function ocrResultToLayout(data,pageNumber=1,pageHeight=0){
+  const candidates=[];
+  if(data?.tsv){const x=tsvToLayout(data.tsv,pageNumber,pageHeight);if(x.items?.length)candidates.push(x);}
+  if(data?.blocks){const x=blocksToLayout(data.blocks,pageNumber,pageHeight);if(x.items?.length)candidates.push(x);}
+  if(data?.hocr){const x=hocrToLayout(data.hocr,pageNumber,pageHeight);if(x.items?.length)candidates.push(x);}
+  candidates.sort((a,b)=>(b.items?.length||0)-(a.items?.length||0));
+  return candidates[0]||{page:pageNumber,rows:[],items:[],source:'ocr-none'};
+}
+function layoutInvoiceQuality(layout){
+  const rows=layout?.rows||[];
+  let score=0;
+  const header=rows.find(r=>/\bdescription\b/i.test(r.text)&&/\b(?:units?|qty|quantity)\b/i.test(r.text)&&/\bprice\b/i.test(r.text)&&/\bamount\b/i.test(r.text));
+  if(header){
+    score+=30;
+    const stop=rows.find(r=>r.y<header.y&&/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|total\b)/i.test(r.text.replace(/^[^A-Za-z]+/,'')));
+    const stopY=stop?stop.y:-Infinity;
+    const candidates=rows.filter(r=>r.y<header.y&&r.y>stopY&&/^\s*\d{1,3}\b/.test(r.text));
+    score+=Math.min(50,candidates.length*10);
+  }
+  if(rows.some(r=>/\b(?:sub\s*total|subtotal)\b/i.test(r.text)))score+=8;
+  if(rows.some(r=>/\b(?:add\s+)?gst\b/i.test(r.text)&&!/(?:reg|registration)/i.test(r.text)))score+=6;
+  if(rows.some(r=>/^\s*(?:t?otal)\b/i.test(r.text)))score+=6;
+  return score;
+}
+async function extractPdf(file){
+  setProgress(5,'Loading PDF…');
+  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+  const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;
+  let pages=[],layouts=[],chars=0;
+  for(let i=1;i<=pdf.numPages;i++){
+    setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);
+    const p=await pdf.getPage(i),tc=await p.getTextContent(),layout=textContentToLayout(tc,i);
+    layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;
+  }
+  let text=pages.join('\n');state.pdfLayout=layouts;
+  if(chars<80){
+    if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');
+    pages=[];const ocrLayouts=[],worker=await Tesseract.createWorker('eng');
+    try{
+      await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});
+      for(let i=1;i<=pdf.numPages;i++){
+        setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);
+        const p=await pdf.getPage(i),vp=p.getViewport({scale:2.5}),c=document.createElement('canvas');
+        c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+        let r=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
+        let layout=ocrResultToLayout(r.data||{},i,c.height),quality=layoutInvoiceQuality(layout);
+        // Second pass uses single-column segmentation. We choose whichever OCR result
+        // reconstructs the invoice table more completely instead of trusting one pass.
+        await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.SINGLE_COLUMN??4,preserve_interword_spaces:'1'});
+        const r2=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
+        const l2=ocrResultToLayout(r2.data||{},i,c.height),quality2=layoutInvoiceQuality(l2);
+        if(quality2>quality||(quality2===quality&&(l2.items?.length||0)>(layout.items?.length||0))){r=r2;layout=l2;quality=quality2;}
+        await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});
+        ocrLayouts.push(layout);
+        const reconstructed=layout.rows?.map(x=>x.text).join('\n').trim();
+        pages.push(reconstructed||r.data?.text||'');
+      }
+    }finally{await worker.terminate();}
+    text=pages.join('\n');state.pdfLayout=ocrLayouts;
+  }
+  setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;
+}
+
 function friendlyError(err,context='operation'){
   const raw=String(err?.message||err||'').toLowerCase();
   if(raw.includes('duplicate')&&raw.includes('serial'))return 'A serial number already exists. Correct the serial number before saving.';
@@ -504,7 +609,8 @@ function getPdfLayoutRows(){
   return (state.pdfLayout||[]).flatMap(pg=>(pg.rows||[]).map(r=>({...r,page:pg.page||1})));
 }
 function decimalMoneyCandidates(v=''){
-  const clean=normalizePdfText(v).replace(/,/g,'');
+  // Support OCR decimal commas (e.g. 200,00) without breaking thousands separators (e.g. 2,840.00).
+  const clean=normalizePdfText(v).replace(/(\d),(\d{2})\b/g,'$1.$2').replace(/,/g,'');
   return [...clean.matchAll(/(?:\$|SGD\s*)?\s*(\d+(?:\.\d{2}))/gi)].map(m=>Number(m[1])).filter(Number.isFinite);
 }
 function detectInvoiceDateFromLayout(){
@@ -600,7 +706,7 @@ function parseLayoutInvoiceItems(){
         if(amount===null&&aVals.length)amount=aVals[aVals.length-1];
       }
       qty=reconcileQty(qty,price,amount);
-      const desc=descParts.join(' ').replace(/HUAWE[\]\|]/gi,'HUAWEI').replace(/\boverseas[_ ]+Hi-/gi,'overseas Hi-').replace(/\s+\|\|\s+/g,' II ').replace(/\s+/g,' ').replace(/^\|+|\|+$/g,'').trim();
+      const desc=descParts.join(' ').replace(/\bHUAWEI?[\]\|]/gi,'HUAWEI').replace(/\boverseas[_ ]+Hi-/gi,'overseas Hi-').replace(/\s+\|\|\s+/g,' II ').replace(/\s+/g,' ').replace(/^\|+|\|+$/g,'').trim();
       if(desc&&price!==null&&amount!==null)out.push({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty??1,unit_price:price,amount,warranty:'',serials:''});
     }
   }
@@ -784,7 +890,7 @@ function parseLoud(text){const products=[
 function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84" x 84" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
 
 function confidenceBadge(value,kind){let score=String(value??'').trim()?85:35;if(kind==='sku'&&String(value||'').length<3)score=45;if(kind==='qty'&&(!Number(value)||Number(value)<=0))score=30;const level=score>=80?'high':score>=55?'medium':'low';return `<span class="confidence ${level}" title="Parsing confidence">${score}%</span>`;}
-function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.parsed.items.map((x,i)=>{const match=findBestItemMatch(x),matchHtml=match&&match.score<0.999?`<div class="sku-match-suggestion"><i data-lucide="wand-sparkles"></i><div><strong>Possible existing SKU · ${Math.round(match.score*100)}% match</strong><span>${esc(match.item.sku)} · ${esc(match.item.item_name)}</span></div><button type="button" class="secondary small-btn" data-use-match="${i}" data-match-id="${match.item.id}">Use existing</button></div>`:'';return `<div class="parsed-row ${!x.sku||!x.item_name?'needs-review':''}" data-pi="${i}"><div class="parsed-grid"><label>SKU / model ${confidenceBadge(x.sku,'sku')}<input data-f="sku" value="${esc(x.sku)}"></label><label>Standard item name<input data-f="item_name" value="${esc(x.item_name)}"></label><label>Qty ${confidenceBadge(x.quantity,'qty')}<input type="number" min="0.01" step="0.01" data-f="quantity" value="${x.quantity??1}"></label><label>Unit price<input type="number" step="0.01" data-f="unit_price" value="${x.unit_price??''}"></label><label>Amount<input type="number" step="0.01" data-f="amount" value="${x.amount??''}"></label><label>Description<textarea data-f="description" rows="2">${esc(x.description)}</textarea></label></div><div class="parsed-meta"><label>Category<input data-f="category" value="${esc(x.category||'')}"></label><label>Warranty<input data-f="warranty" value="${esc(x.warranty||'')}"></label><label>Serial numbers<input data-f="serials" value="${esc(x.serials||'')}"></label></div>${matchHtml}<div class="actions" style="margin-top:8px"><button type="button" data-remove-line="${i}">Remove line</button></div></div>`}).join('');window.lucide?.createIcons();}
+function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.parsed.items.map((x,i)=>{const match=findBestItemMatch(x),matchHtml=match&&match.score<0.999?`<div class="sku-match-suggestion"><i data-lucide="wand-sparkles"></i><div><strong>Possible existing SKU · ${Math.round(match.score*100)}% match</strong><span>${esc(match.item.sku)} · ${esc(match.item.item_name)}</span></div><button type="button" class="secondary small-btn" data-use-match="${i}" data-match-id="${match.item.id}">Use existing</button></div>`:'';return `<div class="parsed-row ${!x.item_name||!Number(x.quantity)?'needs-review':''}" data-pi="${i}"><div class="parsed-grid"><label>SKU / model <span class="muted">(optional)</span> ${x.sku?confidenceBadge(x.sku,'sku'):''}<input data-f="sku" value="${esc(x.sku)}"></label><label>Standard item name<input data-f="item_name" value="${esc(x.item_name)}"></label><label>Qty ${confidenceBadge(x.quantity,'qty')}<input type="number" min="0.01" step="0.01" data-f="quantity" value="${x.quantity??1}"></label><label>Unit price<input type="number" step="0.01" data-f="unit_price" value="${x.unit_price??''}"></label><label>Amount<input type="number" step="0.01" data-f="amount" value="${x.amount??''}"></label><label>Description<textarea data-f="description" rows="2">${esc(x.description)}</textarea></label></div><div class="parsed-meta"><label>Category <span class="muted">(optional)</span><input data-f="category" value="${esc(x.category||'')}"></label><label>Warranty <span class="muted">(optional)</span><input data-f="warranty" value="${esc(x.warranty||'')}"></label><label>Serial numbers <span class="muted">(optional)</span><input data-f="serials" value="${esc(x.serials||'')}"></label></div>${matchHtml}<div class="actions" style="margin-top:8px"><button type="button" data-remove-line="${i}">Remove line</button></div></div>`}).join('');window.lucide?.createIcons();}
 
 function collectParsed(){document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;row.querySelectorAll('[data-f]').forEach(el=>state.parsed.items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});state.parsed.doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:'',reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};}
 async function ensureUniqueFilename(file){
