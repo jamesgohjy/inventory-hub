@@ -1,7 +1,7 @@
-// AV Inventory Hub V6.52 — hardened OCR layout recovery and validated invoice parsing
-const APP_VERSION='6.52';
+// AV Inventory Hub V6.53 — OCR text/layout arbitration and save-ready invoice parsing
+const APP_VERSION='6.53';
 const RELEASE_CURRENT_NOTES=[
-  'Hardened scanned-invoice OCR with two-pass layout reconstruction and validated line-item extraction',
+  'Save-ready scanned-invoice parsing with OCR text/layout arbitration and verified line-item extraction',
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
   'Double-submission protection for inventory, maintenance, document delete and role updates',
@@ -206,7 +206,7 @@ function issueRow(x){return `<div class="attention-row ${x.severity}"><span clas
 function openAttention(){const issues=buildHealthIssues(),score=healthScore(issues);$('attentionSummary').innerHTML=`<strong>${issues.length} item${issues.length===1?'':'s'} need review</strong><span>Data health score: ${score}%</span>`;$('attentionList').innerHTML=issues.length?issues.map(issueRow).join(''):'<div class="empty">No issues detected. Your records look healthy.</div>';$('attentionDialog').showModal();window.lucide?.createIcons();}
 function openHealth(){const issues=buildHealthIssues(),score=healthScore(issues),b=healthBreakdown(issues),healthy=Math.max(0,(state.data?.items||[]).length-issues.filter(x=>x.item_id).length);const breakdown=[['check-circle-2',`${healthy} healthy record${healthy===1?'':'s'}`,'healthy'],['tags',`${b.missingCategory} missing categor${b.missingCategory===1?'y':'ies'}`,b.missingCategory?'warning':'healthy'],['barcode',`${b.serial} serial issue${b.serial===1?'':'s'}`,b.serial?'warning':'healthy'],['file-warning',`${b.document} document link/date issue${b.document===1?'':'s'}`,b.document?'warning':'healthy']].map(([icon,text,kind])=>`<div class="health-breakdown-row ${kind}"><i data-lucide="${icon}"></i><span>${esc(text)}</span></div>`).join('');$('healthDialogSummary').innerHTML=`<div class="health-overview"><div class="health-overview-score"><strong>${score}%</strong><span>${healthLabel(score)}</span></div><div class="health-breakdown">${breakdown}</div><button type="button" class="secondary small-btn health-review-all" data-health-review-all>${issues.length?`Review ${issues.length} issue${issues.length===1?'':'s'} →`:'No issues to review'}</button></div>`;const rows=issues.map(x=>`<tr><td><span class="health-pill ${x.severity}">${esc(x.severity)}</span></td><td>${esc(x.type)}</td><td>${esc(x.title)}</td><td>${esc(x.detail)}</td><td>${issueReviewButton(x)}</td></tr>`).join('');$('healthIssueTable').innerHTML=rows?`<table><thead><tr><th>Priority</th><th>Check</th><th>Record</th><th>Finding</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No issues detected.</div>';$('healthDialog').showModal();window.lucide?.createIcons();}
 async function markHealthIssueReviewed(issue){if(!issue||!canEdit())return false;try{await state.db.reviewHealthIssue(issue);state.data.healthReviews=state.data.healthReviews||[];if(!state.data.healthReviews.some(r=>r.issue_key===issue.key))state.data.healthReviews.unshift({issue_key:issue.key,issue_type:issue.type,entity_type:issue.entity_type||null,entity_id:issue.entity_id||null,title:issue.title||'',detail:issue.detail||'',reviewed_by:state.session?.user?.id||currentUserDisplayName(),reviewed_at:nowIso()});renderAutomationCentre();return true;}catch(e){console.error(e);toast(friendlyError(e));return false;}}
-function supplierRuleForText(text=''){if(/Loud Technologies Asia/i.test(text))return{key:'loud',label:'Loud Technologies rule'};if(/AV\s+MEDIA/i.test(text))return{key:'avmedia',label:'AV Media OCR rule'};return{key:'generic',label:'Generic OCR rules'};}
+function supplierRuleForText(text=''){if(/Loud Technologies Asia/i.test(text))return{key:'loud',label:'Loud Technologies rule'};if(/AV\s+MEDIA/i.test(text))return{key:'avmedia',label:'AV Media OCR rule'};if(/MAXXMEDIA/i.test(text))return{key:'maxxmedia',label:'Maxxmedia OCR rule'};return{key:'generic',label:'Generic OCR rules'};}
 function renderStockTake(){state.stockTakeCounts=state.stockTakeCounts||{};const q=norm($('stockTakeSearch')?.value||'');const items=(state.data?.items||[]).filter(i=>!q||norm([i.sku,i.item_name,i.category].join(' ')).includes(q));let counted=0,diffs=0;const rows=items.map(i=>{const sys=summary(i).current,raw=state.stockTakeCounts[i.id],has=raw!==undefined&&raw!==''&&raw!==null,physical=has?Number(raw):null,diff=has?physical-sys:null;if(has)counted++;if(has&&diff!==0)diffs++;const status=!has?'Not counted':diff===0?'Match':diff<0?`Short ${Math.abs(diff)}`:`Over ${diff}`;return `<tr><td><strong>${esc(i.sku)}</strong><br><span class="muted">${esc(i.item_name)}</span></td><td class="qty">${sys}</td><td><input class="stocktake-input" data-stock-id="${i.id}" type="number" min="0" step="1" value="${has?physical:''}" placeholder="Count"></td><td class="qty ${has&&diff!==0?'stock-diff':''}">${has?(diff>0?'+':'')+diff:'—'}</td><td><span class="stock-status ${!has?'pending':diff===0?'match':'difference'}">${status}</span></td></tr>`;}).join('');$('stockTakeTable').innerHTML=rows?`<table><thead><tr><th>Equipment</th><th>System</th><th>Physical count</th><th>Difference</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No inventory items found.</div>';$('stockTakeSummary').innerHTML=`<strong>${counted}/${state.data.items.length} counted</strong><span>${diffs} discrepanc${diffs===1?'y':'ies'} flagged</span>`;}
 function openStockTake(){state.stockTakeCounts=state.stockTakeCounts||{};$('stockTakeSearch').value='';renderStockTake();$('stockTakeDialog').showModal();}
 function stockTakeDifferences(){return (state.data?.items||[]).map(i=>{const raw=state.stockTakeCounts?.[i.id];if(raw===undefined||raw==='')return null;const sys=summary(i).current,physical=Number(raw),diff=physical-sys;return diff?{i,sys,physical,diff}:null;}).filter(Boolean);}
@@ -471,6 +471,22 @@ function layoutInvoiceQuality(layout){
   if(rows.some(r=>/^\s*(?:t?otal)\b/i.test(r.text)))score+=6;
   return score;
 }
+function ocrTextQuality(text=''){
+  const t=normalizePdfText(text);
+  let score=0;
+  if(/\b(?:tax\s+)?invoice\b/i.test(t))score+=15;
+  if(/invoice\s*(?:no\.?|number|#)\s*[:#.-]?\s*\d{5,}/i.test(t))score+=18;
+  if(/invoice\s*date\s*[:#.-]?\s*[0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*\d{2,4}/i.test(t))score+=18;
+  if(/ref\s*po\s*number\s*[:#.-]?\s*\d+/i.test(t))score+=6;
+  if(/\bdescription\b/i.test(t)&&/\b(?:units?|qty|quantity)\b/i.test(t)&&/\bprice\b/i.test(t)&&/\bamount\b/i.test(t))score+=16;
+  if(/\bsub\s*total\b[^\n]*\d+[.,]\d{2}/i.test(t))score+=8;
+  if(/\b(?:add\s+)?gst\b[^\n]*\d+[.,]\d{2}/i.test(t)&&!/gst\s+reg/i.test(t))score+=8;
+  if(/^\s*t?otal\b[^\n]*\d+[.,]\d{2}/im.test(t))score+=8;
+  if(/MAXXMEDIA\s+INTERNATIONAL\s+PTE\s+LTD/i.test(t))score+=6;
+  const rows=t.split('\n').filter(x=>/^\s*\d{1,3}\s+.+?\s+(?:\d+\s+)?\d+[.,]\d{2}\s+\d+[.,]\d{2}\s*[\])|}.,;:]*\s*$/.test(x.trim()));
+  score+=Math.min(40,rows.length*8);
+  return score;
+}
 async function extractPdf(file){
   setProgress(5,'Loading PDF…');
   const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
@@ -492,18 +508,24 @@ async function extractPdf(file){
         setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);
         const p=await pdf.getPage(i),vp=p.getViewport({scale:2.5}),c=document.createElement('canvas');
         c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
-        let r=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
-        let layout=ocrResultToLayout(r.data||{},i,c.height),quality=layoutInvoiceQuality(layout);
-        // Second pass uses single-column segmentation. We choose whichever OCR result
-        // reconstructs the invoice table more completely instead of trusting one pass.
+        const r1=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
+        const l1=ocrResultToLayout(r1.data||{},i,c.height);
         await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.SINGLE_COLUMN??4,preserve_interword_spaces:'1'});
         const r2=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
-        const l2=ocrResultToLayout(r2.data||{},i,c.height),quality2=layoutInvoiceQuality(l2);
-        if(quality2>quality||(quality2===quality&&(l2.items?.length||0)>(layout.items?.length||0))){r=r2;layout=l2;quality=quality2;}
+        const l2=ocrResultToLayout(r2.data||{},i,c.height);
+        const candidates=[
+          {r:r1,layout:l1,score:ocrTextQuality(r1.data?.text||'')+layoutInvoiceQuality(l1)},
+          {r:r2,layout:l2,score:ocrTextQuality(r2.data?.text||'')+layoutInvoiceQuality(l2)}
+        ].sort((a,b)=>b.score-a.score||ocrTextQuality(b.r.data?.text||'')-ocrTextQuality(a.r.data?.text||''));
+        const chosen=candidates[0];
         await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??3,preserve_interword_spaces:'1'});
-        ocrLayouts.push(layout);
-        const reconstructed=layout.rows?.map(x=>x.text).join('\n').trim();
-        pages.push(reconstructed||r.data?.text||'');
+        ocrLayouts.push(chosen.layout);
+        // IMPORTANT: parse invoice headers and line items from Tesseract's natural OCR text.
+        // Positional layout remains available as a fallback, but reconstructing all text from
+        // bounding boxes can scramble labels/values and previously produced IHK3-86SA as invoice no.
+        const naturalText=String(chosen.r.data?.text||'').trim();
+        const reconstructed=chosen.layout.rows?.map(x=>x.text).join('\n').trim();
+        pages.push(naturalText||reconstructed);
       }
     }finally{await worker.terminate();}
     text=pages.join('\n');state.pdfLayout=ocrLayouts;
@@ -655,6 +677,48 @@ function layoutHeaderValue(labelRe,valueRe){
   }
   return '';
 }
+function cleanInvoiceDescription(v=''){
+  return String(v||'')
+    .replace(/\bHUAWEI?[\]\|]?/gi,'HUAWEI')
+    .replace(/\bIdeashare\b/gi,'IdeaShare')
+    .replace(/\boverseas[_ ]+Hi-\s*/gi,'overseas Hi-')
+    .replace(/\s+\|\|\s+/g,' II ')
+    .replace(/\s+I!\s+/g,' II ')
+    .replace(/\s+/g,' ').trim();
+}
+function standardItemNameFromDescription(desc=''){
+  const d=cleanInvoiceDescription(desc);
+  if(/HUAWEI\s+IdeaHub\s+K3\b/i.test(d))return 'HUAWEI IdeaHub K3';
+  if(/IdeaShare\s+Key\b/i.test(d))return 'IdeaShare Key';
+  if(/HUAWEI\s+IdeaHub\s+Gray\s+Rolling\s+Stand/i.test(d))return 'HUAWEI IdeaHub Gray Rolling Stand II';
+  if(/Labou?r\s+for\s+Installation\s*&\s*Services/i.test(d))return 'Labour for Installation & Services';
+  return d.split(/[,;]|\s{2,}/)[0].trim()||d;
+}
+function skuFromDescription(desc=''){
+  const d=cleanInvoiceDescription(desc);
+  const m=d.match(/\b(IHK3[- ]?86SA)\b/i);
+  return m?m[1].replace(/\s+/g,'').toUpperCase():'';
+}
+function normalizeParsedInvoiceItem(x={}){
+  const description=cleanInvoiceDescription(x.description||x.item_name||'');
+  return {...x,sku:x.sku||skuFromDescription(description),item_name:standardItemNameFromDescription(description),description};
+}
+function invoiceItemsQuality(items=[],subtotal=null){
+  let score=0;
+  for(const x of items){
+    if(String(x.item_name||x.description||'').trim())score+=12;
+    if(Number(x.quantity)>0)score+=8;
+    if(Number.isFinite(Number(x.unit_price)))score+=6;
+    if(Number.isFinite(Number(x.amount)))score+=6;
+  }
+  score+=Math.min(50,items.length*10);
+  if(items.length&&subtotal!==null&&Number.isFinite(Number(subtotal))){
+    const sum=items.reduce((n,x)=>n+(Number(x.amount)||0),0);
+    if(Math.abs(sum-Number(subtotal))<0.02)score+=80;
+    else if(Math.abs(sum-Number(subtotal))<1)score+=25;
+  }
+  return score;
+}
 function parseLayoutInvoiceItems(){
   const pages=state.pdfLayout||[];
   const out=[];
@@ -706,8 +770,8 @@ function parseLayoutInvoiceItems(){
         if(amount===null&&aVals.length)amount=aVals[aVals.length-1];
       }
       qty=reconcileQty(qty,price,amount);
-      const desc=descParts.join(' ').replace(/\bHUAWEI?[\]\|]/gi,'HUAWEI').replace(/\boverseas[_ ]+Hi-/gi,'overseas Hi-').replace(/\s+\|\|\s+/g,' II ').replace(/\s+/g,' ').replace(/^\|+|\|+$/g,'').trim();
-      if(desc&&price!==null&&amount!==null)out.push({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty??1,unit_price:price,amount,warranty:'',serials:''});
+      const desc=cleanInvoiceDescription(descParts.join(' ').replace(/^\|+|\|+$/g,''));
+      if(desc&&price!==null&&amount!==null)out.push(normalizeParsedInvoiceItem({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty??1,unit_price:price,amount,warranty:'',serials:''}));
     }
   }
   return out;
@@ -776,14 +840,15 @@ function parseGenericInvoiceItems(text){
 
     desc=desc.replace(/^\|+|\|+$/g,'').replace(/\s+/g,' ').trim();
     if(desc&&qty!==null&&price!==null&&amount!==null){
-      current={sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''};
+      current=normalizeParsedInvoiceItem({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''});
       items.push(current);continue;
     }
     if(current&&!/^\d+\s*$/.test(line)&&!/(?:invoice\s+no|invoice\s+date|customer\s+code|payment\s+terms)/i.test(line)){
       const continuation=line.replace(/^\d+\s+/,'').trim();
       if(continuation&&!/^(?:price|amount|units?)$/i.test(continuation)){
-        current.description=(current.description+' '+continuation).replace(/\s+/g,' ').trim();
-        current.item_name=current.description;
+        current.description=cleanInvoiceDescription(current.description+' '+continuation);
+        current.sku=current.sku||skuFromDescription(current.description);
+        current.item_name=standardItemNameFromDescription(current.description);
       }
     }
   }
@@ -875,8 +940,11 @@ function parseInvoice(text){
   let items=[];
   if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);
   else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);
-  if(!items.length&&state.pdfLayout?.length)items=parseLayoutInvoiceItems();
-  if(!items.length)items=parseGenericInvoiceItems(flat);
+  if(!items.length){
+    const generic=parseGenericInvoiceItems(flat).map(normalizeParsedInvoiceItem);
+    const layout=(state.pdfLayout?.length?parseLayoutInvoiceItems():[]).map(normalizeParsedInvoiceItem);
+    items=[generic,layout].sort((a,b)=>invoiceItemsQuality(b,subtotal)-invoiceItemsQuality(a,subtotal))[0]||[];
+  }
   if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
   return{doc,items,rule:supplierRuleForText(flat),invoiceSignals:signals};
 }
