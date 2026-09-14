@@ -1,6 +1,6 @@
 # Inventory Hub
 
-A browser-based inventory system designed around the requested workflow:
+A browser-based inventory system designed around the requested workflow:::
 
 - Manual add / edit / delete of Master SKUs
 - PDF drag-and-drop import
