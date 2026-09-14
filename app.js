@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.48 — hardened PDF invoice extraction, date/money parsing, and generic line-item parsing
-const APP_VERSION='6.48';
+// AV Inventory Hub V6.50 — scanned-PDF OCR accuracy and invoice table reconciliation
+const APP_VERSION='6.50';
 const RELEASE_CURRENT_NOTES=[
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
@@ -149,7 +149,7 @@ class SupabaseDB{
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
-const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width'};
+const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null};
 const prettyEmailName=(email='')=>{const base=String(email||'').split('@')[0];return base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase()).trim()||'Team Member';};
 const currentRole=()=>CFG.mode==='supabase'?(state.profile?.role||'viewer'):'admin';
 const canEdit=()=>['admin','editor'].includes(currentRole());
@@ -340,9 +340,9 @@ function openDetail(id){const i=state.data.items.find(x=>x.id===id),s=summary(i)
   const maintTimeline=maint.length?`<div class="maintenance-history-head"><span>${esc(maintSummary)}</span>${frequent}</div><div class="maintenance-timeline">${maint.map(m=>`<article class="maintenance-timeline-item"><div class="maintenance-dot"></div><div class="maintenance-timeline-content"><div class="maintenance-timeline-meta"><strong>${fmtDate(m.maintenance_date)}</strong><span class="badge maintenance-badge">${esc(m.outcome)}</span>${m.serial_number?`<span class="muted">${esc(m.serial_number)}</span>`:''}</div><p><strong>${esc(m.issue)}</strong></p><p>${esc(m.action_taken)}</p>${m.notes?`<small>${esc(m.notes)}</small>`:''}</div></article>`).join('')}</div>`:'<p class="muted">No maintenance records.</p>';
   $('detailBody').innerHTML=`<div class="detail-cards"><div class="detail-card"><span>Total purchased</span><strong>${s.purchased}</strong></div><div class="detail-card"><span>Total adjustments</span><strong>-${s.adjusted}</strong></div><div class="detail-card"><span>Current inventory</span><strong>${s.current}</strong></div></div><p><strong>Category:</strong> ${esc(i.category||'—')} &nbsp; <strong>Unit:</strong> ${esc(i.unit||'pcs')}</p><p>${esc(i.description||'')}</p><h3>Purchase history</h3>${purchaseRows?`<div class="table-wrap"><table><thead><tr><th>Invoice date</th><th>Supplier</th><th>Invoice</th><th>Qty</th><th>Unit price</th><th>PDF</th></tr></thead><tbody>${purchaseRows}</tbody></table></div>`:'<p class="muted">No purchases recorded.</p>'}<h3>Serial numbers</h3><p>${serials.length?serials.map(esc).join(', '):'<span class="muted">None recorded.</span>'}</p><h3>Adjustments</h3>${adjRows?`<div class="table-wrap"><table><thead><tr><th>Date</th><th>Reason</th><th>Qty</th><th>Remarks</th></tr></thead><tbody>${adjRows}</tbody></table></div>`:'<p class="muted">No adjustments.</p>'}<h3>Maintenance history</h3>${maintTimeline}`;$('detailDialog').showModal();window.lucide?.createIcons();}
 
-function textContentToLines(tc){
+function textContentToLayout(tc,pageNumber=1){
   const items=(tc?.items||[]).filter(x=>String(x.str||'').trim()).map(x=>({text:String(x.str||'').trim(),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0),w:Number(x.width||0),h:Math.abs(Number(x.height||x.transform?.[3]||0))}));
-  if(!items.length)return '';
+  if(!items.length)return {page:pageNumber,rows:[],items:[]};
   const heights=items.map(x=>x.h).filter(x=>x>0).sort((a,b)=>a-b);
   const median=heights.length?heights[Math.floor(heights.length/2)]:10;
   const yTolerance=Math.max(2,median*0.45);
@@ -354,7 +354,7 @@ function textContentToLines(tc){
     row.items.push(item);
   }
   rows.sort((a,b)=>b.y-a.y);
-  return rows.map(row=>{
+  for(const row of rows){
     row.items.sort((a,b)=>a.x-b.x);
     let out='',prev=null;
     for(const item of row.items){
@@ -366,11 +366,13 @@ function textContentToLines(tc){
       }
       out+=item.text;prev=item;
     }
-    return out.trim();
-  }).filter(Boolean).join('\n');
+    row.text=out.trim();
+  }
+  return {page:pageNumber,rows:rows.filter(r=>r.text),items,median,yTolerance};
 }
-async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const text=textContentToLines(tc);pages.push(text);chars+=text.replace(/\s/g,'').length;}
-  let text=pages.join('\n');if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:1.6});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
+function textContentToLines(tc){return textContentToLayout(tc).rows.map(r=>r.text).join('\n');}
+async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],layouts=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const layout=textContentToLayout(tc,i);layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;}
+  let text=pages.join('\n');state.pdfLayout=layouts;if(chars<80){state.pdfLayout=null;if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:2.5});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
 function friendlyError(err,context='operation'){
   const raw=String(err?.message||err||'').toLowerCase();
   if(raw.includes('duplicate')&&raw.includes('serial'))return 'A serial number already exists. Correct the serial number before saving.';
@@ -464,6 +466,100 @@ function labelledMoney(text,labelRe){
   }
   return null;
 }
+
+function getPdfLayoutRows(){
+  return (state.pdfLayout||[]).flatMap(pg=>(pg.rows||[]).map(r=>({...r,page:pg.page||1})));
+}
+function decimalMoneyCandidates(v=''){
+  const clean=normalizePdfText(v).replace(/,/g,'');
+  return [...clean.matchAll(/(?:\$|SGD\s*)?\s*(\d+(?:\.\d{2}))/gi)].map(m=>Number(m[1])).filter(Number.isFinite);
+}
+function detectInvoiceDateFromLayout(){
+  const rows=getPdfLayoutRows();
+  if(!rows.length)return '';
+  const labelRows=rows.filter(r=>/\binvoice\s*date\b/i.test(r.text));
+  for(const lr of labelRows){
+    const direct=dateCandidateFromText(lr.text);if(direct){const d=parseDate(direct);if(d)return d;}
+    const nearby=rows.filter(r=>r.page===lr.page&&Math.abs(r.y-lr.y)<=18).sort((a,b)=>Math.abs(a.y-lr.y)-Math.abs(b.y-lr.y));
+    for(const r of nearby){const c=dateCandidateFromText(r.text);if(c){const d=parseDate(c);if(d)return d;}}
+  }
+  const dateRows=rows.map(r=>({r,c:dateCandidateFromText(r.text)})).filter(x=>x.c);
+  if(dateRows.length===1)return parseDate(dateRows[0].c);
+  return '';
+}
+function layoutMoneyForLabel(labelRe,{exclude=null}={}){
+  const rows=getPdfLayoutRows();
+  const re=labelRe instanceof RegExp?labelRe:new RegExp(labelRe,'i');
+  for(const row of rows){
+    if(!re.test(row.text))continue;
+    if(exclude&&exclude.test(row.text))continue;
+    const vals=decimalMoneyCandidates(row.text);
+    if(vals.length)return vals[vals.length-1];
+    const nearby=rows.filter(r=>r.page===row.page&&Math.abs(r.y-row.y)<=10&&r!==row);
+    for(const r of nearby){
+      const n=decimalMoneyCandidates(r.text);
+      if(n.length)return n[n.length-1];
+    }
+  }
+  return null;
+}
+function layoutHeaderValue(labelRe,valueRe){
+  const rows=getPdfLayoutRows();
+  const re=labelRe instanceof RegExp?labelRe:new RegExp(labelRe,'i');
+  const vre=valueRe||/[A-Z0-9][A-Z0-9._\/-]*/i;
+  for(const row of rows){
+    if(!re.test(row.text))continue;
+    const stripped=row.text.replace(re,' ').replace(/[:#.-]+/g,' ').trim();
+    const m=stripped.match(vre);if(m)return cleanHeaderValue(m[0]);
+    const nearby=rows.filter(r=>r.page===row.page&&Math.abs(r.y-row.y)<=12&&r!==row);
+    for(const r of nearby){const mm=r.text.match(vre);if(mm)return cleanHeaderValue(mm[0]);}
+  }
+  return '';
+}
+function parseLayoutInvoiceItems(){
+  const pages=state.pdfLayout||[];
+  const out=[];
+  for(const pg of pages){
+    const rows=pg.rows||[];
+    const header=rows.find(r=>/\bdescription\b/i.test(r.text)&&/\b(?:units?|qty|quantity)\b/i.test(r.text)&&/\bprice\b/i.test(r.text)&&/\bamount\b/i.test(r.text));
+    if(!header)continue;
+    const pickX=(re)=>{const it=header.items.find(x=>re.test(x.text));return it?it.x:null;};
+    const xSerial=pickX(/^(?:sr\.?\s*no\.?|no\.?#?)$/i)??Math.min(...header.items.map(i=>i.x));
+    const xDesc=pickX(/description/i),xQty=pickX(/^(?:units?|qty|quantity)$/i),xPrice=pickX(/^price$/i),xAmount=pickX(/^amount$/i);
+    if([xDesc,xQty,xPrice,xAmount].some(v=>v===null))continue;
+    const bSD=(xSerial+xDesc)/2,bDQ=(xDesc+xQty)/2,bQP=(xQty+xPrice)/2,bPA=(xPrice+xAmount)/2;
+    const stop=rows.find(r=>r.y<header.y&&/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|total\b)/i.test(r.text));
+    const stopY=stop?stop.y:-Infinity;
+    const anchors=[];
+    for(const r of rows){
+      if(!(r.y<header.y&&r.y>stopY))continue;
+      const sn=r.items.find(it=>it.x<bSD&&/^\d{1,3}$/.test(it.text.trim()));
+      if(sn)anchors.push({row:r,n:Number(sn.text)});
+    }
+    anchors.sort((a,b)=>b.row.y-a.row.y);
+    const seenY=[];
+    const uniq=anchors.filter(a=>seenY.every(y=>Math.abs(y-a.row.y)>2)&&(seenY.push(a.row.y),true));
+    for(let i=0;i<uniq.length;i++){
+      const topY=uniq[i].row.y+3;
+      const bottomY=i+1<uniq.length?uniq[i+1].row.y+3:stopY;
+      const group=rows.filter(r=>r.y<=topY&&r.y>bottomY&&r.y<header.y);
+      const descParts=[];let qty=null,price=null,amount=null;
+      for(const r of group.sort((a,b)=>b.y-a.y)){
+        const descTokens=r.items.filter(it=>it.x>=bSD&&it.x<bDQ).map(it=>it.text.trim()).filter(Boolean);
+        if(descTokens.length)descParts.push(descTokens.join(' '));
+        const qVals=r.items.filter(it=>it.x>=bDQ&&it.x<bQP).flatMap(it=>[...String(it.text).matchAll(/\d+(?:\.\d+)?/g)].map(m=>Number(m[0]))).filter(Number.isFinite);
+        if(qty===null&&qVals.length)qty=qVals[0];
+        const pVals=r.items.filter(it=>it.x>=bQP&&it.x<bPA).flatMap(it=>decimalMoneyCandidates(it.text));
+        if(price===null&&pVals.length)price=pVals[pVals.length-1];
+        const aVals=r.items.filter(it=>it.x>=bPA).flatMap(it=>decimalMoneyCandidates(it.text));
+        if(amount===null&&aVals.length)amount=aVals[aVals.length-1];
+      }
+      const desc=descParts.join(' ').replace(/\s+/g,' ').trim();
+      if(desc&&(qty!==null||price!==null||amount!==null))out.push({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty??1,unit_price:price,amount,warranty:'',serials:''});
+    }
+  }
+  return out;
+}
 function parseGenericInvoiceItems(text){
   const lines=normalizePdfText(text).split('\n').map(x=>x.trim()).filter(Boolean);
   let header=-1;
@@ -474,30 +570,60 @@ function parseGenericInvoiceItems(text){
   if(header<0)return [];
   const items=[];
   let current=null;
-  const stop=/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|total\b|amount\s+due)/i;
+  const stop=/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|t?otal\b|amount\s+due)/i;
+  const parseNumber=(v)=>{
+    const t=String(v??'').replace(/[$\s]/g,'').replace(/,(?=\d{2}(?:\D|$))/g,'.').replace(/,/g,'');
+    const n=Number(t);return Number.isFinite(n)?n:null;
+  };
+  const reconcileQty=(qty,price,amount)=>{
+    if(!(price>0)||!(amount>=0))return qty;
+    const ratio=amount/price;
+    const rounded=Math.round(ratio);
+    if(rounded>=1&&rounded<=999&&Math.abs(ratio-rounded)<0.015){
+      // Amount/price is more reliable than an isolated OCR quantity glyph (1 is often read as 4 or |).
+      if(qty===null||qty<=0||Math.abs(qty-rounded)>0.001)return rounded;
+    }
+    return qty;
+  };
   for(let i=header+1;i<lines.length;i++){
     const line=lines[i];
     if(stop.test(line))break;
-    const cells=line.split(/\s{3,}|\t+/).map(x=>x.trim()).filter(Boolean);
     let serial='',desc='',qty=null,price=null,amount=null;
-    if(cells.length>=4){
-      let work=[...cells];
-      if(/^\d+$/.test(work[0]))serial=work.shift();
-      const nums=[];
-      while(work.length&&nums.length<3){
-        const last=work[work.length-1].replace(/[$,]/g,'');
-        if(/^\d+(?:\.\d+)?$/.test(last)){nums.unshift(Number(last));work.pop();}else break;
-      }
-      if(nums.length>=2){
-        if(nums.length===3)[qty,price,amount]=nums;else [price,amount]=nums;
-        desc=work.join(' ').trim();
+
+    // Primary OCR row shape: serial + description + qty + unit price + amount.
+    let m=line.match(/^\s*(\d{1,3})\s+(.+?)\s+([0-9]+(?:[.,][0-9]+)?)\s+([0-9]+(?:[.,][0-9]{1,2})?)\s+([0-9]+(?:[.,][0-9]{1,2})?)\s*[\]|}.,;:]*\s*$/);
+    if(m){
+      serial=m[1];desc=m[2].trim();qty=parseNumber(m[3]);price=parseNumber(m[4]);amount=parseNumber(m[5]);
+      qty=reconcileQty(qty,price,amount);
+    }else{
+      // OCR frequently loses a narrow quantity digit/column separator. Infer qty from amount ÷ unit price.
+      m=line.match(/^\s*(\d{1,3})\s+(.+?)\s+[|Iil!]?\s*([0-9]+(?:[.,][0-9]{1,2})?)\s+([0-9]+(?:[.,][0-9]{1,2})?)\s*[\]|}.,;:]*\s*$/);
+      if(m){
+        serial=m[1];desc=m[2].trim();price=parseNumber(m[3]);amount=parseNumber(m[4]);qty=reconcileQty(null,price,amount);
       }
     }
+
+    // Fallback for PDF/OCR outputs that preserve wide spaces/tabs as pseudo-columns.
     if(!desc){
-      const m=line.match(/^\s*(\d+)\s+(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d{1,2})?)\s+(\d+(?:\.\d{1,2})?)\s*$/);
-      if(m){serial=m[1];desc=m[2].trim();qty=Number(m[3]);price=Number(m[4]);amount=Number(m[5]);}
+      const cells=line.split(/\s{3,}|\t+/).map(x=>x.trim()).filter(Boolean);
+      if(cells.length>=4){
+        let work=[...cells];
+        if(/^\d{1,3}$/.test(work[0]))serial=work.shift();
+        const nums=[];
+        while(work.length&&nums.length<3){
+          const n=parseNumber(work[work.length-1]);
+          if(n!==null){nums.unshift(n);work.pop();}else break;
+        }
+        if(nums.length>=2){
+          if(nums.length===3)[qty,price,amount]=nums;else [price,amount]=nums;
+          qty=reconcileQty(qty,price,amount);
+          desc=work.join(' ').trim();
+        }
+      }
     }
-    if(desc&&qty!==null&&amount!==null){
+
+    desc=desc.replace(/^\|+|\|+$/g,'').replace(/\s+/g,' ').trim();
+    if(desc&&qty!==null&&price!==null&&amount!==null){
       current={sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''};
       items.push(current);continue;
     }
@@ -551,21 +677,53 @@ function parseInvoice(text){
     }
   }
 
-  const date=detectInvoiceDate(flat,invoice);
-  const delivery=labelledValue(flat,'(?:Delivery\\s*Order(?:\\s*(?:No\\.?|Number|#))?|D\\/?O(?:\\s*(?:No\\.?|#))?)',/[A-Z0-9][A-Z0-9._\/-]*/);
-  const reference=labelledValue(flat,'(?:Reference|REF\\.\\s*NO\\.|Ref\\s*PO\\s*Number)',/[A-Z0-9][A-Z0-9._\/-]*/);
+  let date=detectInvoiceDate(flat,invoice);
+  let delivery=labelledValue(flat,'(?:Delivery\\s*Order(?:\\s*(?:No\\.?|Number|#))?|\\bD\\/?O\\b(?:\\s*(?:No\\.?|#))?)',/[A-Z0-9][A-Z0-9._\\/-]*/);
+  let reference=labelledValue(flat,'(?:Reference|REF\\.\\s*NO\\.|Ref\\s*PO\\s*Number)',/[A-Z0-9][A-Z0-9._\\/-]*/);
   const currency=/\bSGD\b/i.test(flat)?'SGD':(first(/\b(USD|EUR|GBP|MYR|CNY|RMB)\b/i,flat)||'SGD').toUpperCase();
-  const subtotal=labelledMoney(flat,'\\b(?:Sub\\s*Total|Subtotal)\\b');
-  const gst=labelledMoney(flat,'\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b');
+  let subtotal=labelledMoney(flat,'\\b(?:Sub\\s*Total|Subtotal)\\b');
+  let gst=labelledMoney(flat,'\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b');
   let total=labelledMoney(flat,'\\b(?:Invoice\\s*Total|Grand\\s*Total|Total\\s*Amount|Amount\\s*Due)\\b');
   if(total===null){
     const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
-    for(let i=lines.length-1;i>=0;i--){if(/^Total\b/i.test(lines[i])&&!/^Total\s+Local/i.test(lines[i])){total=moneyFromLine(lines[i].replace(/^Total\b/i,''));if(total!==null)break;}}
+    for(let i=lines.length-1;i>=0;i--){
+      // OCR may shift the Total label within the row or drop its leading T ("otal").
+      const line=lines[i];
+      if(/sub\s*total|subtotal|total\s+local/i.test(line))continue;
+      const m=line.match(/\b(?:T?otal)\b/i);
+      if(m){
+        total=moneyFromLine(line.slice((m.index||0)+m[0].length));
+        if(total!==null)break;
+        // Some OCR layouts put the amount immediately before/after the Total label on an adjacent line.
+        if(i>0){const prev=moneyFromLine(lines[i-1]);if(prev!==null&&prev>=0){total=prev;break;}}
+        if(i+1<lines.length){const next=moneyFromLine(lines[i+1]);if(next!==null&&next>=0){total=next;break;}}
+      }
+    }
   }
+  if(total===null&&subtotal!==null&&gst!==null){
+    const calc=Number(subtotal)+Number(gst);
+    if(Number.isFinite(calc))total=Math.round(calc*100)/100;
+  }
+  // V6.49: for text PDFs, use the PDF's X/Y layout as the authoritative fallback.
+  // This prevents values from neighbouring columns/rows (for example GST Reg No) being mistaken for invoice fields.
+  if(state.pdfLayout?.length){
+    date=date||detectInvoiceDateFromLayout();
+    delivery=delivery||layoutHeaderValue(/(?:Delivery\s*Order(?:\s*(?:No\.?|Number|#))?|\bD\/?O\b)/i,/[A-Z0-9][A-Z0-9._\/-]*/i);
+    reference=reference||layoutHeaderValue(/(?:Reference|REF\.\s*NO\.|Ref\s*PO\s*Number)/i,/[A-Z0-9][A-Z0-9._\/-]*/i);
+    const lSubtotal=layoutMoneyForLabel(/\b(?:Sub\s*Total|Subtotal)\b/i);
+    const lGst=layoutMoneyForLabel(/\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?%)?\b/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i});
+    const lTotal=layoutMoneyForLabel(/^(?:Total\b|Grand\s*Total\b|Invoice\s*Total\b|Amount\s*Due\b)/i,{exclude:/Sub\s*Total|Subtotal/i});
+    if(lSubtotal!==null)subtotal=lSubtotal;
+    if(lGst!==null)gst=lGst;
+    if(lTotal!==null)total=lTotal;
+  }
+  // Reject clearly corrupted GST captures such as registration-number fragments.
+  if(gst!==null&&(!Number.isFinite(Number(gst))||Number(gst)<0||(subtotal&&Number(gst)>Number(subtotal))))gst=null;
   const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:delivery,purchase_order_number:'',reference_number:reference,currency,subtotal,gst,total_amount:total};
   let items=[];
   if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);
   else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);
+  if(!items.length&&state.pdfLayout?.length)items=parseLayoutInvoiceItems();
   if(!items.length)items=parseGenericInvoiceItems(flat);
   if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
   return{doc,items,rule:supplierRuleForText(flat),invoiceSignals:signals};
@@ -600,7 +758,7 @@ async function ensureUniqueFilename(file){
   return new File([file],name,{type:file.type||'application/pdf',lastModified:file.lastModified});
 }
 
-function cleanupPdfPreview(){if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}if($('invoicePdfFrame'))$('invoicePdfFrame').src='about:blank';}
+function cleanupPdfPreview(){if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}state.pdfLayout=null;if($('invoicePdfFrame'))$('invoicePdfFrame').src='about:blank';}
 function updatePdfPreview(){const frame=$('invoicePdfFrame');if(!frame||!state.pdfPreviewUrl)return;frame.src=`${state.pdfPreviewUrl}#page=${Math.max(1,state.pdfPreviewPage||1)}&zoom=${encodeURIComponent(state.pdfPreviewZoom||'page-width')}`;if($('pdfPageLabel'))$('pdfPageLabel').textContent=`Page ${Math.max(1,state.pdfPreviewPage||1)}`;}
 function setPdfZoom(value){state.pdfPreviewZoom=value;updatePdfPreview();}
 async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{const text=await extractPdf(file);state.parsed={...parseInvoice(text),raw:text};const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=text;renderParsedItems();const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
