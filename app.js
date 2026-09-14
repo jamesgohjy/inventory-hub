@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.44 — reliability, optimistic feedback and team display names
-const APP_VERSION='6.45';
+// AV Inventory Hub V6.46 — safer invoice recognition and PDF field parsing
+const APP_VERSION='6.46';
 const RELEASE_CURRENT_NOTES=[
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
@@ -353,60 +353,87 @@ function friendlyError(err,context='operation'){
 function setHealth(status='live',text='Live'){const el=$('healthStatus');if(!el)return;el.classList.remove('live','reconnecting','offline');el.classList.add(status);el.innerHTML=`<i></i> ${text}`;}
 function setProgress(p,t){$('importProgress').classList.remove('hidden');$('progressBar').style.width=p+'%';$('progressText').textContent=t;}
 function parseDate(v=''){const s=v.trim();const m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;const day=+m[1],month=+m[2];if(day>=1&&day<=31&&month>=1&&month<=12)return `${y}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;}let d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);return'';}
+function invoiceSignals(text=''){
+  const t=String(text||'');
+  const checks={
+    invoiceTitle:/\b(?:tax\s+)?invoice\b/i.test(t),
+    invoiceNumber:/(?:invoice\s*(?:no\.?|number|#)|inv\s*(?:no\.?|#))/i.test(t),
+    invoiceDate:/(?:invoice|document|tax\s*invoice)\s*date/i.test(t),
+    supplier:/\b(?:supplier|vendor|from)\b/i.test(t)||/\b[A-Z][A-Za-z0-9 &.,'-]+Pte\.?\s*Ltd\.?\b/i.test(t),
+    customer:/\b(?:bill\s*to|sold\s*to|customer)\b/i.test(t),
+    itemTable:/\b(?:description|item)\b/i.test(t)&&/\b(?:qty|quantity|units?)\b/i.test(t),
+    money:/\b(?:price|amount|subtotal|sub\s*total|gst|total)\b/i.test(t)
+  };
+  const score=Object.values(checks).filter(Boolean).length;
+  return {checks,score,isInvoice:checks.invoiceTitle && score>=3 || score>=4};
+}
 function detectInvoiceDate(text,invoice=''){
   const flat=String(text||'').replace(/\r/g,'');
-  // 1) Strong labels: Invoice Date / Document Date / Tax Invoice Date.
-  const strong=[
-    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d[\/.-][01]?\d[\/.-](?:\d{2}|\d{4}))/i,
+  const patterns=[
+    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))/i,
     /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i
   ];
-  for(const re of strong){const m=flat.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
-  // 2) OCR often puts column headings on one line and values on the next. For a recognised
-  // invoice, inspect the neighbourhood around DATE and the invoice number for a plausible date.
-  const isInvoice=/\b(?:tax\s+)?invoice\b/i.test(flat)||!!invoice;
-  if(isInvoice){
-    const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
-    const dateToken=/\b([0-3]?\d[\/.-][01]?\d[\/.-](?:\d{2}|\d{4}))\b/;
-    for(let i=0;i<lines.length;i++){
-      if(/^(?:invoice\s*)?date\b/i.test(lines[i])||/\bdate\b/i.test(lines[i])){
-        for(let j=i;j<=Math.min(lines.length-1,i+4);j++){
-          const m=lines[j].match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}
-        }
+  for(const re of patterns){const m=flat.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
+  const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
+  const dateToken=/\b([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))\b/;
+  // PDF.js commonly returns a row of labels followed by a row of values. Search a wider,
+  // but still local, window after an Invoice Date label and prefer the first valid date.
+  for(let i=0;i<lines.length;i++){
+    if(/\binvoice\s*date\b/i.test(lines[i])||/^date\b/i.test(lines[i])){
+      for(let j=i;j<=Math.min(lines.length-1,i+8);j++){
+        const m=lines[j].match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}
       }
     }
-    if(invoice){
-      const idx=flat.toLowerCase().indexOf(String(invoice).toLowerCase());
-      if(idx>=0){const near=flat.slice(Math.max(0,idx-250),idx+500);const m=near.match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}}
-    }
   }
-  // Supplier/OCR fallback: score all plausible dates and prefer one close to an invoice/date label.
-  if(isInvoice){
-    const rx=/\b([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))\b/g;let best=null,m;
-    while((m=rx.exec(flat))){const d=parseDate(m[1]);if(!d)continue;const before=flat.slice(Math.max(0,m.index-140),m.index).toLowerCase();let score=0;if(/invoice\s*date|document\s*date|tax\s*invoice[^\n]{0,50}date/.test(before))score+=10;else if(/\bdate\b/.test(before))score+=6;if(invoice&&Math.abs(m.index-flat.toLowerCase().indexOf(String(invoice).toLowerCase()))<500)score+=4;if(!best||score>best.score)best={d,score};}
-    if(best&&best.score>=4)return best.d;
+  if(invoice){
+    const idx=flat.toLowerCase().indexOf(String(invoice).toLowerCase());
+    if(idx>=0){const near=flat.slice(Math.max(0,idx-300),idx+700);const m=near.match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}}
   }
   return '';
 }
 function first(re,text,group=1){const m=text.match(re);return m?m[group].trim():'';}
-function parseInvoice(text){const flat=text.replace(/\r/g,'');let supplier='';if(/Loud Technologies Asia/i.test(flat))supplier='Loud Technologies Asia Pte Ltd';else if(/AV\s+MEDIA\s+PTE\s+LTD/i.test(flat))supplier='AV Media Pte Ltd';else supplier=first(/([A-Z][A-Za-z0-9 &.,'-]+Pte\.?\s*Ltd\.?)/i,flat);
+function cleanHeaderValue(v=''){
+  return String(v||'').replace(/\s+/g,' ').replace(/\s+(?:Bill|Sold|Ship)\s*To\b.*$/i,'').trim();
+}
+function labelledValue(text,labelRe,valueRe=/[^\n]+/){
+  const re=new RegExp(`(?:${labelRe})\\s*[:#.-]?\\s*(?:\\n\\s*)?(${valueRe.source})`, 'i');
+  return cleanHeaderValue(first(re,text));
+}
+function parseInvoice(text){
+  const flat=String(text||'').replace(/\r/g,'');
+  const signals=invoiceSignals(flat);
+  if(!signals.isInvoice)throw new Error('This PDF does not contain enough invoice indicators to be processed as an invoice.');
+  let supplier='';
+  if(/Loud Technologies Asia/i.test(flat))supplier='Loud Technologies Asia Pte Ltd';
+  else if(/AV\s+MEDIA\s+PTE\s+LTD/i.test(flat))supplier='AV Media Pte Ltd';
+  else supplier=first(/([A-Z][A-Za-z0-9 &.,'-]+Pte\.?\s*Ltd\.?)/i,flat);
+
   let invoice='';
-  // Supplier-aware patterns first so multi-part values such as "INV LTA-00215840" are not truncated to "INV".
-  if(/Loud Technologies Asia/i.test(flat)) invoice=first(/\b(INV\s+LTA[- ]?\d+)\b/i,flat);
-  if(!invoice&&/AV\s+MEDIA/i.test(flat)) invoice=first(/\b(VIN\d{2}[- ]?\d+)\b/i,flat);
-  const invoicePatterns=[
-    /(?:Invoice\s*(?:No\.?|Number|#)|Inv\s*(?:No\.?|#))\s*[:#-]?\s*(?:\n\s*)?((?:INV\s+)?[A-Z0-9][A-Z0-9._\/-]{2,}(?:\s+[A-Z0-9][A-Z0-9._\/-]{2,})?)/i,
-    /(?:Tax\s+Invoice|Invoice)\s*[:#-]\s*((?:INV\s+)?[A-Z0-9][A-Z0-9._\/-]{2,}(?:\s+[A-Z0-9][A-Z0-9._\/-]{2,})?)/i,
-    /\b(INV\s+[A-Z0-9][A-Z0-9._\/-]{3,})\b/i,
-    /\b([A-Z]{2,6}\d{1,4}[-/][A-Z0-9-]{3,})\b/i
-  ];
-  if(!invoice){for(const re of invoicePatterns){const candidate=first(re,flat);if(candidate&&!/^(INV|INVOICE)$/i.test(candidate)){invoice=candidate;break;}}}
-  invoice=String(invoice||'').replace(/\s+/g,' ').trim();
-  // Never accept common invoice headings/labels as an invoice number.
-  if(/^(sold\s*to|bill\s*to|ship\s*to|invoice|inv|invoice\s*(no|number)|date)$/i.test(invoice)) invoice='';
-  let date=detectInvoiceDate(flat,invoice);
-  const subtotal=num(first(/Subtotal\s*\n?\s*([\d,.]+)/i,flat)||first(/SUB\s*TOTAL\s*(?:SGD)?\s*([\d,.]+)/i,flat));const gst=num(first(/(?:GST\s*9%|Total Local supply of goods and services 9%)\s*(?:SGD)?\s*\n?\s*([\d,.]+)/i,flat));const total=num(first(/(?:Invoice Total SGD|AMOUNT\s*SGD)\s*\n?\s*([\d,.]+)/i,flat));
-  const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:'',purchase_order_number:'',reference_number:first(/(?:Reference|REF\.\s*NO\.)\s*\n?\s*([^\n]+)/i,flat),currency:'SGD',subtotal,gst,total_amount:total};
-  let items=[];if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];return{doc,items,rule:supplierRuleForText(flat)};}
+  if(/Loud Technologies Asia/i.test(flat))invoice=first(/\b(INV\s+LTA[- ]?\d+)\b/i,flat);
+  if(!invoice&&/AV\s+MEDIA/i.test(flat))invoice=first(/\b(VIN\d{2}[- ]?\d+)\b/i,flat);
+  if(!invoice){
+    const patterns=[
+      /(?:Invoice\s*(?:No\.?|Number|#)|Inv\s*(?:No\.?|#))\s*[:#.-]?\s*(?:\n\s*)?([A-Z0-9][A-Z0-9._\/-]{2,})/i,
+      /(?:Tax\s+Invoice|Invoice)\s*[:#.-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i,
+      /\b(INV\s+[A-Z0-9][A-Z0-9._\/-]{3,})\b/i,
+      /\b([A-Z]{2,6}\d{1,4}[-/][A-Z0-9-]{3,})\b/i
+    ];
+    for(const re of patterns){const candidate=cleanHeaderValue(first(re,flat));if(candidate&&!/^(INV|INVOICE)$/i.test(candidate)){invoice=candidate;break;}}
+  }
+  invoice=cleanHeaderValue(invoice);
+  if(/^(sold\s*to|bill\s*to|ship\s*to|invoice|inv|invoice\s*(no|number)|date)$/i.test(invoice))invoice='';
+
+  const date=detectInvoiceDate(flat,invoice);
+  const delivery=labelledValue(flat,'(?:Delivery\\s*Order(?:\\s*(?:No\\.?|Number|#))?|D\\/?O(?:\\s*(?:No\\.?|#))?)',/[A-Z0-9][A-Z0-9._\/-]*/);
+  const reference=labelledValue(flat,'(?:Reference|REF\\.\\s*NO\\.)',/[^\n]+/);
+  const currency=/\bSGD\b/i.test(flat)?'SGD':(first(/\b(USD|EUR|GBP|MYR|CNY|RMB)\b/i,flat)||'SGD').toUpperCase();
+  const subtotal=num(first(/(?:Sub\s*Total|Subtotal)\s*(?:SGD)?\s*[:$]?\s*(?:\n\s*)?([\d,.]+)/i,flat));
+  const gst=num(first(/(?:GST(?:\s*@?\s*\d+(?:\.\d+)?%)?|Total Local supply of goods and services 9%)\s*(?:SGD)?\s*[:$]?\s*(?:\n\s*)?([\d,.]+)/i,flat));
+  const total=num(first(/(?:Invoice\s*Total(?:\s*SGD)?|Grand\s*Total|Total\s*Amount|AMOUNT\s*SGD)\s*[:$]?\s*(?:\n\s*)?([\d,.]+)/i,flat));
+  const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:delivery,purchase_order_number:'',reference_number:reference,currency,subtotal,gst,total_amount:total};
+  let items=[];if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
+  return{doc,items,rule:supplierRuleForText(flat),invoiceSignals:signals};
+}
 function parseLoud(text){const products=[
   ['XVIVE-U35C','XVive U35C Wireless System','XVive U35C Wireless System for Condenser Microphones 5.8GHz','Audio / Wireless',4,340,1360,'1 Year','IntlE251100449, Intle251100452, Intle251000719, Intle251100448'],
   ['SHURE-SLXD2+-G66','Shure SLXD2+ SM58 Handheld Transmitter','Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule (Freq: G66)','Audio / Wireless',1,480,480,'2 Years','3EL26704289, 3FA0985618'],
