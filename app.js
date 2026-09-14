@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.47 — coordinate-aware PDF text extraction and invoice field parsing
-const APP_VERSION='6.47';
+// AV Inventory Hub V6.48 — hardened PDF invoice extraction, date/money parsing, and generic line-item parsing
+const APP_VERSION='6.48';
 const RELEASE_CURRENT_NOTES=[
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
@@ -381,9 +381,22 @@ function friendlyError(err,context='operation'){
 }
 function setHealth(status='live',text='Live'){const el=$('healthStatus');if(!el)return;el.classList.remove('live','reconnecting','offline');el.classList.add(status);el.innerHTML=`<i></i> ${text}`;}
 function setProgress(p,t){$('importProgress').classList.remove('hidden');$('progressBar').style.width=p+'%';$('progressText').textContent=t;}
-function parseDate(v=''){const s=v.trim();const m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;const day=+m[1],month=+m[2];if(day>=1&&day<=31&&month>=1&&month<=12)return `${y}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;}let d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);return'';}
+function normalizePdfText(v=''){
+  return String(v||'')
+    .replace(/\u00a0/g,' ')
+    .replace(/[／⁄∕]/g,'/')
+    .replace(/[–—−]/g,'-')
+    .replace(/[：]/g,':')
+    .replace(/\r/g,'');
+}
+function parseDate(v=''){
+  const s=normalizePdfText(v).trim().replace(/\s*([/.\-])\s*/g,'$1');
+  const m=s.match(/\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})\b/);
+  if(m){let y=+m[3];if(y<100)y+=2000;const day=+m[1],month=+m[2];if(day>=1&&day<=31&&month>=1&&month<=12)return `${y}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;}
+  let d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);return'';
+}
 function invoiceSignals(text=''){
-  const t=String(text||'');
+  const t=normalizePdfText(text);
   const checks={
     invoiceTitle:/\b(?:tax\s+)?invoice\b/i.test(t),
     invoiceNumber:/(?:invoice\s*(?:no\.?|number|#)|inv\s*(?:no\.?|#))/i.test(t),
@@ -394,32 +407,36 @@ function invoiceSignals(text=''){
     money:/\b(?:price|amount|subtotal|sub\s*total|gst|total)\b/i.test(t)
   };
   const score=Object.values(checks).filter(Boolean).length;
-  return {checks,score,isInvoice:checks.invoiceTitle && score>=3 || score>=4};
+  return {checks,score,isInvoice:(checks.invoiceTitle&&score>=3)||score>=4};
+}
+function dateCandidateFromText(v=''){
+  const m=normalizePdfText(v).match(/\b([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*\d{2,4})\b/);
+  return m?m[1]:'';
 }
 function detectInvoiceDate(text,invoice=''){
-  const flat=String(text||'').replace(/\r/g,'');
-  const dateToken=/\b([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))\b/;
+  const flat=normalizePdfText(text);
+  const compact=flat.replace(/[ \t]+/g,' ');
   const labelled=[
-    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))/i,
+    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*\d{2,4})/i,
     /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i
   ];
-  for(const re of labelled){const m=flat.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
+  for(const source of [flat,compact])for(const re of labelled){const m=source.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
   const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
   for(let i=0;i<lines.length;i++){
-    const line=lines[i];
-    if(/\binvoice\s*date\b/i.test(line)){
-      const same=line.match(dateToken);if(same){const d=parseDate(same[1]);if(d)return d;}
-      for(let j=i+1;j<=Math.min(lines.length-1,i+12);j++){
-        if(/\b(?:customer\s*code|payment\s*terms|ref\s*po|invoice\s*no)\b/i.test(lines[j])&&!dateToken.test(lines[j]))continue;
-        const m=lines[j].match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}
+    if(/\binvoice\s*date\b/i.test(lines[i])){
+      const same=dateCandidateFromText(lines[i]);if(same){const d=parseDate(same);if(d)return d;}
+      for(let j=i+1;j<=Math.min(lines.length-1,i+8);j++){
+        const c=dateCandidateFromText(lines[j]);if(c){const d=parseDate(c);if(d)return d;}
       }
     }
   }
+  const idx=compact.search(/\binvoice\s*date\b/i);
+  if(idx>=0){const near=compact.slice(idx,idx+180);const c=dateCandidateFromText(near);if(c){const d=parseDate(c);if(d)return d;}}
   if(invoice){
-    const idx=flat.toLowerCase().indexOf(String(invoice).toLowerCase());
-    if(idx>=0){const near=flat.slice(Math.max(0,idx-150),idx+900);const m=near.match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}}
+    const pos=compact.toLowerCase().indexOf(String(invoice).toLowerCase());
+    if(pos>=0){const near=compact.slice(Math.max(0,pos-120),pos+500);const c=dateCandidateFromText(near);if(c){const d=parseDate(c);if(d)return d;}}
   }
-  const all=[...flat.matchAll(new RegExp(dateToken.source,'g'))].map(m=>m[1]);
+  const all=[...compact.matchAll(/\b([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*\d{2,4})\b/g)].map(m=>m[1]);
   if(all.length===1){const d=parseDate(all[0]);if(d)return d;}
   return '';
 }
@@ -431,8 +448,71 @@ function labelledValue(text,labelRe,valueRe=/[^\n]+/){
   const re=new RegExp(`(?:${labelRe})\\s*[:#.-]?\\s*(?:\\n\\s*)?(${valueRe.source})`, 'i');
   return cleanHeaderValue(first(re,text));
 }
+function moneyFromLine(line=''){
+  const clean=normalizePdfText(line).replace(/,/g,'');
+  const vals=[...clean.matchAll(/(?:\$|SGD\s*)?(-?\d+(?:\.\d{1,2})?)/gi)].map(m=>Number(m[1])).filter(Number.isFinite);
+  return vals.length?vals[vals.length-1]:null;
+}
+function labelledMoney(text,labelRe){
+  const lines=normalizePdfText(text).split('\n').map(x=>x.trim()).filter(Boolean);
+  const re=new RegExp(labelRe,'i');
+  for(let i=0;i<lines.length;i++){
+    if(!re.test(lines[i]))continue;
+    let v=moneyFromLine(lines[i].replace(re,''));
+    if(v!==null)return v;
+    if(i+1<lines.length){v=moneyFromLine(lines[i+1]);if(v!==null)return v;}
+  }
+  return null;
+}
+function parseGenericInvoiceItems(text){
+  const lines=normalizePdfText(text).split('\n').map(x=>x.trim()).filter(Boolean);
+  let header=-1;
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/\bdescription\b/i.test(l)&&/\b(?:units?|qty|quantity)\b/i.test(l)&&/\bprice\b/i.test(l)&&/\bamount\b/i.test(l)){header=i;break;}
+  }
+  if(header<0)return [];
+  const items=[];
+  let current=null;
+  const stop=/^(?:remarks?|sub\s*total|subtotal|add\s+gst|gst\b|total\b|amount\s+due)/i;
+  for(let i=header+1;i<lines.length;i++){
+    const line=lines[i];
+    if(stop.test(line))break;
+    const cells=line.split(/\s{3,}|\t+/).map(x=>x.trim()).filter(Boolean);
+    let serial='',desc='',qty=null,price=null,amount=null;
+    if(cells.length>=4){
+      let work=[...cells];
+      if(/^\d+$/.test(work[0]))serial=work.shift();
+      const nums=[];
+      while(work.length&&nums.length<3){
+        const last=work[work.length-1].replace(/[$,]/g,'');
+        if(/^\d+(?:\.\d+)?$/.test(last)){nums.unshift(Number(last));work.pop();}else break;
+      }
+      if(nums.length>=2){
+        if(nums.length===3)[qty,price,amount]=nums;else [price,amount]=nums;
+        desc=work.join(' ').trim();
+      }
+    }
+    if(!desc){
+      const m=line.match(/^\s*(\d+)\s+(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d{1,2})?)\s+(\d+(?:\.\d{1,2})?)\s*$/);
+      if(m){serial=m[1];desc=m[2].trim();qty=Number(m[3]);price=Number(m[4]);amount=Number(m[5]);}
+    }
+    if(desc&&qty!==null&&amount!==null){
+      current={sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''};
+      items.push(current);continue;
+    }
+    if(current&&!/^\d+\s*$/.test(line)&&!/(?:invoice\s+no|invoice\s+date|customer\s+code|payment\s+terms)/i.test(line)){
+      const continuation=line.replace(/^\d+\s+/,'').trim();
+      if(continuation&&!/^(?:price|amount|units?)$/i.test(continuation)){
+        current.description=(current.description+' '+continuation).replace(/\s+/g,' ').trim();
+        current.item_name=current.description;
+      }
+    }
+  }
+  return items;
+}
 function parseInvoice(text){
-  const flat=String(text||'').replace(/\r/g,'');
+  const flat=normalizePdfText(text);
   const signals=invoiceSignals(flat);
   if(!signals.isInvoice)throw new Error('This PDF does not contain enough invoice indicators to be processed as an invoice.');
   let supplier='';
@@ -454,16 +534,40 @@ function parseInvoice(text){
   }
   invoice=cleanHeaderValue(invoice);
   if(/^(sold\s*to|bill\s*to|ship\s*to|invoice|inv|invoice\s*(no|number)|date)$/i.test(invoice))invoice='';
+  if(!invoice){
+    const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
+    const bad=/^(?:invoice|invoice\s*date|customer|customer\s*code|payment|payment\s*terms|ref|ref\s*po|bill\s*to|sold\s*to|ship\s*to)$/i;
+    for(let i=0;i<lines.length;i++){
+      if(!/\binvoice\s*(?:no\.?|number|#)\b/i.test(lines[i]))continue;
+      const same=lines[i].replace(/^.*?invoice\s*(?:no\.?|number|#)\s*[:#.-]?\s*/i,'').trim();
+      const sameToken=same.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})\b/i);
+      if(sameToken&&!bad.test(sameToken[1])&&!parseDate(sameToken[1])){invoice=sameToken[1];break;}
+      for(let j=i+1;j<=Math.min(lines.length-1,i+10);j++){
+        const token=lines[j].match(/^([A-Z0-9][A-Z0-9._\/-]{2,})\b/i);
+        if(!token||bad.test(token[1])||parseDate(token[1]))continue;
+        if(/^\d+$/.test(token[1])||/[A-Z]/i.test(token[1])){invoice=token[1];break;}
+      }
+      if(invoice)break;
+    }
+  }
 
   const date=detectInvoiceDate(flat,invoice);
   const delivery=labelledValue(flat,'(?:Delivery\\s*Order(?:\\s*(?:No\\.?|Number|#))?|D\\/?O(?:\\s*(?:No\\.?|#))?)',/[A-Z0-9][A-Z0-9._\/-]*/);
-  const reference=labelledValue(flat,'(?:Reference|REF\\.\\s*NO\\.)',/[^\n]+/);
+  const reference=labelledValue(flat,'(?:Reference|REF\\.\\s*NO\\.|Ref\\s*PO\\s*Number)',/[A-Z0-9][A-Z0-9._\/-]*/);
   const currency=/\bSGD\b/i.test(flat)?'SGD':(first(/\b(USD|EUR|GBP|MYR|CNY|RMB)\b/i,flat)||'SGD').toUpperCase();
-  const subtotal=num(first(/(?:Sub\s*Total|Subtotal)\s*(?:SGD)?\s*[:$]?\s*(?:\n\s*)?([\d,.]+)/i,flat));
-  const gst=num(first(/(?:GST(?:\s*@?\s*\d+(?:\.\d+)?%)?|Total Local supply of goods and services 9%)\s*(?:SGD)?\s*[:$]?\s*(?:\n\s*)?([\d,.]+)/i,flat));
-  const total=num(first(/(?:Invoice\s*Total(?:\s*SGD)?|Grand\s*Total|Total\s*Amount|AMOUNT\s*SGD)\s*[:$]?\s*(?:\n\s*)?([\d,.]+)/i,flat));
+  const subtotal=labelledMoney(flat,'\\b(?:Sub\\s*Total|Subtotal)\\b');
+  const gst=labelledMoney(flat,'\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b');
+  let total=labelledMoney(flat,'\\b(?:Invoice\\s*Total|Grand\\s*Total|Total\\s*Amount|Amount\\s*Due)\\b');
+  if(total===null){
+    const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
+    for(let i=lines.length-1;i>=0;i--){if(/^Total\b/i.test(lines[i])&&!/^Total\s+Local/i.test(lines[i])){total=moneyFromLine(lines[i].replace(/^Total\b/i,''));if(total!==null)break;}}
+  }
   const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:delivery,purchase_order_number:'',reference_number:reference,currency,subtotal,gst,total_amount:total};
-  let items=[];if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
+  let items=[];
+  if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);
+  else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);
+  if(!items.length)items=parseGenericInvoiceItems(flat);
+  if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
   return{doc,items,rule:supplierRuleForText(flat),invoiceSignals:signals};
 }
 function parseLoud(text){const products=[
@@ -473,7 +577,7 @@ function parseLoud(text){const products=[
   ['XVIVE-AT2','XVive AT-2 Portable Audio Tester','XVive AT-2 Portable Audio Tester','Audio / Test Equipment',1,270,270,'1 Year','IntL260500638'],
   ['XVIVE-U3','Xvive Audio U3 Digital Wireless Microphone System','Xvive Audio U3 2.4 GHz Digital Wireless Microphone System for Dynamic Microphones','Audio / Wireless',4,275,1100,'1 Year','Int1241204279, Int1241204276, Int1241204210, Int1241203023']
  ];return products.filter(p=>text.toLowerCase().includes(p[2].slice(0,20).toLowerCase())).map(p=>({sku:p[0],item_name:p[1],description:p[2],category:p[3],unit:'pcs',quantity:p[4],unit_price:p[5],amount:p[6],warranty:p[7],serials:p[8]}));}
-function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84\" x 84\" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
+function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84" x 84" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
 
 function confidenceBadge(value,kind){let score=String(value??'').trim()?85:35;if(kind==='sku'&&String(value||'').length<3)score=45;if(kind==='qty'&&(!Number(value)||Number(value)<=0))score=30;const level=score>=80?'high':score>=55?'medium':'low';return `<span class="confidence ${level}" title="Parsing confidence">${score}%</span>`;}
 function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.parsed.items.map((x,i)=>{const match=findBestItemMatch(x),matchHtml=match&&match.score<0.999?`<div class="sku-match-suggestion"><i data-lucide="wand-sparkles"></i><div><strong>Possible existing SKU · ${Math.round(match.score*100)}% match</strong><span>${esc(match.item.sku)} · ${esc(match.item.item_name)}</span></div><button type="button" class="secondary small-btn" data-use-match="${i}" data-match-id="${match.item.id}">Use existing</button></div>`:'';return `<div class="parsed-row ${!x.sku||!x.item_name?'needs-review':''}" data-pi="${i}"><div class="parsed-grid"><label>SKU / model ${confidenceBadge(x.sku,'sku')}<input data-f="sku" value="${esc(x.sku)}"></label><label>Standard item name<input data-f="item_name" value="${esc(x.item_name)}"></label><label>Qty ${confidenceBadge(x.quantity,'qty')}<input type="number" min="0.01" step="0.01" data-f="quantity" value="${x.quantity??1}"></label><label>Unit price<input type="number" step="0.01" data-f="unit_price" value="${x.unit_price??''}"></label><label>Amount<input type="number" step="0.01" data-f="amount" value="${x.amount??''}"></label><label>Description<textarea data-f="description" rows="2">${esc(x.description)}</textarea></label></div><div class="parsed-meta"><label>Category<input data-f="category" value="${esc(x.category||'')}"></label><label>Warranty<input data-f="warranty" value="${esc(x.warranty||'')}"></label><label>Serial numbers<input data-f="serials" value="${esc(x.serials||'')}"></label></div>${matchHtml}<div class="actions" style="margin-top:8px"><button type="button" data-remove-line="${i}">Remove line</button></div></div>`}).join('');window.lucide?.createIcons();}
