@@ -1,5 +1,5 @@
-// AV Inventory Hub V6.46 — safer invoice recognition and PDF field parsing
-const APP_VERSION='6.46';
+// AV Inventory Hub V6.47 — coordinate-aware PDF text extraction and invoice field parsing
+const APP_VERSION='6.47';
 const RELEASE_CURRENT_NOTES=[
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
@@ -340,7 +340,36 @@ function openDetail(id){const i=state.data.items.find(x=>x.id===id),s=summary(i)
   const maintTimeline=maint.length?`<div class="maintenance-history-head"><span>${esc(maintSummary)}</span>${frequent}</div><div class="maintenance-timeline">${maint.map(m=>`<article class="maintenance-timeline-item"><div class="maintenance-dot"></div><div class="maintenance-timeline-content"><div class="maintenance-timeline-meta"><strong>${fmtDate(m.maintenance_date)}</strong><span class="badge maintenance-badge">${esc(m.outcome)}</span>${m.serial_number?`<span class="muted">${esc(m.serial_number)}</span>`:''}</div><p><strong>${esc(m.issue)}</strong></p><p>${esc(m.action_taken)}</p>${m.notes?`<small>${esc(m.notes)}</small>`:''}</div></article>`).join('')}</div>`:'<p class="muted">No maintenance records.</p>';
   $('detailBody').innerHTML=`<div class="detail-cards"><div class="detail-card"><span>Total purchased</span><strong>${s.purchased}</strong></div><div class="detail-card"><span>Total adjustments</span><strong>-${s.adjusted}</strong></div><div class="detail-card"><span>Current inventory</span><strong>${s.current}</strong></div></div><p><strong>Category:</strong> ${esc(i.category||'—')} &nbsp; <strong>Unit:</strong> ${esc(i.unit||'pcs')}</p><p>${esc(i.description||'')}</p><h3>Purchase history</h3>${purchaseRows?`<div class="table-wrap"><table><thead><tr><th>Invoice date</th><th>Supplier</th><th>Invoice</th><th>Qty</th><th>Unit price</th><th>PDF</th></tr></thead><tbody>${purchaseRows}</tbody></table></div>`:'<p class="muted">No purchases recorded.</p>'}<h3>Serial numbers</h3><p>${serials.length?serials.map(esc).join(', '):'<span class="muted">None recorded.</span>'}</p><h3>Adjustments</h3>${adjRows?`<div class="table-wrap"><table><thead><tr><th>Date</th><th>Reason</th><th>Qty</th><th>Remarks</th></tr></thead><tbody>${adjRows}</tbody></table></div>`:'<p class="muted">No adjustments.</p>'}<h3>Maintenance history</h3>${maintTimeline}`;$('detailDialog').showModal();window.lucide?.createIcons();}
 
-async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const text=tc.items.map(x=>x.str).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;}
+function textContentToLines(tc){
+  const items=(tc?.items||[]).filter(x=>String(x.str||'').trim()).map(x=>({text:String(x.str||'').trim(),x:Number(x.transform?.[4]||0),y:Number(x.transform?.[5]||0),w:Number(x.width||0),h:Math.abs(Number(x.height||x.transform?.[3]||0))}));
+  if(!items.length)return '';
+  const heights=items.map(x=>x.h).filter(x=>x>0).sort((a,b)=>a-b);
+  const median=heights.length?heights[Math.floor(heights.length/2)]:10;
+  const yTolerance=Math.max(2,median*0.45);
+  items.sort((a,b)=>Math.abs(b.y-a.y)>yTolerance?b.y-a.y:a.x-b.x);
+  const rows=[];
+  for(const item of items){
+    let row=rows.find(r=>Math.abs(r.y-item.y)<=yTolerance);
+    if(!row){row={y:item.y,items:[]};rows.push(row);}
+    row.items.push(item);
+  }
+  rows.sort((a,b)=>b.y-a.y);
+  return rows.map(row=>{
+    row.items.sort((a,b)=>a.x-b.x);
+    let out='',prev=null;
+    for(const item of row.items){
+      if(prev){
+        const prevRight=prev.x+Math.max(prev.w,0);
+        const gap=item.x-prevRight;
+        if(gap>Math.max(8,median*1.2))out+='    ';
+        else out+=' ';
+      }
+      out+=item.text;prev=item;
+    }
+    return out.trim();
+  }).filter(Boolean).join('\n');
+}
+async function extractPdf(file){setProgress(5,'Loading PDF…');const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer());const pdf=await pdfjs.getDocument({data}).promise;let pages=[],chars=0;for(let i=1;i<=pdf.numPages;i++){setProgress(10+Math.round(35*i/pdf.numPages),`Extracting page ${i} of ${pdf.numPages}…`);const p=await pdf.getPage(i);const tc=await p.getTextContent();const text=textContentToLines(tc);pages.push(text);chars+=text.replace(/\s/g,'').length;}
   let text=pages.join('\n');if(chars<80){if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');pages=[];for(let i=1;i<=pdf.numPages;i++){setProgress(45+Math.round(30*i/pdf.numPages),`Running OCR… page ${i} of ${pdf.numPages}`);const p=await pdf.getPage(i);const vp=p.getViewport({scale:1.6});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await p.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const r=await Tesseract.recognize(c,'eng');pages.push(r.data.text);}text=pages.join('\n');}setProgress(82,'Detecting invoice fields…');await new Promise(r=>setTimeout(r,120));setProgress(94,'Preparing review…');return text;}
 function friendlyError(err,context='operation'){
   const raw=String(err?.message||err||'').toLowerCase();
@@ -369,26 +398,29 @@ function invoiceSignals(text=''){
 }
 function detectInvoiceDate(text,invoice=''){
   const flat=String(text||'').replace(/\r/g,'');
-  const patterns=[
-    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))/i,
-    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*(?:\n\s*)?([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i
-  ];
-  for(const re of patterns){const m=flat.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
-  const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
   const dateToken=/\b([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))\b/;
-  // PDF.js commonly returns a row of labels followed by a row of values. Search a wider,
-  // but still local, window after an Invoice Date label and prefer the first valid date.
+  const labelled=[
+    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*([0-3]?\d[\/.\-][01]?\d[\/.\-](?:\d{2}|\d{4}))/i,
+    /(?:invoice|document|tax\s*invoice)\s*date\s*[:#.-]?\s*([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i
+  ];
+  for(const re of labelled){const m=flat.match(re);if(m){const d=parseDate(m[1]);if(d)return d;}}
+  const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
   for(let i=0;i<lines.length;i++){
-    if(/\binvoice\s*date\b/i.test(lines[i])||/^date\b/i.test(lines[i])){
-      for(let j=i;j<=Math.min(lines.length-1,i+8);j++){
+    const line=lines[i];
+    if(/\binvoice\s*date\b/i.test(line)){
+      const same=line.match(dateToken);if(same){const d=parseDate(same[1]);if(d)return d;}
+      for(let j=i+1;j<=Math.min(lines.length-1,i+12);j++){
+        if(/\b(?:customer\s*code|payment\s*terms|ref\s*po|invoice\s*no)\b/i.test(lines[j])&&!dateToken.test(lines[j]))continue;
         const m=lines[j].match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}
       }
     }
   }
   if(invoice){
     const idx=flat.toLowerCase().indexOf(String(invoice).toLowerCase());
-    if(idx>=0){const near=flat.slice(Math.max(0,idx-300),idx+700);const m=near.match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}}
+    if(idx>=0){const near=flat.slice(Math.max(0,idx-150),idx+900);const m=near.match(dateToken);if(m){const d=parseDate(m[1]);if(d)return d;}}
   }
+  const all=[...flat.matchAll(new RegExp(dateToken.source,'g'))].map(m=>m[1]);
+  if(all.length===1){const d=parseDate(all[0]);if(d)return d;}
   return '';
 }
 function first(re,text,group=1){const m=text.match(re);return m?m[group].trim():'';}
