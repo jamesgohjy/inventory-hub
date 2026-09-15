@@ -7,6 +7,7 @@ const RELEASE_CURRENT_NOTES=[
   'Invoice dates require agreement from two scans; unclear dates require manual input',
   'Clear labelled dates support numeric and month-name formats such as 16 Jul 2026',
   'S/N blocks are mapped to the preceding physical item and count mismatches are flagged',
+  'Serial blocks no longer shift onto products that have no printed serial numbers',
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
   'Double-submission protection for inventory, maintenance, document delete and role updates',
@@ -756,16 +757,24 @@ function attachSerialBlocks(items=[],text=''){
       const tokens=serialTokensFromLine(line);
       if(tokens.length)serials.push(...tokens);else if(/[A-Za-z0-9]/.test(line))uncertain=true;
     }
-    blocks.push({serials:[...new Set(serials)],uncertain});
+    blocks.push({lineIndex:i,serials:[...new Set(serials)],uncertain});
   }
-  let cursor=0;
+  const itemPositions=out.map((item,itemIndex)=>{
+    const keys=[item.sku,item.item_name,item.description].map(x=>norm(x)).filter(x=>x.length>=6);
+    const positions=[];
+    lines.forEach((line,lineIndex)=>{const n=norm(line);if(keys.some(k=>n.includes(k)||k.includes(n)&&n.length>=12))positions.push(lineIndex);});
+    return {itemIndex,positions};
+  });
   for(const block of blocks){
-    while(cursor<out.length&&String(out[cursor].serials||'').trim())cursor++;
-    if(cursor>=out.length)break;
-    const item=out[cursor],qty=Math.max(0,Math.round(Number(item.quantity)||0));
-    if(block.serials.length)item.serials=block.serials.join(', ');
-    item.serialReviewRequired=block.uncertain||!block.serials.length||(qty>0&&block.serials.length!==qty);
-    cursor++;
+    const preceding=itemPositions.map(x=>({itemIndex:x.itemIndex,pos:Math.max(...x.positions.filter(p=>p<block.lineIndex),-1)})).filter(x=>x.pos>=0).sort((a,b)=>b.pos-a.pos);
+    const targetIndex=preceding[0]?.itemIndex??(out.length===1?0:-1);
+    if(targetIndex<0)continue; // Do not guess when the source item cannot be proven.
+    const item=out[targetIndex],qty=Math.max(0,Math.round(Number(item.quantity)||0));
+    const existing=parseSerials(item.serials);
+    if(!existing.length&&block.serials.length)item.serials=block.serials.join(', ');
+    const observed=existing.length?existing:block.serials;
+    const differs=existing.length&&block.serials.length&&(existing.length!==block.serials.length||existing.some((x,i)=>norm(x)!==norm(block.serials[i])));
+    item.serialReviewRequired=!!item.serialReviewRequired||block.uncertain||differs||!observed.length||(qty>0&&observed.length!==qty);
   }
   return out;
 }
