@@ -6,7 +6,12 @@ const RELEASE_CURRENT_NOTES=[
   'Labour, installation and service-only charges are excluded from inventory',
   'Invoice dates require agreement from two scans; unclear dates require manual input',
   'Clear labelled dates support numeric and month-name formats such as 16 Jul 2026',
-  'S/N blocks are mapped to the preceding physical item and count mismatches are flagged',
+  'Header DATE columns are recognised without confusing due, delivery or footer dates',
+  'DATE and other neighbouring labels are blocked from contaminating Reference',
+  'Supplier, generic, numbered-row and multi-page layout item parsers are compared every time',
+  'Empty extraction results now explain service-only exclusion or request manual review',
+  'S/N blocks are mapped to the preceding physical item using only printed serial values',
+  'Valid serials are no longer flagged merely because their count differs from quantity',
   'Serial blocks no longer shift onto products that have no printed serial numbers',
   'Optimistic inventory adjustments with rollback if Supabase cannot save',
   'Clear success, retry and failure feedback for network operations',
@@ -664,6 +669,16 @@ function detectInvoiceDateFromLayout(){
     const nearby=rows.filter(r=>r.page===lr.page&&Math.abs(r.y-lr.y)<=18).sort((a,b)=>Math.abs(a.y-lr.y)-Math.abs(b.y-lr.y));
     for(const r of nearby){const c=dateCandidateFromText(r.text);if(c){const d=parseDate(c);if(d)return d;}}
   }
+  // Some suppliers label the invoice-header column simply as DATE.
+  // Accept it only near other invoice-header labels, never from body or footer dates.
+  const genericDateLabels=rows.filter(r=>/\bDATE\b/i.test(r.text)&&!/\b(?:due|delivery|payment|warranty)\b/i.test(r.text));
+  for(const lr of genericDateLabels){
+    const headerContext=rows.some(r=>r.page===lr.page&&Math.abs(r.y-lr.y)<=45&&/\b(?:invoice\s*(?:no|number)|ref\.?\s*no|p\/?o\s*no|terms)\b/i.test(r.text));
+    if(!headerContext)continue;
+    const direct=dateCandidateFromText(lr.text);if(direct){const d=parseDate(direct);if(d)return d;}
+    const nearby=rows.filter(r=>r.page===lr.page&&Math.abs(r.y-lr.y)<=18).sort((a,b)=>Math.abs(a.y-lr.y)-Math.abs(b.y-lr.y));
+    for(const r of nearby){const c=dateCandidateFromText(r.text);if(c){const d=parseDate(c);if(d)return d;}}
+  }
   const dateRows=rows.map(r=>({r,c:dateCandidateFromText(r.text)})).filter(x=>x.c);
   if(dateRows.length===1)return parseDate(dateRows[0].c);
   return '';
@@ -755,7 +770,11 @@ function attachSerialBlocks(items=[],text=''){
       const line=lines[j];
       if(label.test(line)||stop.test(line)||/\b\d+(?:[.,]\d{2})\s+\d+(?:[.,]\d{2})\s*$/.test(line))break;
       const tokens=serialTokensFromLine(line);
-      if(tokens.length)serials.push(...tokens);else if(/[A-Za-z0-9]/.test(line))uncertain=true;
+      if(tokens.length){serials.push(...tokens);continue;}
+      // A normal multi-word product/section line ends the S/N block. Only a compact,
+      // serial-looking unreadable token is flagged; following descriptions are not.
+      if(/[A-Za-z0-9]/.test(line)&&!/[\s]{1,}/.test(line)&&line.length>=6)uncertain=true;
+      break;
     }
     blocks.push({lineIndex:i,serials:[...new Set(serials)],uncertain});
   }
@@ -769,12 +788,11 @@ function attachSerialBlocks(items=[],text=''){
     const preceding=itemPositions.map(x=>({itemIndex:x.itemIndex,pos:Math.max(...x.positions.filter(p=>p<block.lineIndex),-1)})).filter(x=>x.pos>=0).sort((a,b)=>b.pos-a.pos);
     const targetIndex=preceding[0]?.itemIndex??(out.length===1?0:-1);
     if(targetIndex<0)continue; // Do not guess when the source item cannot be proven.
-    const item=out[targetIndex],qty=Math.max(0,Math.round(Number(item.quantity)||0));
+    const item=out[targetIndex];
     const existing=parseSerials(item.serials);
     if(!existing.length&&block.serials.length)item.serials=block.serials.join(', ');
     const observed=existing.length?existing:block.serials;
-    const differs=existing.length&&block.serials.length&&(existing.length!==block.serials.length||existing.some((x,i)=>norm(x)!==norm(block.serials[i])));
-    item.serialReviewRequired=!!item.serialReviewRequired||block.uncertain||differs||!observed.length||(qty>0&&observed.length!==qty);
+    item.serialReviewRequired=!!item.serialReviewRequired||block.uncertain||!observed.length;
   }
   return out;
 }
@@ -1048,10 +1066,15 @@ function parseInvoice(text){
       if(invoice)break;
     }
   }
+  if(state.pdfLayout?.length){
+    const layoutInvoice=layoutHeaderValue(/(?:Invoice\s*(?:No\.?|Number|#)|Inv\s*(?:No\.?|#))/i,/[A-Z0-9][A-Z0-9._\/-]{2,}/i);
+    if((!invoice||invoice.length<5||/^(?:V?IN|INV)$/i.test(invoice))&&layoutInvoice&&!/^(?:INV|INVOICE|DATE)$/i.test(layoutInvoice))invoice=layoutInvoice;
+  }
 
   let date=detectInvoiceDate(flat,invoice);
   let delivery=labelledValue(flat,'(?:Delivery\\s*Order(?:\\s*(?:No\\.?|Number|#))?|\\bD\\/?O\\b(?:\\s*(?:No\\.?|#))?)',/[A-Z0-9][A-Z0-9._\\/-]*/);
   let reference=labelledValue(flat,'(?:Reference|REF\\.\\s*NO\\.|Ref\\s*PO\\s*Number)',/[A-Z0-9][A-Z0-9._\\/-]*/);
+  if(/^(?:DATE|INVOICE|INVOICE\s*NO|P\/?O|TERMS)$/i.test(reference))reference='';
   const currency=/\bSGD\b/i.test(flat)?'SGD':(first(/\b(USD|EUR|GBP|MYR|CNY|RMB)\b/i,flat)||'SGD').toUpperCase();
   let subtotal=labelledMoney(flat,'\\b(?:Sub\\s*Total|Subtotal)\\b');
   let gst=labelledMoney(flat,'\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b');
@@ -1082,6 +1105,7 @@ function parseInvoice(text){
     date=date||detectInvoiceDateFromLayout();
     delivery=delivery||layoutHeaderValue(/(?:Delivery\s*Order(?:\s*(?:No\.?|Number|#))?|\bD\/?O\b)/i,/[A-Z0-9][A-Z0-9._\/-]*/i);
     reference=reference||layoutHeaderValue(/(?:Reference|REF\.\s*NO\.|Ref\s*PO\s*Number)/i,/[A-Z0-9][A-Z0-9._\/-]*/i);
+    if(/^(?:DATE|INVOICE|INVOICE\s*NO|P\/?O|TERMS)$/i.test(reference))reference='';
     const lSubtotal=layoutMoneyForLabel(/\b(?:Sub\s*Total|Subtotal)\b/i);
     const lGst=layoutMoneyForLabel(/\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?%)?\b/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i});
     const lTotal=layoutMoneyForLabel(/^(?:Total\b|Grand\s*Total\b|Invoice\s*Total\b|Amount\s*Due\b)/i,{exclude:/Sub\s*Total|Subtotal/i});
@@ -1092,24 +1116,20 @@ function parseInvoice(text){
   // Reject clearly corrupted GST captures such as registration-number fragments.
   if(gst!==null&&(!Number.isFinite(Number(gst))||Number(gst)<0||(subtotal&&Number(gst)>Number(subtotal))))gst=null;
   const doc={supplier_name:canonicalSupplier(supplier),invoice_number:invoice,invoice_date:date,delivery_order_number:delivery,purchase_order_number:'',reference_number:reference,currency,subtotal,gst,total_amount:total};
-  let items=[];
-  if(/Loud Technologies Asia/i.test(flat))items=parseLoud(flat);
-  else if(/AV\s+MEDIA/i.test(flat))items=parseAvMedia(flat);
-  if(!items.length){
-    const generic=parseGenericInvoiceItems(flat).map(normalizeParsedInvoiceItem);
-    const numbered=parseNumberedInvoiceRows(flat).map(normalizeParsedInvoiceItem);
-    const layout=(state.pdfLayout?.length?parseLayoutInvoiceItems():[]).map(normalizeParsedInvoiceItem);
-    items=[generic,numbered,layout].sort((a,b)=>invoiceItemsQuality(b,subtotal)-invoiceItemsQuality(a,subtotal))[0]||[];
-  }
+  const supplierSpecific=/Loud Technologies Asia/i.test(flat)?parseLoud(flat):/AV\s+MEDIA/i.test(flat)?parseAvMedia(flat):[];
+  const generic=parseGenericInvoiceItems(flat).map(normalizeParsedInvoiceItem);
+  const numbered=parseNumberedInvoiceRows(flat).map(normalizeParsedInvoiceItem);
+  const layout=(state.pdfLayout?.length?parseLayoutInvoiceItems():[]).map(normalizeParsedInvoiceItem);
+  let items=[supplierSpecific,generic,numbered,layout].sort((a,b)=>invoiceItemsQuality(b,subtotal)-invoiceItemsQuality(a,subtotal))[0]||[];
   if(!items.length)items=[{sku:'',item_name:'',description:'',category:'',unit:'pcs',quantity:1,unit_price:null,amount:null,warranty:'',serials:''}];
   return{doc,items,rule:supplierRuleForText(flat),invoiceSignals:signals};
 }
 function parseLoud(text){const products=[
-  ['XVIVE-U35C','XVive U35C Wireless System','XVive U35C Wireless System for Condenser Microphones 5.8GHz','Audio / Wireless',4,340,1360,'1 Year','IntlE251100449, Intle251100452, Intle251000719, Intle251100448'],
-  ['SHURE-SLXD2+-G66','Shure SLXD2+ SM58 Handheld Transmitter','Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule (Freq: G66)','Audio / Wireless',1,480,480,'2 Years','3EL26704289, 3FA0985618'],
+  ['XVIVE-U35C','XVive U35C Wireless System','XVive U35C Wireless System for Condenser Microphones 5.8GHz','Audio / Wireless',4,340,1360,'1 Year',''],
+  ['SHURE-SLXD2+-G66','Shure SLXD2+ SM58 Handheld Transmitter','Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule (Freq: G66)','Audio / Wireless',1,480,480,'2 Years',''],
   ['GRAVITY-CART-M01B','Gravity CART M 01 B Multifunctional Trolley','Gravity CART M 01 B Multifunctional Trolley (Medium)','AV Accessories',2,170,340,'',''],
-  ['XVIVE-AT2','XVive AT-2 Portable Audio Tester','XVive AT-2 Portable Audio Tester','Audio / Test Equipment',1,270,270,'1 Year','IntL260500638'],
-  ['XVIVE-U3','Xvive Audio U3 Digital Wireless Microphone System','Xvive Audio U3 2.4 GHz Digital Wireless Microphone System for Dynamic Microphones','Audio / Wireless',4,275,1100,'1 Year','Int1241204279, Int1241204276, Int1241204210, Int1241203023']
+  ['XVIVE-AT2','XVive AT-2 Portable Audio Tester','XVive AT-2 Portable Audio Tester','Audio / Test Equipment',1,270,270,'1 Year',''],
+  ['XVIVE-U3','Xvive Audio U3 Digital Wireless Microphone System','Xvive Audio U3 2.4 GHz Digital Wireless Microphone System for Dynamic Microphones','Audio / Wireless',4,275,1100,'1 Year','']
  ];return products.filter(p=>text.toLowerCase().includes(p[2].slice(0,20).toLowerCase())).map(p=>({sku:p[0],item_name:p[1],description:p[2],category:p[3],unit:'pcs',quantity:p[4],unit_price:p[5],amount:p[6],warranty:p[7],serials:p[8]}));}
 function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84" x 84" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
 
@@ -1119,13 +1139,20 @@ function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.pa
 const renderParsedItemsBase=renderParsedItems;
 renderParsedItems=function(){
   renderParsedItemsBase();
+  if(!(state.parsed?.items||[]).length){
+    const wrap=$('parsedItems');if(wrap){
+      const serviceOnly=Number(state.parsed?.excludedServiceCount||0)>0;
+      wrap.innerHTML='<div class="empty needs-review">'+(serviceOnly?'No physical inventory items were found. Labour, installation, delivery and service-only charges were excluded.':'A line-item table appears to be present, but no physical inventory items could be extracted confidently. Review the PDF and add verified items manually; do not guess.')+'</div>';
+    }
+    return;
+  }
   (state.parsed?.items||[]).forEach((item,i)=>{
     if(!item.serialReviewRequired)return;
     const row=document.querySelector(`.parsed-row[data-pi="${i}"]`),input=row?.querySelector('[data-f="serials"]');
     if(!input)return;
     input.classList.add('low-confidence');
     const note=document.createElement('small');note.className='date-status review';
-    note.textContent='Serial-number count or characters need manual verification against the PDF.';
+    note.textContent='One or more serial-number characters could not be read confidently. Please verify against the PDF.';
     input.closest('label')?.appendChild(note);
   });
 };
