@@ -1,15 +1,15 @@
-// AV Inventory Hub V6.61 — calendar-safe invoice dates, resilient AV Media table recovery and evidence validation
-// This patch loader applies V6.61 safely on top of the verified V6.55 source.
+// AV Inventory Hub V6.62 — calendar-safe invoice dates, resilient AV Media table recovery and evidence validation
+// This patch loader applies V6.62 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
 function replaceOnce(src,needle,replacement,label=needle){
   const i=src.indexOf(needle);
-  if(i<0)throw new Error('V6.61 patch marker not found: '+label);
+  if(i<0)throw new Error('V6.62 patch marker not found: '+label);
   return src.slice(0,i)+replacement+src.slice(i+needle.length);
 }
 function replaceSection(src,startMarker,endMarker,replacement,label=startMarker){
   const s=src.indexOf(startMarker),e=src.indexOf(endMarker,s+startMarker.length);
-  if(s<0||e<0)throw new Error('V6.61 patch section not found: '+label);
+  if(s<0||e<0)throw new Error('V6.62 patch section not found: '+label);
   return src.slice(0,s)+replacement+src.slice(e);
 }
 function asPatchedFunction(fn,newName){
@@ -33,7 +33,7 @@ function v661DetectInvoiceDate(text,invoice=''){
       }
     }
   }
-  // V6.61: many AV Media invoices use a compact header labelled only "DATE".
+  // V6.62: many AV Media invoices use a compact header labelled only "DATE".
   // Accept that label only when the same header row also contains invoice-header fields,
   // never when it is a due/delivery/payment/warranty date.
   for(let i=0;i<lines.length;i++){
@@ -193,10 +193,9 @@ function v661RepairInvoiceMoneyFromLayout(doc={}){
 
 function v661NeedsDeepRecovery(parsed={}){
   if(parsed?.invoiceClassification?.type==='service')return false;
-  const d=parsed.doc||{},items=validParsedItems(parsed.items||[]),isAv=/av\s+media/i.test(String(d.supplier_name||''))||/\bAV\s+MEDIA\b/i.test(String(parsed.rawText||parsed.raw||''));
-  if(!d.invoice_number||!d.invoice_date||!items.length)return true;
-  if(isAv&&(!Number.isFinite(Number(d.subtotal))||!Number.isFinite(Number(d.gst))||!Number.isFinite(Number(d.total_amount))))return true;
-  const a=Number(d.subtotal),b=Number(d.gst),c=Number(d.total_amount);if([a,b,c].every(Number.isFinite)&&Math.abs((a+b)-c)>.05)return true;
+  const d=parsed.doc||{},items=validParsedItems(parsed.items||[]),c=parsed?.invoiceClassification?.type||'uncertain';
+  if(!d.invoice_number||!d.invoice_date||!items.length||c==='uncertain')return true;
+  const a=Number(d.subtotal),b=Number(d.gst),z=Number(d.total_amount);if(![a,b,z].every(Number.isFinite)||Math.abs((a+b)-z)>.06)return true;
   return false;
 }
 
@@ -206,15 +205,13 @@ async function v661EnsureTesseract(){
   if(!window.Tesseract)throw new Error('Recovery OCR library did not initialise.');return window.Tesseract;
 }
 async function v661ForceOcrRecovery(file){
-  const T=await v661EnsureTesseract();
-  setProgress(40,'Invoice fields need a deeper scan — running recovery OCR…');
-  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-  const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;
+  const kind=v662FileKind(file);if(kind==='docx')return false;const T=await v661EnsureTesseract();setProgress(40,'Key invoice fields need a deeper scan — running recovery OCR…');
   const modes=[{key:'recovery-auto',label:'AUTO',psm:T.PSM?.AUTO??'3',texts:[],layouts:[]},{key:'recovery-column',label:'SINGLE_COLUMN',psm:T.PSM?.SINGLE_COLUMN??'4',texts:[],layouts:[]},{key:'recovery-sparse',label:'SPARSE_TEXT',psm:T.PSM?.SPARSE_TEXT??'11',texts:[],layouts:[]}];
-  const worker=await T.createWorker('eng');
-  try{for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i),vp=p.getViewport({scale:3.0}),c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;for(let mi=0;mi<modes.length;mi++){const m=modes[mi],pct=42+Math.round(45*((i-1)*modes.length+mi+1)/(pdf.numPages*modes.length));setProgress(pct,`Recovery OCR ${m.label}… page ${i} of ${pdf.numPages}`);await worker.setParameters({tessedit_pageseg_mode:m.psm,preserve_interword_spaces:'1',user_defined_dpi:'220'});const r=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},i,c.height);m.layouts.push(layout);m.texts.push(String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim());}}}finally{await worker.terminate();}
-  const recovered=modes.map(m=>{const text=m.texts.join('\n').trim();return{source:m.key,label:m.label,text,layout:m.layouts,score:ocrTextQuality(text)+m.layouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0)};}).filter(x=>x.text);
-  state.ocrCandidates=[...(state.ocrCandidates||[]),...recovered].sort((a,b)=>b.score-a.score);return recovered.length>0;
+  const canvases=[];
+  if(kind==='pdf'){const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i),vp=p.getViewport({scale:3.2}),c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;canvases.push({c,page:i});}}
+  else if(kind==='image'){const bmp=await createImageBitmap(file),c=document.createElement('canvas'),scale=Math.min(3,Math.max(1,2400/Math.max(bmp.width,bmp.height)));c.width=Math.round(bmp.width*scale);c.height=Math.round(bmp.height*scale);c.getContext('2d',{willReadFrequently:true}).drawImage(bmp,0,0,c.width,c.height);canvases.push({c,page:1});bmp.close?.();}
+  const worker=await T.createWorker('eng');try{for(let ci=0;ci<canvases.length;ci++){for(let mi=0;mi<modes.length;mi++){const {c,page}=canvases[ci],m=modes[mi],pct=42+Math.round(45*((ci*modes.length+mi+1)/(canvases.length*modes.length)));setProgress(pct,`Recovery OCR ${m.label}… page ${page} of ${canvases.length}`);await worker.setParameters({tessedit_pageseg_mode:m.psm,preserve_interword_spaces:'1',user_defined_dpi:'240'});const r=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},page,c.height);m.layouts.push(layout);m.texts.push(String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim());}}}finally{await worker.terminate();}
+  const recovered=modes.map(m=>{const text=m.texts.join('\n').trim();return{source:m.key,label:m.label,text,layout:m.layouts,score:ocrTextQuality(text)+m.layouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0)};}).filter(x=>x.text);state.ocrCandidates=[...(state.ocrCandidates||[]),...recovered].sort((a,b)=>b.score-a.score);return recovered.length>0;
 }
 
 function v661IsNonInventoryServiceLine(x={}){
@@ -400,27 +397,38 @@ function v661ParseAvMediaMixedLayoutItems(){
 
 function v661ParseAvMediaTextItems(text=''){
   const lines=normalizePdfText(text).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
-  const header=lines.findIndex(l=>/\bPROD(?:UCT|OUCT)\s*(?:NO\.?|NUMBER)?\b/i.test(l)&&/\bDESCRIPTION\b/i.test(l)&&/(?:\bQUANTITY\b|\bQTY\b)/i.test(l)&&/\bPRICE\b/i.test(l)&&/\bAMOUNT\b/i.test(l));
-  if(header<0)return [];
-  const body=[];for(let i=header+1;i<lines.length;i++){if(/\b(?:SUB\s*TOTAL|SUBTOTAL|GST\s*\d*\s*%|AMOUNT\s+DUE|GRAND\s+TOTAL|TOTAL\s+DUE)\b/i.test(lines[i]))break;body.push(lines[i]);}
-  const num=v=>{let z=String(v||'').replace(/[$SGD\s]/gi,'').replace(/,(?=\d{3}(?:\.\d{2})?$)/g,'').replace(/,(?=\d{2}$)/,'.');const n=Number(z.replace(/[^0-9.-]/g,''));return Number.isFinite(n)?n:null;};
-  const money='(?:[$]?\\s*\\d{1,3}(?:,\\d{3})*(?:[.]\\d{2})|[$]?\\s*\\d+(?:[.]\\d{2}))';
-  const rowRe=new RegExp('^([A-Z0-9][A-Z0-9+._\\/-]{2,}(?:\\s+[A-Z0-9]{1,5})?)\\s+(.+?)\\s+(\\d+(?:[.]\\d+)?)\\s+('+money+')\\s+('+money+')$','i');
-  const out=[];
-  for(const line of body){
-    const m=line.match(rowRe);if(!m)continue;
-    const qty=num(m[3]),price=num(m[4]),amount=num(m[5]);if(!(qty>0)||price===null||amount===null)continue;
-    const desc=cleanInventoryDescription(m[2]);if(!desc)continue;
-    out.push(normalizeParsedInvoiceItem({sku:cleanVerifiedSku(m[1],text),item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''}));
+  const moneyVal=v=>{const z=String(v||'').replace(/(?:SGD|S\$|\$)/gi,'').replace(/\s/g,'').replace(/,(?=\d{3}(?:\.\d{2})?$)/g,'').replace(/,(?=\d{2}$)/,'.').replace(/[^0-9.-]/g,'');const n=Number(z);return Number.isFinite(n)?n:null;};
+  const money='(?:S?\\$?\\s*\\d[\\d,]*(?:[.]\\d{2}))';
+  const rowRe=new RegExp('^([A-Z0-9][A-Z0-9+._\\/-]{2,}(?:\\s+(?:[A-Z0-9]{1,8})){0,3})\\s+(.+?)\\s+(\\d+(?:[.]\\d+)?)\\s+('+money+')\\s+('+money+')$','i');
+  let header=-1;
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/\b(?:PROD(?:UCT|OUCT)|STOCK)\s*(?:NO\.?|NUMBER|CODE)?\b/i.test(l)&&/\bDESCRIPTION\b/i.test(l)&&/\b(?:QUANTITY|QTY)\b/i.test(l)&&/\b(?:UNIT\s*)?PRICE\b/i.test(l)&&/\bAMOUNT\b/i.test(l)){header=i;break;}
+  }
+  const from=header>=0?header+1:0,out=[];let current=null;
+  for(let i=from;i<lines.length;i++){
+    const line=lines[i];
+    if(/\b(?:SUB\s*TOTAL|SUBTOTAL|GST\s*\d*\s*%|AMOUNT\s+DUE|GRAND\s+TOTAL|TOTAL\s+DUE)\b/i.test(line))break;
+    const m=line.match(rowRe);
+    if(m){
+      const qty=moneyVal(m[3]),price=moneyVal(m[4]),amount=moneyVal(m[5]);
+      if(!(qty>0)||price===null||amount===null)continue;
+      const code=String(m[1]||'').trim(),desc=cleanInventoryDescription(m[2]);if(!desc)continue;
+      current=normalizeParsedInvoiceItem({sku:cleanVerifiedSku(code,text),item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''});out.push(current);continue;
+    }
+    // Preserve useful continuations beneath the last priced item but never append totals/header metadata.
+    if(current&&!/^(?:S\s*\/?\s*N|SERIAL|SHIPMENT\s+NO|WARRANTY|REF\.?\s*NO|DATE|P\/?O|SALESMAN|TERMS)\b/i.test(line)&&!/^[-–—]?\s*\d[\d,]*[.]\d{2}\s*$/.test(line)){
+      if(!/^(?:PRODUCT|DESCRIPTION|QUANTITY|QTY|UNIT\s+PRICE|AMOUNT)\b/i.test(line))current.description=cleanInventoryDescription((current.description+' '+line).trim());
+    }
   }
   return out;
 }
 
 function v661ParseGenericPricedRows(text=''){
   const lines=normalizePdfText(text).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean),out=[];
-  const n=v=>{let z=String(v||'').replace(/[$SGD\s]/gi,'').replace(/,(?=\d{3}(?:\.\d{2})?$)/g,'').replace(/,(?=\d{2}$)/,'.');const q=Number(z.replace(/[^0-9.-]/g,''));return Number.isFinite(q)?q:null;};
-  const money='(?:[$]?\\s*\\d{1,3}(?:,\\d{3})*(?:[.]\\d{2})|[$]?\\s*\\d+(?:[.]\\d{2}))';
-  const re=new RegExp('^([A-Z0-9][A-Z0-9+._\\/-]{2,})\\s+(.+?)\\s+(\\d+(?:[.]\\d+)?)\\s+('+money+')\\s+('+money+')$','i');
+  const n=v=>{let z=String(v||'').replace(/(?:SGD|S\$|\$)/gi,'').replace(/\s/g,'').replace(/,(?=\d{3}(?:\.\d{2})?$)/g,'').replace(/,(?=\d{2}$)/,'.').replace(/[^0-9.-]/g,'');const q=Number(z);return Number.isFinite(q)?q:null;};
+  const money='(?:S?\\$?\\s*\\d[\\d,]*(?:[.]\\d{2}))';
+  const re=new RegExp('^([A-Z0-9][A-Z0-9+._\\/-]{2,}(?:\\s+[A-Z0-9]{1,8}){0,2})\\s+(.+?)\\s+(\\d+(?:[.]\\d+)?)\\s+('+money+')\\s+('+money+')$','i');
   for(const line of lines){const m=line.match(re);if(!m)continue;const qty=n(m[3]),price=n(m[4]),amount=n(m[5]);if(!(qty>0)||price===null||amount===null)continue;const desc=cleanInventoryDescription(m[2]);if(!desc||/^(?:subtotal|gst|total|amount due)/i.test(desc))continue;out.push(normalizeParsedInvoiceItem({sku:cleanVerifiedSku(m[1],text),item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''}));}
   return out;
 }
@@ -451,26 +459,35 @@ function v661PrepareInventoryLinesForSave(items=[]){
 
 function v661RecoverAvMediaHeader(doc={},rawText=''){
   const sources=v661EvidenceSources(rawText),all=sources.map(x=>x.text).join('\n'),isAv=/\bAV\s+MEDIA\b/i.test(all)||/av\s+media/i.test(String(doc.supplier_name||''));
-  if(!isAv)return doc;doc.supplier_name='AV Media Pte Ltd';
-  const normalizeInv=v=>String(v||'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/^YIN/i,'VIN').replace(/^Y1N/i,'VIN').replace(/^V1N/i,'VIN');
-  const invRe=/\b((?:VIN|YIN|V1N|Y1N|V)\s*\d{2}\s*[- ]?\s*\d{4,})\b/i;
+  if(isAv)doc.supplier_name='AV Media Pte Ltd';
+  const cleanInv=v=>String(v||'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/^YIN/i,'VIN').replace(/^Y1N/i,'VIN').replace(/^V1N/i,'VIN').replace(/^YlN/i,'VIN');
+  const bad=/^(?:CUSTOMER|CODE|DATE|TERMS|SOLD|DELIVERED|REFERENCE|REF|INVOICE|NO)$/i;
   let invoice='';
   for(const src of sources){
-    const rows=(src.layout||[]).flatMap(pg=>pg.rows||[]);
-    for(const r of rows){
-      const txt=String(r.text||'');
-      if(/(?:invoice|tnvolee|involee|invoce)\s*no\.?/i.test(txt)||(/customer\s*code/i.test(txt)&&/\bno\.?\b/i.test(txt))){const m=txt.match(invRe);if(m){invoice=normalizeInv(m[1]);break;}}
-    }
-    if(invoice)break;
-    const labelled=src.text.match(/(?:invoice|tnvolee|involee|invoce)\s*no\.?\s*[:#.-]?\s*([^\n]{0,35})/i);if(labelled){const m=labelled[1].match(invRe);if(m)invoice=normalizeInv(m[1]);}
+    const text=normalizePdfText(src.text||'');
+    const labelled=[
+      /(?:invoice|invo[i1l]ce|tnvo[i1l]ce)\s*(?:no\.?|number|#)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{3,})/ig,
+      /\b(?:INV|VIN|YIN|V1N|Y1N)\s*[- ]?\s*\d{2,}[-/]?\d{3,}\b/ig
+    ];
+    for(const re of labelled){const ms=[...text.matchAll(re)];for(const m of ms){const c=cleanInv(m[1]||m[0]);if(c&&!bad.test(c)&&!parseDate(c)){invoice=c;break;}}if(invoice)break;}
     if(invoice)break;
   }
-  if(invoice)doc.invoice_number=invoice;
-  // Never replace the invoice number with shipment/reference numbers when the header was not proven.
-  if(doc.invoice_number&&!/^(?:VIN|V)\d{2}-?\d{4,}$/i.test(normalizeInv(doc.invoice_number)))doc.invoice_number='';
+  if(invoice){if(isAv&&/^(?:YIN|V1N|Y1N|VIN)/i.test(invoice))invoice=cleanInv(invoice);doc.invoice_number=invoice;}
+  // Date: labelled Invoice Date wins; then the DATE column in an invoice-header row; never footer timestamps.
   let date='';
-  for(const src of sources){const saved=state.pdfLayout;state.pdfLayout=src.layout||[];date=detectInvoiceDateFromLayout();state.pdfLayout=saved;if(date)break;}
-  if(!date){for(const src of sources){const lines=src.text.split('\n').map(x=>x.trim()).filter(Boolean);for(let i=0;i<lines.length;i++){if(!/\bDATE\b/i.test(lines[i]))continue;for(const p of [lines[i],...lines.slice(i+1,i+4)]){const m=normalizePdfText(p).match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*\d{2,4})/);if(m){const d=parseDate(m[1]);if(d){date=d;break;}}}if(date)break;}if(date)break;}}
+  for(const src of sources){
+    const text=normalizePdfText(src.text||'');
+    let m=text.match(/\b(?:invoice\s*)?date\s*[:#.-]?\s*([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*\d{2,4})/i);if(m){date=parseDate(m[1]);if(date)break;}
+    const lines=text.split('\n').map(x=>x.trim()).filter(Boolean);
+    for(let i=0;i<lines.length;i++){
+      if(!/\bDATE\b/i.test(lines[i])||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(lines[i]))continue;
+      const ctx=[lines[i-1]||'',lines[i],lines[i+1]||'',lines[i+2]||''].join(' ');
+      if(!/\b(?:REF\.?\s*NO|P\/?O|SALESMAN|TERMS|INVOICE\s*(?:NO|NUMBER)|CUSTOMER\s*CODE)\b/i.test(ctx))continue;
+      const dm=ctx.match(/([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*\d{2,4})/);if(dm){date=parseDate(dm[1]);if(date)break;}
+    }
+    if(date)break;
+    const saved=state.pdfLayout;state.pdfLayout=src.layout||[];date=detectInvoiceDateFromLayout();state.pdfLayout=saved;if(date)break;
+  }
   if(date)doc.invoice_date=date;
   if(/^(?:sold|sold\s*to|delivered|delivered\s*to|customer|customer\s*code|reference|ref|date|invoice)$/i.test(String(doc.delivery_order_number||'').trim()))doc.delivery_order_number='';
   if(/^(?:sold|sold\s*to|delivered|delivered\s*to|customer|customer\s*code|date|invoice|terms)$/i.test(String(doc.reference_number||'').trim()))doc.reference_number='';
@@ -479,21 +496,74 @@ function v661RecoverAvMediaHeader(doc={},rawText=''){
 
 function v661ClassifyInvoiceDocument(text='',extractedItems=[],inventoryItems=[]){
   const evidence=v661EvidenceSources(text).map(x=>x.text).join('\n'),t=normalizePdfText(evidence).replace(/\s+/g,' ').trim();
-  const physical=(inventoryItems||[]).filter(x=>!isNonInventoryServiceLine(x)),service=(extractedItems||[]).filter(isNonInventoryServiceLine);
-  if(physical.length)return{type:'equipment',reason:'Verified priced physical-equipment rows were extracted.'};
-  if((extractedItems||[]).length&&service.length===(extractedItems||[]).length)return{type:'service',reason:'All verified priced rows are service/labour/installation work.'};
-  let textRows=[];for(const src of v661EvidenceSources(text)){textRows.push(...parseAvMediaTextItems(src.text),...v661ParseGenericPricedRows(src.text));}
-  textRows=sanitizeParsedInventoryItems(textRows,evidence);const textPhysical=textRows.filter(x=>!isNonInventoryServiceLine(x)),textService=textRows.filter(isNonInventoryServiceLine);
-  if(textPhysical.length)return{type:'equipment',reason:'A priced physical-equipment row was recovered during the final scan.'};
-  if(textRows.length&&textService.length===textRows.length)return{type:'service',reason:'The recovered priced rows are service work only.'};
-  const strongService=/\b(?:supply\s+)?labou?r\b/i.test(t)||/\b(?:dismount(?:ing)?|dismantl(?:e|ing)|re-?instat(?:e|ement)|relocat(?:e|ion)|remov(?:e|al))\b[\s\S]{0,220}\b(?:install|replace|test|commission)/i.test(t)||/\bsupply\b[\s\S]{0,80}\b(?:replace|dismount|dismantle|reinstate|relocate)\b/i.test(t)||/\b(?:service|installation|labou?r)\s+(?:work|works|job|charge|charges|services?)\b/i.test(t);
-  const physicalWords=/\b(?:projector|microphone|speaker|control\s+panel|camera|mixer|display|monitor|trolley|transmitter|receiver|screen|wireless\s+system|audio\s+tester)\b/i.test(t);
-  const productHeader=/\b(?:PRODUCT|STOCK)\s*(?:NO\.?|CODE)?\b/i.test(t)&&/\bDESCRIPTION\b/i.test(t)&&/\b(?:QTY|QUANTITY)\b/i.test(t)&&/\bAMOUNT\b/i.test(t);
-  const pricedPhysical=evidence.split(/\n+/).some(line=>{const x=normalizePdfText(line).replace(/\s+/g,' ').trim();if(!x)return false;const hasPhysical=/\b(?:projector|microphone|speaker|control\s+panel|camera|mixer|display|monitor|trolley|transmitter|receiver|screen|wireless\s+system|audio\s+tester)\b/i.test(x);const hasPrice=/(?:[$]|SGD)?\s*\d[\d,]*(?:[.]\d{2})/.test(x);const hasCode=/\b[A-Z0-9][A-Z0-9._\/-]{3,}\b/i.test(x);const serviceAction=/\b(?:labou?r|dismount|dismantl|replace|installation|installing|commission|testing|service\s+work)\b/i.test(x);return hasPhysical&&hasPrice&&hasCode&&!serviceAction;});
-  if(strongService&&!textPhysical.length&&!pricedPhysical)return{type:'service',reason:'Repeated scans found explicit service-action wording and no verified priced physical item.'};
-  if((productHeader&&physicalWords)||pricedPhysical)return{type:'equipment',reason:'Repeated scans found a priced physical-equipment row.'};
-  return{type:'uncertain',reason:'Native text plus recovery OCR could not prove the type.'};
+  let rows=[];for(const src of v661EvidenceSources(text)){rows.push(...parseAvMediaTextItems(src.text),...v661ParseGenericPricedRows(src.text),...v662ParsePhysicalEvidenceRows(src.text));}
+  rows=sanitizeParsedInventoryItems([...(extractedItems||[]),...rows],evidence);
+  const physical=[...(inventoryItems||[]),...rows.filter(x=>!isNonInventoryServiceLine(x))].filter((x,i,a)=>a.findIndex(y=>norm(y.sku||y.item_name)===norm(x.sku||x.item_name)&&Number(y.amount)===Number(x.amount))===i);
+  const service=rows.filter(isNonInventoryServiceLine);
+  if(physical.length)return{type:'equipment',equipmentScore:10+physical.length*2,serviceScore:service.length?3:0,reason:'Verified priced physical-equipment rows were found; service rows, if any, are excluded from inventory.'};
+  if(rows.length&&service.length===rows.length)return{type:'service',equipmentScore:0,serviceScore:10+service.length*2,reason:'Every verified priced row is labour/service/installation work.'};
+  const productHeader=/\b(?:PRODUCT|STOCK)\s*(?:NO\.?|NUMBER|CODE)?\b/i.test(t)&&/\bDESCRIPTION\b/i.test(t)&&/\b(?:QTY|QUANTITY)\b/i.test(t)&&/\b(?:UNIT\s*)?PRICE\b/i.test(t)&&/\bAMOUNT\b/i.test(t);
+  const physicalWords=/\b(?:projector|microphone|speaker|control\s+panel|camera|mixer|display|monitor|trolley|transmitter|receiver|screen|wireless\s+system|audio\s+tester|amplifier|processor|switcher|rack|stand|mount|cable)\b/i.test(t);
+  const rowShape=(evidence.match(/^[A-Z0-9][A-Z0-9+._\/-]{2,}[^\n]*\s\d+(?:\.\d+)?\s+(?:S?\$?\s*)?\d[\d,]*\.\d{2}\s+(?:S?\$?\s*)?\d[\d,]*\.\d{2}\s*$/gmi)||[]).length;
+  const serviceStrong=/\b(?:supply\s+)?labou?r\b/i.test(t)||/\b(?:supply\s+to\s+)?replace\b[\s\S]{0,120}\b(?:projector|microphone|speaker|display|screen|equipment)\b/i.test(t)||/\b(?:dismount(?:ing)?|dismantl(?:e|ing)|re-?instat(?:e|ement)|relocat(?:e|ion)|remov(?:e|al))\b[\s\S]{0,180}\b(?:install|replace|test|commission)/i.test(t)||/\b(?:service|installation|labou?r)\s+(?:work|works|job|charge|charges|services?)\b/i.test(t);
+  const codePhysical=evidence.split(/\n+/).some(line=>/^[|.,;:\-]*\s*[A-Z0-9][A-Z0-9+._\/-]{2,}\s+/.test(line.trim())&&/\b(?:projector|microphone|speaker|control\s+panel|camera|mixer|display|monitor|trolley|transmitter|receiver|screen|audio\s+tester|amplifier|processor|switcher|rack|stand|mount)\b/i.test(line)&&/\b\d{1,4}\b/.test(line));let equipmentScore=(productHeader?4:0)+(physicalWords?2:0)+(rowShape>=2?5:rowShape===1?2:0)+(codePhysical?6:0),serviceScore=serviceStrong?6:0;
+  if(serviceStrong&&!codePhysical&&rowShape<=1)serviceScore+=4;
+  if(equipmentScore>=7&&equipmentScore>=serviceScore+2)return{type:'equipment',equipmentScore,serviceScore,reason:'Independent scans found a product table and priced physical-equipment evidence.'};
+  if(serviceScore>=8&&equipmentScore<5)return{type:'service',equipmentScore,serviceScore,reason:'Independent scans found service-only work and no priced physical-equipment row.'};
+  return{type:'uncertain',equipmentScore,serviceScore,reason:'Native text, layout and OCR evidence still conflict or are insufficient.'};
 }
+
+function v662MoneyNumber(v=''){const z=String(v||'').replace(/(?:SGD|S\$|\$)/gi,'').replace(/\s/g,'').replace(/,(?=\d{3}(?:\.\d{2})?$)/g,'').replace(/,(?=\d{2}$)/,'.').replace(/[^0-9.-]/g,'');const n=Number(z);return Number.isFinite(n)?n:null;}
+function v662RecoverMoneyFromText(doc={},text=''){
+  const lines=normalizePdfText(text).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const pick=(re)=>{for(const l of lines){if(!re.test(l))continue;const vals=[...l.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*[.]\d{2})/gi)].map(m=>v662MoneyNumber(m[1])).filter(Number.isFinite);if(vals.length)return vals[vals.length-1];}return null;};
+  const s=pick(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i),g=pick(/\bGST(?:\s*\d+(?:\.\d+)?\s*%)?\b/i),t=pick(/\b(?:AMOUNT\s+DUE|GRAND\s+TOTAL|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i);
+  if(s!==null)doc.subtotal=s;if(g!==null)doc.gst=g;if(t!==null)doc.total_amount=t;
+  let a=Number(doc.subtotal),b=Number(doc.gst),c=Number(doc.total_amount);
+  if(Number.isFinite(c)&&Number.isFinite(b)&&(!Number.isFinite(a)||Math.abs((a+b)-c)>.06)){const x=Math.round((c-b)*100)/100;if(x>=0)doc.subtotal=x;}
+  a=Number(doc.subtotal);b=Number(doc.gst);c=Number(doc.total_amount);
+  if(Number.isFinite(a)&&Number.isFinite(b)&&(!Number.isFinite(c)||Math.abs((a+b)-c)>.06))doc.total_amount=Math.round((a+b)*100)/100;
+  return doc;
+}
+async function v662FileSha256(file){try{const buf=await file.arrayBuffer(),dig=await crypto.subtle.digest('SHA-256',buf);return [...new Uint8Array(dig)].map(b=>b.toString(16).padStart(2,'0')).join('');}catch(_){return '';}}
+function v662FileKind(file){const n=String(file?.name||'').toLowerCase(),t=String(file?.type||'').toLowerCase();if(t==='application/pdf'||n.endsWith('.pdf'))return'pdf';if(t.startsWith('image/')||/\.(?:png|jpe?g|webp|bmp|tiff?)$/.test(n))return'image';if(t.includes('wordprocessingml')||n.endsWith('.docx'))return'docx';return'unsupported';}
+async function v662EnsureJSZip(){if(window.JSZip)return window.JSZip;await new Promise((res,rej)=>{const old=document.querySelector('script[data-v662-jszip]');if(old){old.addEventListener('load',res,{once:true});old.addEventListener('error',rej,{once:true});return;}const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';sc.async=true;sc.dataset.v662Jszip='1';sc.onload=res;sc.onerror=()=>rej(new Error('DOCX reader could not be loaded.'));document.head.appendChild(sc);});return window.JSZip;}
+async function v662OcrBlob(blob,source='image-ocr'){
+  const T=await v661EnsureTesseract(),worker=await T.createWorker('eng');
+  try{await worker.setParameters({tessedit_pageseg_mode:T.PSM?.AUTO??'3',preserve_interword_spaces:'1',user_defined_dpi:'220'});const r=await worker.recognize(blob,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},1,0),text=String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim();if(text)state.ocrCandidates=[...(state.ocrCandidates||[]),{source,text,layout:[layout],score:ocrTextQuality(text)+layoutInvoiceQuality(layout)}];if(layout?.rows?.length)state.pdfLayout=[layout];return text;}finally{await worker.terminate();}
+}
+async function v662ExtractDocx(file){
+  const JSZip=await v662EnsureJSZip(),zip=await JSZip.loadAsync(await file.arrayBuffer()),xml=await zip.file('word/document.xml')?.async('text');if(!xml)throw new Error('DOCX document.xml was not found.');
+  const doc=new DOMParser().parseFromString(xml,'application/xml'),paras=[...doc.getElementsByTagNameNS('*','p')].map(p=>[...p.getElementsByTagNameNS('*','t')].map(t=>t.textContent||'').join(' ').trim()).filter(Boolean),texts=[paras.join('\n')];
+  if(texts[0].length<700||!/(?:invoice|tax invoice)/i.test(texts[0])){const media=Object.keys(zip.files).filter(n=>/^word\/media\//i.test(n)).slice(0,8);for(const name of media){const b=await zip.file(name).async('blob');try{const t=await v662OcrBlob(b,'docx-image:'+name);if(t)texts.push(t);}catch(e){console.warn('Embedded DOCX image OCR skipped',name,e);}}}
+  return texts.filter(Boolean).join('\n');
+}
+async function v662TryServerInvoiceProcessing(file){
+  const url=String(CFG.invoiceParserUrl||'').trim();if(!url)return null;
+  try{const fd=new FormData();fd.append('file',file,file.name);fd.append('parser_version','6.62');const headers={};if(state.session?.access_token)headers.Authorization='Bearer '+state.session.access_token;const r=await fetch(url,{method:'POST',headers,body:fd});if(!r.ok)throw new Error('Server parser '+r.status);const j=await r.json();if(j?.file_sha256)state.importFileHash=j.file_sha256;if(j?.text){state.ocrCandidates=[...(state.ocrCandidates||[]),{source:'server',text:String(j.text),layout:j.layout||[],score:999}];if(j.layout?.length)state.pdfLayout=j.layout;state.serverParseResult=j;return String(j.text);}return null;}catch(e){console.warn('Server parser unavailable; using local extraction.',e);return null;}
+}
+async function v662ExtractInvoiceFile(file){
+  const kind=v662FileKind(file);if(kind==='unsupported')throw new Error('Unsupported invoice format. Use PDF, JPG/JPEG, PNG, WEBP or DOCX.');
+  state.importFileKind=kind;state.importFileHash=await v662FileSha256(file);state.serverParseResult=null;
+  const serverText=await v662TryServerInvoiceProcessing(file);
+  if(kind==='pdf'){const local=await extractPdf(file);return [local,serverText].filter(Boolean).join('\n');}
+  if(kind==='image'){const local=await v662OcrBlob(file,'image-primary');return [local,serverText].filter(Boolean).join('\n');}
+  if(kind==='docx'){const local=await v662ExtractDocx(file);return [local,serverText].filter(Boolean).join('\n');}
+  return serverText||'';
+}
+function v662ParsePhysicalEvidenceRows(text=''){
+  const out=[],lines=normalizePdfText(text).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const physical=/\b(?:projector|microphone|speaker|control\s+panel|camera|mixer|display|monitor|trolley|transmitter|receiver|screen|audio\s+tester|amplifier|processor|switcher|rack|stand|mount)\b/i;
+  const service=/\b(?:labou?r|dismount|dismantl|replace|installation|installing|commission|testing|service\s+work)\b/i;
+  for(const line of lines){if(!physical.test(line)||service.test(line))continue;const m=line.match(/^[|.,;:\-]*\s*([A-Z0-9][A-Z0-9+._\/-]{2,})\s+(.+?)\s+(\d{1,4})(?:\s+.*)?$/i);if(!m)continue;const sku=cleanVerifiedSku(m[1],text),desc=cleanInventoryDescription(m[2]);if(!sku||!desc)continue;const vals=[...line.matchAll(/(?:S?[$#]?\s*)?(\d[\d,]*[ .]\d{2})/g)].map(x=>v662MoneyNumber(x[1].replace(/ (\d{2})$/,'.$1'))).filter(Number.isFinite);out.push(normalizeParsedInvoiceItem({sku,item_name:desc,description:desc,category:'',unit:'pcs',quantity:Number(m[3]),unit_price:vals.length>=2?vals[vals.length-2]:null,amount:vals.length?vals[vals.length-1]:null,warranty:'',serials:''}));}
+  return out;
+}
+function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.62',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
+function v662InstallAuditWrappers(){
+  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.62',parse_audit:audit},purchase,lines,file);return r;};LocalDB.prototype.__v662Import=true;}
+  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const r=await orig.call(this,doc,purchase,lines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.62',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
+}
+function v662ConfigureInvoiceFileInputs(){setTimeout(()=>{document.querySelectorAll('input[type="file"]').forEach(el=>{el.accept='.pdf,.png,.jpg,.jpeg,.webp,.docx,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document';});},0);}
 function v661EffectiveInvoiceType(){
   const detected=state.parsed?.invoiceClassification?.type||'uncertain';
   return detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;
@@ -516,19 +586,19 @@ async function v661RefreshDuplicateWarning(){
 }
 function v661FinalizeParsedInvoice(parsed={},raw=''){
   const sources=v661EvidenceSources(parsed.rawText||raw||''),evidence=sources.map(x=>x.text).join('\n');
-  let doc=recoverAvMediaHeader({...parsed.doc},evidence);
-  // Try labelled money recovery against every layout and keep an arithmetically consistent set.
+  let doc=recoverAvMediaHeader({...parsed.doc},evidence);doc=v662RecoverMoneyFromText(doc,evidence);
   const savedLayout=state.pdfLayout;let moneyCandidates=[];
-  for(const src of sources){state.pdfLayout=src.layout||[];let d=v661RepairInvoiceMoneyFromLayout({...doc});const a=Number(d.subtotal),b=Number(d.gst),c=Number(d.total_amount),ok=[a,b,c].every(Number.isFinite)&&Math.abs((a+b)-c)<=.06;moneyCandidates.push({d,ok,score:(Number.isFinite(a)?1:0)+(Number.isFinite(b)?1:0)+(Number.isFinite(c)?1:0)+(ok?5:0)});}
+  for(const src of sources){state.pdfLayout=src.layout||[];let d=v661RepairInvoiceMoneyFromLayout({...doc});d=v662RecoverMoneyFromText(d,src.text||'');const a=Number(d.subtotal),b=Number(d.gst),c=Number(d.total_amount),ok=[a,b,c].every(Number.isFinite)&&Math.abs((a+b)-c)<=.06;moneyCandidates.push({d,ok,score:(Number.isFinite(a)?1:0)+(Number.isFinite(b)?1:0)+(Number.isFinite(c)?1:0)+(ok?8:0)});}
   state.pdfLayout=savedLayout;moneyCandidates.sort((a,b)=>b.score-a.score);if(moneyCandidates[0])doc=moneyCandidates[0].d;
-  const candidates=[];const add=(arr,origin,srcText)=>{const xs=sanitizeParsedInventoryItems((arr||[]).map(normalizeParsedInvoiceItem),srcText||evidence);if(xs.length)candidates.push({origin,items:xs,score:invoiceItemsQuality(xs,doc.subtotal)});};
+  const candidates=[];const add=(arr,origin,srcText)=>{const xs=sanitizeParsedInventoryItems((arr||[]).map(normalizeParsedInvoiceItem),srcText||evidence).filter(x=>String(x.item_name||'').trim()&&Number(x.quantity)>0);if(xs.length)candidates.push({origin,items:xs,score:invoiceItemsQuality(xs,doc.subtotal)});};
   add(parsed.items||[],'base',parsed.rawText||raw);
-  for(const src of sources){const old=state.pdfLayout;state.pdfLayout=src.layout||[];if(/\bAV\s+MEDIA\b/i.test(src.text)||/av\s+media/i.test(String(doc.supplier_name||''))){add(parseAvMediaMixedLayoutItems(),'av-layout:'+src.source,src.text);add(parseAvMediaTextItems(src.text),'av-text:'+src.source,src.text);}add(v661ParseGenericPricedRows(src.text),'generic-text:'+src.source,src.text);state.pdfLayout=old;}
+  for(const src of sources){const old=state.pdfLayout;state.pdfLayout=src.layout||[];if(/\bAV\s+MEDIA\b/i.test(src.text)||/av\s+media/i.test(String(doc.supplier_name||''))){add(parseAvMediaMixedLayoutItems(),'av-layout:'+src.source,src.text);add(parseAvMediaTextItems(src.text),'av-text:'+src.source,src.text);}add(v661ParseGenericPricedRows(src.text),'generic-text:'+src.source,src.text);add(v662ParsePhysicalEvidenceRows(src.text),'physical-evidence:'+src.source,src.text);if(typeof parseFlexibleProductLayoutItems==='function')add(parseFlexibleProductLayoutItems(),'flex-layout:'+src.source,src.text);if(typeof parseProductCodeLayoutItems==='function')add(parseProductCodeLayoutItems(),'product-layout:'+src.source,src.text);state.pdfLayout=old;}
   candidates.sort((a,b)=>b.score-a.score);const extracted=candidates[0]?.items||[],withSerials=attachSerialBlocks(extracted,evidence),inventory=sanitizeParsedInventoryItems(inventoryOnlyItems(withSerials),evidence);
-  if(inventory.length&&(!Number.isFinite(Number(doc.subtotal))||Number(doc.subtotal)<=0)){const sum=inventory.reduce((n,x)=>n+(Number(x.amount)||0),0);if(sum>0)doc.subtotal=Math.round(sum*100)/100;}
-  if(Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.gst))&&!Number.isFinite(Number(doc.total_amount)))doc.total_amount=Math.round((Number(doc.subtotal)+Number(doc.gst))*100)/100;
+  const physicalSum=inventory.reduce((n,x)=>n+(Number(x.amount)||0),0);
+  if(physicalSum>0&&!Number.isFinite(Number(doc.subtotal)))doc.subtotal=Math.round(physicalSum*100)/100;
+  doc=v662RecoverMoneyFromText(doc,evidence);
   const classification=classifyInvoiceDocument(evidence,withSerials,inventory);
-  return {...parsed,doc,items:inventory,excludedServiceCount:Math.max(0,withSerials.length-inventory.length),invoiceClassification:classification,serviceOnlyInvoice:classification.type==='service',dateReviewRequired:!doc.invoice_date,rawText:evidence,parseEvidence:{...(parsed.parseEvidence||{}),itemSource:candidates[0]?.origin||'none',candidateCounts:candidates.map(c=>({origin:c.origin,count:c.items.length,score:c.score}))}};
+  return {...parsed,doc,items:inventory,excludedServiceCount:Math.max(0,withSerials.length-inventory.length),invoiceClassification:classification,serviceOnlyInvoice:classification.type==='service',dateReviewRequired:!doc.invoice_date,rawText:evidence,parseEvidence:{...(parsed.parseEvidence||{}),itemSource:candidates[0]?.origin||'none',candidateCounts:candidates.map(c=>({origin:c.origin,count:c.items.length,score:c.score})),file_sha256:state.importFileHash||'',file_kind:state.importFileKind||''}};
 }
 
 async function v661ReprocessConfirmedEquipmentInvoice(){
@@ -567,9 +637,9 @@ async function launch(){
     let src=await r.text();
     if(!src.includes("const APP_VERSION='6.55';"))throw new Error('Verified V6.55 source signature was not found.');
 
-    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.61 — calendar-safe invoice dates, resilient AV Media table recovery and evidence validation",'version header');
-    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.61';",'APP_VERSION');
-        src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Missing SKU/model uses the verified equipment name instead of AUTO-*',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
+    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.62 — calendar-safe invoice dates, resilient AV Media table recovery and evidence validation",'version header');
+    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.62';",'APP_VERSION');
+        src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Golden-corpus regression testing added for real invoice layouts',\n  'PDF, JPG/JPEG, PNG, WEBP and DOCX use one normalised import pipeline',\n  'Native text is preferred and OCR is used as fallback/recovery for scanned content',\n  'SHA-256 file hashing and parser audit metadata are supported',\n  'Optional server invoice processor hook is available through config.js',\n  'Header, totals, line items and invoice type are validated across independent scans',\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Missing SKU/model uses the verified equipment name instead of AUTO-*',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
 
     src=replaceSection(src,"function detectInvoiceDate(text,invoice=''){","\nfunction first(",asPatchedFunction(v661DetectInvoiceDate,'detectInvoiceDate')+'\n','detectInvoiceDate');
     src=replaceSection(src,"function parseDate(v=''){","\nfunction invoiceSignals",asPatchedFunction(v661ParseDate,'parseDate')+'\n','calendar-safe parseDate');
@@ -588,26 +658,27 @@ async function launch(){
     src=replaceOnce(src,"  const items=inventoryOnlyItems(extractedItems);","  const items=sanitizeParsedInventoryItems(inventoryOnlyItems(extractedItems),itemChoice?.r?.text||best.text);",'evidence-only SKU sanitization');
     src=replaceOnce(src,"  return {...best.parsed,doc,items,excludedServiceCount:Math.max(0,extractedItems.length-items.length),dateReviewRequired:!confirmedDate,rawText:chosen.text,ocrSelection:{source:chosen.source,score:chosen.score,candidates:results.map(r=>({source:r.source,score:r.score,items:validParsedItems(r.parsed.items).length}))}};","  const invoiceClassification=classifyInvoiceDocument(chosen.text,extractedItems,items);\n  const serviceOnlyInvoice=invoiceClassification.type==='service';\n  return {...best.parsed,doc,items,excludedServiceCount:Math.max(0,extractedItems.length-items.length),invoiceClassification,serviceOnlyInvoice,dateReviewRequired:!confirmedDate,rawText:chosen.text,ocrSelection:{source:chosen.source,score:chosen.score,candidates:results.map(r=>({source:r.source,score:r.score,items:validParsedItems(r.parsed.items).length}))}};",'evidence-based invoice classification');
 
-    src=replaceOnce(src,'function cleanupPdfPreview(){',asPatchedFunction(v661CleanVerifiedSku,'cleanVerifiedSku')+'\n'+asPatchedFunction(v661CleanInventoryDescription,'cleanInventoryDescription')+'\n'+asPatchedFunction(v661ParseGenericPricedRows,'v661ParseGenericPricedRows')+'\n'+asPatchedFunction(v661EvidenceSources,'v661EvidenceSources')+'\n'+asPatchedFunction(v661SanitizeParsedInventoryItems,'sanitizeParsedInventoryItems')+'\n'+asPatchedFunction(v661PrepareInventoryLinesForSave,'prepareInventoryLinesForSave')+'\n'+asPatchedFunction(v661RecoverAvMediaHeader,'recoverAvMediaHeader')+'\n'+asPatchedFunction(v661ClassifyInvoiceDocument,'classifyInvoiceDocument')+'\n'+asPatchedFunction(v661EffectiveInvoiceType,'effectiveInvoiceType')+'\n'+asPatchedFunction(v661ApplyParsedReviewToForm,'applyParsedReviewToForm')+'\n'+asPatchedFunction(v661RefreshDuplicateWarning,'refreshDuplicateWarning')+'\n'+asPatchedFunction(v661FinalizeParsedInvoice,'v661FinalizeParsedInvoice')+'\n'+asPatchedFunction(v661ReprocessConfirmedEquipmentInvoice,'reprocessConfirmedEquipmentInvoice')+'\n'+asPatchedFunction(v661RenderImportEligibility,'renderImportEligibility')+'\n'+asPatchedFunction(v661LooksServiceOnlyDocument,'looksServiceOnlyDocument')+'\n'+asPatchedFunction(v661LayoutMoney,'v661LayoutMoney')+'\n'+asPatchedFunction(v661RepairInvoiceMoneyFromLayout,'v661RepairInvoiceMoneyFromLayout')+'\n'+asPatchedFunction(v661NeedsDeepRecovery,'needsDeepRecovery')+'\n'+asPatchedFunction(v661EnsureTesseract,'v661EnsureTesseract')+'\n'+asPatchedFunction(v661ForceOcrRecovery,'forceOcrRecovery')+'\nfunction cleanupPdfPreview(){','import classification, verified SKU, AV Media recovery and OCR helpers');
+    src=replaceOnce(src,'function cleanupPdfPreview(){',asPatchedFunction(v661CleanVerifiedSku,'cleanVerifiedSku')+'\n'+asPatchedFunction(v661CleanInventoryDescription,'cleanInventoryDescription')+'\n'+asPatchedFunction(v661ParseGenericPricedRows,'v661ParseGenericPricedRows')+'\n'+asPatchedFunction(v662MoneyNumber,'v662MoneyNumber')+'\n'+asPatchedFunction(v662RecoverMoneyFromText,'v662RecoverMoneyFromText')+'\n'+asPatchedFunction(v662FileSha256,'v662FileSha256')+'\n'+asPatchedFunction(v662FileKind,'v662FileKind')+'\n'+asPatchedFunction(v662EnsureJSZip,'v662EnsureJSZip')+'\n'+asPatchedFunction(v662OcrBlob,'v662OcrBlob')+'\n'+asPatchedFunction(v662ExtractDocx,'v662ExtractDocx')+'\n'+asPatchedFunction(v662TryServerInvoiceProcessing,'v662TryServerInvoiceProcessing')+'\n'+asPatchedFunction(v662ExtractInvoiceFile,'extractInvoiceFile')+'\n'+asPatchedFunction(v662ParsePhysicalEvidenceRows,'v662ParsePhysicalEvidenceRows')+'\n'+asPatchedFunction(v662ParseAuditPayload,'v662ParseAuditPayload')+'\n'+asPatchedFunction(v662InstallAuditWrappers,'installParseAuditWrappers')+'\n'+asPatchedFunction(v662ConfigureInvoiceFileInputs,'configureInvoiceFileInputs')+'\n'+asPatchedFunction(v661EvidenceSources,'v661EvidenceSources')+'\n'+asPatchedFunction(v661SanitizeParsedInventoryItems,'sanitizeParsedInventoryItems')+'\n'+asPatchedFunction(v661PrepareInventoryLinesForSave,'prepareInventoryLinesForSave')+'\n'+asPatchedFunction(v661RecoverAvMediaHeader,'recoverAvMediaHeader')+'\n'+asPatchedFunction(v661ClassifyInvoiceDocument,'classifyInvoiceDocument')+'\n'+asPatchedFunction(v661EffectiveInvoiceType,'effectiveInvoiceType')+'\n'+asPatchedFunction(v661ApplyParsedReviewToForm,'applyParsedReviewToForm')+'\n'+asPatchedFunction(v661RefreshDuplicateWarning,'refreshDuplicateWarning')+'\n'+asPatchedFunction(v661FinalizeParsedInvoice,'v661FinalizeParsedInvoice')+'\n'+asPatchedFunction(v661ReprocessConfirmedEquipmentInvoice,'reprocessConfirmedEquipmentInvoice')+'\n'+asPatchedFunction(v661RenderImportEligibility,'renderImportEligibility')+'\n'+asPatchedFunction(v661LooksServiceOnlyDocument,'looksServiceOnlyDocument')+'\n'+asPatchedFunction(v661LayoutMoney,'v661LayoutMoney')+'\n'+asPatchedFunction(v661RepairInvoiceMoneyFromLayout,'v661RepairInvoiceMoneyFromLayout')+'\n'+asPatchedFunction(v661NeedsDeepRecovery,'needsDeepRecovery')+'\n'+asPatchedFunction(v661EnsureTesseract,'v661EnsureTesseract')+'\n'+asPatchedFunction(v661ForceOcrRecovery,'forceOcrRecovery')+'\nfunction cleanupPdfPreview(){','import classification, verified SKU, AV Media recovery and OCR helpers');
 
     src=replaceOnce(src,"async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();","async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.importClassificationChoice=null;",'reset invoice-type choice');
 
-    src=replaceOnce(src,"const text=await extractPdf(file);const parsedBest=parseBestInvoice(text);state.parsed={...parsedBest,raw:parsedBest.rawText||text};","let text=await extractPdf(file);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};",'automatic recovery OCR');
+    src=replaceOnce(src,"const text=await extractPdf(file);const parsedBest=parseBestInvoice(text);state.parsed={...parsedBest,raw:parsedBest.rawText||text};","let text=await extractInvoiceFile(file);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};",'automatic recovery OCR');
 
     src=replaceOnce(src,"console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});renderParsedItems();const dupe=", "console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed.items=sanitizeParsedInventoryItems(state.parsed.items||[],state.parsed.raw||text);renderParsedItems();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=",'eligibility rendering');
     src=replaceOnce(src,",d,state.parsed.items,namedFile);state.lastImportCount=state.parsed.items.length;",",d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;",'deterministic SKU fallback');
     src=replaceOnce(src,"finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Confirm & save';}if($('importProgress'))$('importProgress').classList.add('hidden');}","finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}",'save-button final state');
 
-    const gate="\n// V6.61 evidence-based equipment-only save gate.\n$('saveImportBtn').addEventListener('click',e=>{\n  if(!state.parsed)return;\n  const detected=state.parsed.invoiceClassification?.type||'uncertain';\n  const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;\n  if(effective==='equipment')return;\n  e.preventDefault();e.stopImmediatePropagation();\n  renderImportEligibility();\n  toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be saved.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');\n},true);\n\n";
+    const gate="\n// V6.62 evidence-based equipment-only save gate.\n$('saveImportBtn').addEventListener('click',e=>{\n  if(!state.parsed)return;\n  const detected=state.parsed.invoiceClassification?.type||'uncertain';\n  const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;\n  if(effective==='equipment')return;\n  e.preventDefault();e.stopImmediatePropagation();\n  renderImportEligibility();\n  toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be saved.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');\n},true);\n\n";
     src=replaceOnce(src,'// Final evidence gate runs before the existing save handler.',gate+'// Final evidence gate runs before the existing save handler.','invoice classification save gate');
 
+    src+='\ntry{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn(\'V6.62 optional audit/file-input setup skipped\',e);}\n';
     const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
     try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch(err){
-    console.error('AV Inventory Hub V6.61 startup error:',err);
+    console.error('AV Inventory Hub V6.62 startup error:',err);
     const box=document.createElement('div');
     box.style.cssText='position:fixed;inset:20px;z-index:99999;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-    box.innerHTML='<b>AV Inventory Hub V6.61 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
+    box.innerHTML='<b>AV Inventory Hub V6.62 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
     document.body.appendChild(box);
   }
 }
