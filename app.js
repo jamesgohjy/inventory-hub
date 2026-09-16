@@ -1,22 +1,22 @@
-// AV Inventory Hub V6.68 — serial assignment integrity and compact audit filters
-// This patch loader applies V6.68 safely on top of the verified V6.55 source.
+// AV Inventory Hub V6.69 — cancellable import processing and document reorganisation
+// This patch loader applies V6.69 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
 function replaceOnce(src,needle,replacement,label=needle){
   const i=src.indexOf(needle);
-  if(i<0)throw new Error('V6.67 patch marker not found: '+label);
+  if(i<0)throw new Error('V6.69 patch marker not found: '+label);
   return src.slice(0,i)+replacement+src.slice(i+needle.length);
 }
 function replaceSection(src,startMarker,endMarker,replacement,label=startMarker){
   const s=src.indexOf(startMarker),e=src.indexOf(endMarker,s+startMarker.length);
-  if(s<0||e<0)throw new Error('V6.67 patch section not found: '+label);
+  if(s<0||e<0)throw new Error('V6.69 patch section not found: '+label);
   return src.slice(0,s)+replacement+src.slice(e);
 }
 function asPatchedFunction(fn,newName){
   const source=fn.toString();
   const patched=source.replace(/^(async\s+)?function\s+[^\s(]+/,(_m,asyncPrefix='')=>`${asyncPrefix||''}function ${newName}`);
   const expected=(source.startsWith('async function ')?'async function ':'function ')+newName+'(';
-  if(!patched.startsWith(expected))throw new Error('V6.67 helper rename failed for '+newName);
+  if(!patched.startsWith(expected))throw new Error('V6.69 helper rename failed for '+newName);
   return patched;
 }
 
@@ -797,10 +797,10 @@ function v662ParsePhysicalEvidenceRows(text=''){
   for(const line of lines){if(!physical.test(line)||service.test(line))continue;const m=line.match(/^[|.,;:\-]*\s*([A-Z0-9][A-Z0-9+._\/-]{2,})\s+(.+?)\s+(\d{1,4})(?:\s+.*)?$/i);if(!m)continue;const sku=cleanVerifiedSku(m[1],text),desc=cleanInventoryDescription(m[2]);if(!sku||!desc)continue;const vals=[...line.matchAll(/(?:S?[$#]?\s*)?(\d[\d,]*[ .]\d{2})/g)].map(x=>v662MoneyNumber(x[1].replace(/ (\d{2})$/,'.$1'))).filter(Number.isFinite);out.push(normalizeParsedInvoiceItem({sku,item_name:desc,description:desc,category:'',unit:'pcs',quantity:Number(m[3]),unit_price:vals.length>=2?vals[vals.length-2]:null,amount:vals.length?vals[vals.length-1]:null,warranty:'',serials:''}));}
   return out;
 }
-function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.68',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
+function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.69',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
 function v662InstallAuditWrappers(){
-  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.68',parse_audit:audit},purchase,lines,file);return r;};LocalDB.prototype.__v662Import=true;}
-  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const r=await orig.call(this,doc,purchase,lines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.68',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
+  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.69',parse_audit:audit},purchase,lines,file);return r;};LocalDB.prototype.__v662Import=true;}
+  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const r=await orig.call(this,doc,purchase,lines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.69',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
 }
 function v662ConfigureInvoiceFileInputs(){setTimeout(()=>{document.querySelectorAll('input[type="file"]').forEach(el=>{el.accept='.pdf,.png,.jpg,.jpeg,.webp,.docx,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document';});},0);}
 function v661EffectiveInvoiceType(){
@@ -877,8 +877,8 @@ async function launch(){
     if(!src.includes("const APP_VERSION='6.55';"))throw new Error('Verified V6.55 source signature was not found.');
 
     src=replaceOnce(src,"const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2500)};","const toast=(msg)=>{const openDialogs=[...document.querySelectorAll('dialog[open]')];const dlg=openDialogs[openDialogs.length-1];if(dlg){let t=dlg.querySelector('.v667-modal-toast');if(!t){t=document.createElement('div');t.className='v667-modal-toast';t.setAttribute('role','status');t.style.cssText='position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:min(720px,calc(100vw - 40px));background:#10253f;color:#fff;border:1px solid #4c6f96;border-radius:10px;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,.32);font:600 14px/1.4 system-ui,sans-serif;text-align:center;';dlg.appendChild(t);}t.textContent=msg;t.style.display='block';clearTimeout(t._hideTimer);t._hideTimer=setTimeout(()=>{t.style.display='none';},3500);return;}const t=$('toast');if(!t)return;t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3000)};",'modal-visible toast');
-    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.68 — serial-safe invoice parsing and compact audit filters",'version header');
-    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.68';",'APP_VERSION');
+    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.69 — cancellable import processing and document reorganisation",'version header');
+    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.69';",'APP_VERSION');
         src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Serial-number fields exclude SKU/model identifiers from the same invoice',\n  'Recent Activities All users filter now matches the date filter width',\n  'AV Media invoices use targeted high-resolution header/table OCR when native PDF text is corrupted',\n  'Gibberish OCR item names are rejected before SKU fallback or inventory save',\n  'AV Media product codes, descriptions, quantities and prices are parsed from verified row evidence',\n  'Warranty rows attach to equipment instead of creating separate inventory items',\n  'Installation/service rows remain excluded from physical inventory',\n  'Categories are filled only from clear equipment nouns such as projector, control panel or speaker',\n  'Import drop zone is centred and reduced to 50% width on desktop',\n  'Safe first-12-character SKU fallback from verified standard item name when no printed SKU/model is available',\n  'SKU fallback is skipped if it would conflict with another inventory item',\n  'Visible Edit button added beside SKU/item and Category for quick corrections',\n  'Import alerts display above the active modal instead of behind the blurred backdrop',\n  'Invoice dates such as 7-Dec-20 and 07-Dec-2020 are now recognised',\n  'Inventory descriptions remove quantity/UOM/price/currency/subtotal/GST/total contamination',\n  'Invoice-only import gate blocks Delivery Orders, Delivery Notes, packing lists and other non-invoice documents',\n  'Delivery Order references inside a verified invoice remain allowed',\n  'Return-trip, signed-delivery-order, courier, freight and transport rows are excluded from inventory',\n  'SKU/model values are limited to 12 characters maximum',\n  'Documents display DD/MM/YYYY-Company name and stored files use DD-MM-YYYY-Company-name',\n  'Golden-corpus regression testing added for real invoice layouts',\n  'PDF, JPG/JPEG, PNG, WEBP and DOCX use one normalised import pipeline',\n  'Native text is preferred and OCR is used as fallback/recovery for scanned content',\n  'SHA-256 file hashing and parser audit metadata are supported',\n  'Header, totals, line items and invoice type are validated across independent scans',\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
 
     src=replaceSection(src,"function detectInvoiceDate(text,invoice=''){","\nfunction first(",asPatchedFunction(v661DetectInvoiceDate,'detectInvoiceDate')+'\n','detectInvoiceDate');
@@ -932,20 +932,25 @@ async function autoNamedPdf(file,doc){
     const gate="\n// V6.67 invoice-only + equipment-only save gate.\n$('saveImportBtn').addEventListener('click',e=>{\n  if(!state.parsed)return;\n  const docType=detectImportDocumentType(state.parsed.raw||state.parsed.rawText||'');\n  if(docType.type!=='invoice'){e.preventDefault();e.stopImmediatePropagation();toast(docType.type==='delivery_order'?'Only invoices can be imported. Delivery Orders are blocked.':'Only verified invoices can be saved.');return;}\n  const detected=state.parsed.invoiceClassification?.type||'uncertain';\n  const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;\n  if(effective==='equipment')return;\n  e.preventDefault();e.stopImmediatePropagation();\n  renderImportEligibility();\n  toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be saved.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');\n},true);\n";
     src=replaceOnce(src,'// Final evidence gate runs before the existing save handler.',gate+'// Final evidence gate runs before the existing save handler.','invoice classification save gate');
 
-    src+='\ntry{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn(\'V6.68 optional audit/file-input setup skipped\',e);}\n';
+    src+='\ntry{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn(\'V6.69 optional audit/file-input setup skipped\',e);}\n';
     const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
     try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch(err){
-    console.error('AV Inventory Hub V6.68 startup error:',err);
+    console.error('AV Inventory Hub V6.69 startup error:',err);
     const box=document.createElement('div');
     box.style.cssText='position:fixed;inset:20px;z-index:99999;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-    box.innerHTML='<b>AV Inventory Hub V6.68 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
+    box.innerHTML='<b>AV Inventory Hub V6.69 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
     document.body.appendChild(box);
   }
 }
 
 
 const V667_RELEASE_NOTES=[
+  'Import processing now has a real Cancel processing button that safely stops unsaved work by reloading before any save stage',
+  'Cancel processing is hidden during Confirm & save so database writes cannot be interrupted mid-save',
+  'Documents can be reorganised into collapsible supplier/company groups without moving or rewriting stored files',
+  'Reorganise supports Standard list, Group by company, and Company A–Z / Z–A display order',
+  'Document search and existing newest/oldest sorting continue to work before supplier grouping is applied',
   'Serial-number fields now remove SKU/model identifiers accidentally merged by OCR',
   'Serial confidence warnings clear when the remaining serial is explicitly labelled in the invoice',
   'Recent Activities All users filter width matches the date filter without changing the global layout',
@@ -975,11 +980,11 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.68';
+    window.__AV_INVENTORY_VERSION__='6.69';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v6.68';if(av)av.textContent='Version 6.68';
+    if(cv)cv.textContent='v6.69';if(av)av.textContent='Version 6.69';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
-  }catch(e){console.warn('V6.68 patch-notes fallback skipped',e);}
+  }catch(e){console.warn('V6.69 patch-notes fallback skipped',e);}
 }
 document.addEventListener('click',e=>{if(e.target.closest?.('#patchNotesBtn'))setTimeout(v667EnsurePatchNotesUi,0);},true);
 setTimeout(v667EnsurePatchNotesUi,0);
@@ -1014,5 +1019,156 @@ function v668MatchAuditFilterWidths(){
 document.addEventListener('click',e=>{if(e.target.closest?.('[data-view="audit"],[data-go="audit"]'))setTimeout(v668MatchAuditFilterWidths,0);},true);
 window.addEventListener('resize',()=>v668MatchAuditFilterWidths(),{passive:true});
 setTimeout(v668MatchAuditFilterWidths,0);
+
+
+// V6.69 — non-invasive UI enhancements.
+// Cancellation deliberately uses a page reload only while extraction/OCR is running.
+// This avoids touching the existing parser transaction/save code and guarantees no
+// half-completed client-side OCR worker can continue after cancellation.
+const V669_DOC_LAYOUT_KEY='av-inventory-doc-layout-v669';
+const V669_DOC_GROUP_ORDER_KEY='av-inventory-doc-group-order-v669';
+const V669_CANCEL_REOPEN_KEY='av-inventory-reopen-import-v669';
+
+function v669SupplierGroupKey(name=''){
+  return String(name||'').replace(/\s+/g,' ').trim().toLocaleLowerCase('en-SG');
+}
+function v669EscapeHtml(v=''){
+  return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function v669InstallStyles(){
+  if(document.getElementById('v669Styles'))return;
+  const st=document.createElement('style');st.id='v669Styles';st.textContent=`
+    #v669ImportCancelBtn{margin:10px auto 0;display:flex;align-items:center;justify-content:center;gap:6px;min-width:150px}
+    #v669ImportCancelBtn.hidden{display:none!important}
+    #documentsReorganiseWrap{position:relative;display:inline-flex;align-items:center}
+    #documentsReorganiseWrap details{position:relative}
+    #documentsReorganiseWrap summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+    #documentsReorganiseWrap summary::-webkit-details-marker{display:none}
+    #v669ReorganiseMenu{position:absolute;right:0;top:calc(100% + 8px);z-index:80;min-width:245px;padding:10px;background:#fff;border:1px solid #dbe4ef;border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.16)}
+    #v669ReorganiseMenu button{display:flex;width:100%;border:0;background:transparent;padding:9px 10px;border-radius:8px;text-align:left;cursor:pointer;font:inherit;color:inherit}
+    #v669ReorganiseMenu button:hover{background:#f3f7fb}
+    #v669ReorganiseMenu button.active{background:#edf5ff;color:#075cca;font-weight:700}
+    #v669ReorganiseMenu hr{border:0;border-top:1px solid #e5ebf2;margin:8px 0}
+    #v669ReorganiseMenu label{display:grid;gap:6px;padding:3px 10px 7px;font-size:12px;color:#526171}
+    #v669ReorganiseMenu select{width:100%;padding:8px 10px;border:1px solid #d6dfeb;border-radius:8px;background:#fff;font:inherit;color:#152238}
+    .v669-doc-groups{display:grid;gap:12px}
+    .v669-doc-group{border:1px solid #dfe7f1;border-radius:12px;overflow:hidden;background:#fff}
+    .v669-doc-group-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;border:0;background:#f7faff;padding:12px 14px;text-align:left;cursor:pointer;color:#152238;font:inherit}
+    .v669-doc-group-toggle strong{font-size:14px}.v669-doc-group-toggle span{font-size:12px;color:#607087;white-space:nowrap}
+    .v669-doc-group-body.hidden{display:none}
+    .v669-doc-group-body .table-wrap,.v669-doc-group-body table{margin:0}
+    @media(max-width:760px){#documentsReorganiseWrap{width:100%}#documentsReorganiseWrap details,#documentsReorganiseWrap summary{width:100%}#v669ReorganiseMenu{left:0;right:auto;min-width:min(280px,90vw)}}
+  `;document.head.appendChild(st);
+}
+
+function v669ImportIsCancellable(){
+  const progress=document.getElementById('importProgress'),steps=document.getElementById('importSteps');
+  if(!progress||progress.classList.contains('hidden'))return false;
+  const text=String(document.getElementById('progressText')?.textContent||'').toLowerCase();
+  const step=String(steps?.dataset?.step||'').toLowerCase();
+  // Never interrupt database/storage writes.
+  if(step==='save'||/\b(?:saving|saved|uploading to storage|writing|confirm & save)\b/i.test(text))return false;
+  return true;
+}
+function v669EnsureImportCancelButton(){
+  const progress=document.getElementById('importProgress');if(!progress)return;
+  let btn=document.getElementById('v669ImportCancelBtn');
+  if(!btn){
+    btn=document.createElement('button');btn.id='v669ImportCancelBtn';btn.type='button';btn.className='secondary';btn.textContent='Cancel processing';
+    btn.addEventListener('click',()=>{
+      if(!v669ImportIsCancellable())return;
+      btn.disabled=true;btn.textContent='Cancelling…';
+      try{sessionStorage.setItem(V669_CANCEL_REOPEN_KEY,String(Date.now()));}catch(_){ }
+      // A full reload is intentionally used here: it tears down PDF.js/Tesseract workers,
+      // pending client tasks and object URLs without interrupting the existing save path.
+      setTimeout(()=>window.location.reload(),30);
+    });
+    progress.appendChild(btn);
+  }
+  btn.classList.toggle('hidden',!v669ImportIsCancellable());
+}
+function v669ResumeImportAfterCancel(){
+  let ts=0;try{ts=Number(sessionStorage.getItem(V669_CANCEL_REOPEN_KEY)||0);}catch(_){return;}
+  if(!ts)return;if(Date.now()-ts>30000){try{sessionStorage.removeItem(V669_CANCEL_REOPEN_KEY);}catch(_){}return;}
+  let tries=0;const timer=setInterval(()=>{
+    tries++;
+    const dialog=document.getElementById('importDialog');
+    if(dialog?.open){try{sessionStorage.removeItem(V669_CANCEL_REOPEN_KEY);}catch(_){}clearInterval(timer);return;}
+    const gate=document.getElementById('authGate');if(gate&&!gate.classList.contains('hidden')){if(tries>80)clearInterval(timer);return;}
+    const btn=document.getElementById('sidebarImportBtn')||document.getElementById('importBtn');
+    if(btn)btn.click();
+    if(tries>80){try{sessionStorage.removeItem(V669_CANCEL_REOPEN_KEY);}catch(_){}clearInterval(timer);}
+  },250);
+}
+
+function v669DocumentLayoutMode(){try{return localStorage.getItem(V669_DOC_LAYOUT_KEY)||'standard';}catch(_){return'standard';}}
+function v669DocumentGroupOrder(){try{return localStorage.getItem(V669_DOC_GROUP_ORDER_KEY)||'az';}catch(_){return'az';}}
+function v669RequestDocumentsRender(){
+  const sort=document.getElementById('documentSort');if(!sort)return;
+  sort.dispatchEvent(new Event('change',{bubbles:true}));
+}
+function v669UpdateReorganiseMenu(){
+  const mode=v669DocumentLayoutMode();
+  document.querySelectorAll('[data-v669-doc-layout]').forEach(b=>b.classList.toggle('active',b.dataset.v669DocLayout===mode));
+  const sel=document.getElementById('v669CompanyOrder');if(sel){sel.value=v669DocumentGroupOrder();sel.disabled=mode!=='company';}
+  const label=document.getElementById('v669ReorganiseLabel');if(label)label.textContent=mode==='company'?'Grouped by company':'Reorganise';
+}
+function v669EnsureReorganiseControls(){
+  const toolbar=document.querySelector('#documentsView .documents-toolbar'),sort=document.getElementById('documentSort');if(!toolbar||!sort)return;
+  if(document.getElementById('documentsReorganiseWrap')){v669UpdateReorganiseMenu();return;}
+  const wrap=document.createElement('div');wrap.id='documentsReorganiseWrap';
+  wrap.innerHTML=`<details id="v669ReorganiseDetails"><summary class="secondary toolbar-btn" type="button"><span id="v669ReorganiseLabel">Reorganise</span><span aria-hidden="true">▾</span></summary><div id="v669ReorganiseMenu"><button type="button" data-v669-doc-layout="standard">Standard list</button><button type="button" data-v669-doc-layout="company">Group by company</button><hr><label>Company order<select id="v669CompanyOrder"><option value="az">Company A → Z</option><option value="za">Company Z → A</option></select></label></div></details>`;
+  sort.insertAdjacentElement('afterend',wrap);
+  wrap.addEventListener('click',e=>{
+    const b=e.target.closest('[data-v669-doc-layout]');if(!b)return;
+    try{localStorage.setItem(V669_DOC_LAYOUT_KEY,b.dataset.v669DocLayout);}catch(_){}
+    v669UpdateReorganiseMenu();v669RequestDocumentsRender();
+    const d=document.getElementById('v669ReorganiseDetails');if(d)d.open=false;
+  });
+  wrap.querySelector('#v669CompanyOrder')?.addEventListener('change',e=>{try{localStorage.setItem(V669_DOC_GROUP_ORDER_KEY,e.target.value);}catch(_){}v669RequestDocumentsRender();});
+  v669UpdateReorganiseMenu();
+}
+function v669ApplyDocumentGrouping(){
+  v669EnsureReorganiseControls();
+  if(v669DocumentLayoutMode()!=='company')return;
+  const host=document.getElementById('documentsTable');if(!host)return;
+  const table=host.querySelector(':scope > table');if(!table||host.querySelector(':scope > .v669-doc-groups'))return;
+  const head=table.querySelector('thead');const rows=[...table.querySelectorAll('tbody > tr')];if(!rows.length)return;
+  const groups=new Map();
+  for(const row of rows){
+    const supplier=String(row.children?.[1]?.textContent||'Unknown supplier').replace(/\s+/g,' ').trim()||'Unknown supplier';
+    const key=v669SupplierGroupKey(supplier);if(!groups.has(key))groups.set(key,{name:supplier,rows:[]});groups.get(key).rows.push(row);
+  }
+  let list=[...groups.values()];const dir=v669DocumentGroupOrder()==='za'?-1:1;list.sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:'base'})*dir);
+  const holder=document.createElement('div');holder.className='v669-doc-groups';
+  for(const g of list){
+    const section=document.createElement('section');section.className='v669-doc-group';
+    const toggle=document.createElement('button');toggle.type='button';toggle.className='v669-doc-group-toggle';toggle.setAttribute('aria-expanded','true');toggle.innerHTML=`<strong>${v669EscapeHtml(g.name)}</strong><span>${g.rows.length} invoice${g.rows.length===1?'':'s'} ▾</span>`;
+    const body=document.createElement('div');body.className='v669-doc-group-body';
+    const groupedTable=document.createElement('table');if(head)groupedTable.appendChild(head.cloneNode(true));const tb=document.createElement('tbody');g.rows.forEach(r=>tb.appendChild(r));groupedTable.appendChild(tb);body.appendChild(groupedTable);
+    toggle.addEventListener('click',()=>{const hidden=body.classList.toggle('hidden');toggle.setAttribute('aria-expanded',String(!hidden));const span=toggle.querySelector('span');if(span)span.textContent=`${g.rows.length} invoice${g.rows.length===1?'':'s'} ${hidden?'▸':'▾'}`;});
+    section.append(toggle,body);holder.appendChild(section);
+  }
+  host.replaceChildren(holder);
+}
+function v669InstallDocumentObserver(){
+  const host=document.getElementById('documentsTable');if(!host||host.dataset.v669Observed==='1')return;host.dataset.v669Observed='1';
+  let queued=false;const obs=new MutationObserver(()=>{if(queued)return;queued=true;queueMicrotask(()=>{queued=false;v669ApplyDocumentGrouping();});});obs.observe(host,{childList:true});v669ApplyDocumentGrouping();
+}
+function v669InstallImportObserver(){
+  const progress=document.getElementById('importProgress'),steps=document.getElementById('importSteps');
+  if(progress&&progress.dataset.v669Observed!=='1'){progress.dataset.v669Observed='1';const obs=new MutationObserver(v669EnsureImportCancelButton);obs.observe(progress,{attributes:true,childList:true,subtree:true,characterData:true});}
+  if(steps&&steps.dataset.v669Observed!=='1'){steps.dataset.v669Observed='1';const obs=new MutationObserver(v669EnsureImportCancelButton);obs.observe(steps,{attributes:true});}
+  v669EnsureImportCancelButton();
+}
+function v669InstallUiEnhancements(){
+  v669InstallStyles();v669EnsureReorganiseControls();v669InstallDocumentObserver();v669InstallImportObserver();v669ResumeImportAfterCancel();
+  document.addEventListener('click',e=>{
+    if(e.target.closest?.('[data-view="documents"],[data-go="documents"]'))setTimeout(()=>{v669EnsureReorganiseControls();v669ApplyDocumentGrouping();},0);
+    if(e.target.closest?.('#importBtn,#sidebarImportBtn,[data-empty-import]'))setTimeout(v669EnsureImportCancelButton,0);
+    if(!e.target.closest?.('#v669ReorganiseDetails'))document.getElementById('v669ReorganiseDetails')?.removeAttribute('open');
+  },true);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(v669InstallUiEnhancements,0),{once:true});else setTimeout(v669InstallUiEnhancements,0);
 
 launch();
