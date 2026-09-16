@@ -1208,11 +1208,11 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.76';
+    window.__AV_INVENTORY_VERSION__='6.77';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v6.76';if(av)av.textContent='Version 6.76';
+    if(cv)cv.textContent='v6.77';if(av)av.textContent='Version 6.77';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
-  }catch(e){console.warn('V6.76 patch-notes fallback skipped',e);}
+  }catch(e){console.warn('V6.77 patch-notes fallback skipped',e);}
 }
 document.addEventListener('click',e=>{if(e.target.closest?.('#patchNotesBtn'))setTimeout(v667EnsurePatchNotesUi,0);},true);
 setTimeout(v667EnsurePatchNotesUi,0);
