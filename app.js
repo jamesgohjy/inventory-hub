@@ -1,22 +1,22 @@
-// AV Inventory Hub V6.75 — scanned-invoice OCR validation and service-line hardening
-// This patch loader applies V6.75 safely on top of the verified V6.55 source.
+// AV Inventory Hub V6.76 — no-AUTO SKU enforcement and self-rectifying invoice validation
+// This patch loader applies V6.76 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
 function replaceOnce(src,needle,replacement,label=needle){
   const i=src.indexOf(needle);
-  if(i<0)throw new Error('V6.75 patch marker not found: '+label);
+  if(i<0)throw new Error('V6.76 patch marker not found: '+label);
   return src.slice(0,i)+replacement+src.slice(i+needle.length);
 }
 function replaceSection(src,startMarker,endMarker,replacement,label=startMarker){
   const s=src.indexOf(startMarker),e=src.indexOf(endMarker,s+startMarker.length);
-  if(s<0||e<0)throw new Error('V6.75 patch section not found: '+label);
+  if(s<0||e<0)throw new Error('V6.76 patch section not found: '+label);
   return src.slice(0,s)+replacement+src.slice(e);
 }
 function asPatchedFunction(fn,newName){
   const source=fn.toString();
   const patched=source.replace(/^(async\s+)?function\s+[^\s(]+/,(_m,asyncPrefix='')=>`${asyncPrefix||''}function ${newName}`);
   const expected=(source.startsWith('async function ')?'async function ':'function ')+newName+'(';
-  if(!patched.startsWith(expected))throw new Error('V6.75 helper rename failed for '+newName);
+  if(!patched.startsWith(expected))throw new Error('V6.76 helper rename failed for '+newName);
   return patched;
 }
 
@@ -499,7 +499,7 @@ function v667InferCategory(line={}){
   if(/\b(?:audio\s+tester|signal\s+tester)\b/.test(t))return 'Audio / Test Equipment';
   if(/\b(?:trolley|cart|stand|mount|bracket)\b/.test(t))return 'AV Accessories';
   if(/\b(?:mixer|amplifier|processor|dsp)\b/.test(t))return 'Audio / Equipment';
-  if(/\b(?:display|monitor|led\s+screen|lcd\s+screen)\b/.test(t))return 'Display / Video';
+  if(/\b(?:ideahub|collaboration\s+device|display|monitor|led\s+screen|lcd\s+screen)\b/.test(t))return 'Display / Video';
   return '';
 }
 function v667ParseAvMediaTargetedText(text=''){
@@ -698,27 +698,112 @@ function v668SanitizeSerialAssignments(items=[],sourceText=''){
   return out;
 }
 
-function v661SanitizeParsedInventoryItems(items=[],sourceText=''){
-  const cleaned=(items||[]).map(line=>{
+
+function v676IsForbiddenAutoSku(value=''){
+  return /^AUTO(?:[-_]|$)/i.test(String(value||'').trim());
+}
+function v676ModelCandidatesFromText(value='',sourceText=''){
+  const text=normalizePdfText(value).replace(/\s+/g,' ').trim();
+  const sourceCompact=String(sourceText||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const stop=/^(?:SGD|GST|QTY|UNIT|UNITS|PRICE|AMOUNT|TOTAL|SUBTOTAL|INVOICE|SERIAL|WARRANTY|MONTH|MONTHS|YEAR|YEARS|HUAWEI|IDEAHUB|KEY|CARE|BASIC)$/i;
+  const seen=new Set(),out=[];
+  for(const raw of text.match(/\b[A-Z0-9][A-Z0-9+._\/-]{2,12}\b/gi)||[]){
+    const token=String(raw||'').replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+._\/-]+$/g,'');
+    const compact=token.toLowerCase().replace(/[^a-z0-9]+/g,'');
+    if(!compact||seen.has(compact)||stop.test(token))continue;
+    if(v676IsForbiddenAutoSku(token))continue;
+    if(!/[A-Za-z]/.test(token)||!/\d/.test(token))continue;
+    if(/^\d+(?:[._/-]\d+)+$/.test(token))continue;
+    if(/^\d+(?:[-_.]?(?:inches?|inch|in|cm|mm|hz|khz|mhz|ghz|months?|mos?|years?|yrs?))$/i.test(token))continue;
+    if(/^(?:19|20)\d{2}$/.test(token))continue;
+    if(sourceCompact&&!sourceCompact.includes(compact))continue;
+    seen.add(compact);out.push(token);
+  }
+  return out;
+}
+function v676EmbeddedVerifiedSku(line={},sourceText=''){
+  const text=[line.sku,line.item_name,line.description].filter(Boolean).join(' ');
+  const candidates=v676ModelCandidatesFromText(text,sourceText);
+  if(!candidates.length)return '';
+  // Prefer a compact model/code with punctuation (e.g. IHK3-86SA, PT-VW540) over generic mixed tokens.
+  const ranked=candidates.map(token=>({token,score:(/[-_/+.]/.test(token)?4:0)+(token.length<=10?2:0)+(/\d/.test(token)&&/[A-Za-z]/.test(token)?2:0)})).sort((a,b)=>b.score-a.score||a.token.length-b.token.length);
+  const top=ranked[0];if(!top)return '';
+  // If two unrelated candidates have the same confidence, do not guess.
+  if(ranked[1]&&ranked[1].score===top.score&&ranked[1].token.toLowerCase()!==top.token.toLowerCase())return '';
+  return top.token;
+}
+function v676SafeFallbackSku(itemName='',existingItems=[],usedSkus=new Map()){
+  const clean=v667ShortItemName(itemName).replace(/\s+/g,' ').trim();
+  if(!clean)return '';
+  const candidate=clean.slice(0,13).trim();
+  if(!candidate||v676IsForbiddenAutoSku(candidate))return '';
+  if(!/[A-Za-z0-9]/.test(candidate))return '';
+  const key=norm(candidate),nameKey=norm(clean);
+  const conflict=(existingItems||[]).find(i=>norm(i.sku)===key&&norm(i.item_name)!==nameKey&&!v676IsForbiddenAutoSku(i.sku));
+  if(conflict)return '';
+  if(usedSkus instanceof Map){const prior=usedSkus.get(key);if(prior&&prior!==nameKey)return '';usedSkus.set(key,nameKey);}
+  else {if(usedSkus.has(key))return '';usedSkus.add(key);}
+  return candidate;
+}
+function v676IsSupportCoverageLine(line={}){
+  const text=normalizePdfText([line.sku,line.item_name,line.description].filter(Boolean).join(' ')).replace(/\s+/g,' ').trim();
+  if(!text)return false;
+  return /\b(?:hi[- ]?care|care\s*pack|support\s*(?:plan|service|coverage)?|maintenance\s*(?:plan|service|contract)?|service\s*contract|extended\s+warranty|warranty\s*(?:extension|coverage|service)?|subscription|software\s+assurance|\d+\s*months?\s*(?:support|warranty|care))\b/i.test(text)
+    || /\b(?:basic|premium|standard)\s+.*\b\d{1,3}\s*months?\b/i.test(text);
+}
+function v676CanonicalItemName(line={}){
+  let s=v667ShortItemName(line.item_name||line.description||'');
+  if(/\bHUAWEI\s+IdeaHub\s+K3\b/i.test(s))return 'HUAWEI IdeaHub K3';
+  if(/\bIdeaShare\s+Key\b/i.test(s))return 'IdeaShare Key';
+  return s;
+}
+function v676ValidateAndRectifyItems(items=[],sourceText=''){
+  const existingItems=state?.data?.items||[],used=new Map(),out=[];
+  for(const original of items||[]){
+    let line={...original};
+    if(isNonInventoryServiceLine(line)||isExcludedInventoryAccessoryLine(line)||v676IsSupportCoverageLine(line))continue;
     const description=cleanInventoryDescription(line.description||line.item_name||'');
-    const rawName=standardItemNameFromDescription(description),itemName=v667ShortItemName(rawName);
-    if(!v667PlausibleItemName(itemName))return {...line,sku:'',item_name:'',description:'',category:''};
-    // Evidence-only rule: no printed SKU/model means blank. Never manufacture one from OCR text or description.
-    const sku=cleanVerifiedSku(line.sku||'',sourceText);
+    const itemName=v676CanonicalItemName({...line,description});
+    if(!v667PlausibleItemName(itemName))continue;
+    let sku=v676IsForbiddenAutoSku(line.sku)?'':cleanVerifiedSku(line.sku||'',sourceText);
+    if(!sku)sku=v676EmbeddedVerifiedSku({...line,item_name:itemName,description},sourceText);
+    if(!sku)sku=v676SafeFallbackSku(itemName,existingItems,used);
+    else used.set(norm(sku),norm(itemName));
     const category=String(line.category||'').trim()||v667InferCategory({...line,sku,item_name:itemName,description});
-    return {...line,sku:String(sku||'').slice(0,13),description,item_name:itemName,category};
-  }).filter(x=>String(x.item_name||'').trim()&&!isExcludedInventoryAccessoryLine(x));
-  return sanitizeSerialAssignments(cleaned,sourceText);
+    line={...line,sku:String(sku||'').trim().slice(0,13),item_name:itemName,description,category,skuReviewRequired:!sku};
+    if(v676IsForbiddenAutoSku(line.sku))line.sku='';
+    out.push(line);
+  }
+  return sanitizeSerialAssignments(out,sourceText);
+}
+async function v676RepairLegacyAutoSkuMatches(db,lines=[]){
+  const items=state?.data?.items||[];
+  for(const line of lines||[]){
+    const newSku=String(line.sku||'').trim();if(!newSku||v676IsForbiddenAutoSku(newSku))continue;
+    const skuKey=norm(newSku),nameKey=norm(line.item_name||'');
+    if(items.some(i=>!v676IsForbiddenAutoSku(i.sku)&&norm(i.sku)===skuKey))continue;
+    const legacy=items.find(i=>v676IsForbiddenAutoSku(i.sku)&&(norm(i.item_name)===nameKey||norm(i.item_name).includes(skuKey)||norm(i.description).includes(skuKey)));
+    if(!legacy)continue;
+    try{
+      await db.updateItem(legacy.id,{sku:newSku,description:line.description||legacy.description||'',category:line.category||legacy.category||''});
+      legacy.sku=newSku;if(line.description)legacy.description=line.description;if(line.category)legacy.category=line.category;
+    }catch(err){console.warn('Legacy AUTO SKU repair skipped:',err);}
+  }
+}
+
+function v661SanitizeParsedInventoryItems(items=[],sourceText=''){
+  // V6.76 self-rectification: reject AUTO-* and repair using printed model evidence first,
+  // then the user-approved deterministic 13-character item-name fallback only when collision-free.
+  return v676ValidateAndRectifyItems(items,sourceText);
 }
 const sanitizeSerialAssignments=v668SanitizeSerialAssignments;
 
 function v661PrepareInventoryLinesForSave(items=[]){
   const source=state.parsed?.raw||state.parsed?.rawText||'';
-  return sanitizeParsedInventoryItems(items,source).filter(line=>!isExcludedInventoryAccessoryLine(line)).map(line=>{
-    const itemName=String(line.item_name||line.description||'').replace(/\s+/g,' ').trim();
-    const sku=String(line.sku||'').replace(/\s+/g,' ').trim().slice(0,13).trim();
-    return {...line,sku,item_name:itemName,description:cleanInventoryDescription(line.description||itemName)};
-  });
+  const lines=v676ValidateAndRectifyItems(items,source).filter(line=>!isExcludedInventoryAccessoryLine(line)&&!v676IsSupportCoverageLine(line));
+  const unresolved=lines.find(line=>!String(line.sku||'').trim()||v676IsForbiddenAutoSku(line.sku));
+  if(unresolved)throw new Error('SKU/model could not be verified safely for "'+String(unresolved.item_name||'this item')+'". Review the item and enter a verified SKU/model before saving.');
+  return lines.map(line=>({...line,sku:String(line.sku||'').trim().slice(0,13),item_name:String(line.item_name||line.description||'').replace(/\s+/g,' ').trim(),description:cleanInventoryDescription(line.description||line.item_name||'')}));
 }
 
 function v661RecoverAvMediaHeader(doc={},rawText=''){
@@ -827,10 +912,10 @@ function v662ParsePhysicalEvidenceRows(text=''){
   for(const line of lines){if(!physical.test(line)||service.test(line))continue;const m=line.match(/^[|.,;:\-]*\s*([A-Z0-9][A-Z0-9+._\/-]{2,})\s+(.+?)\s+(\d{1,4})(?:\s+.*)?$/i);if(!m)continue;const sku=cleanVerifiedSku(m[1],text),desc=cleanInventoryDescription(m[2]);if(!sku||!desc)continue;const vals=[...line.matchAll(/(?:S?[$#]?\s*)?(\d[\d,]*[ .]\d{2})/g)].map(x=>v662MoneyNumber(x[1].replace(/ (\d{2})$/,'.$1'))).filter(Number.isFinite);out.push(normalizeParsedInvoiceItem({sku,item_name:desc,description:desc,category:'',unit:'pcs',quantity:Number(m[3]),unit_price:vals.length>=2?vals[vals.length-2]:null,amount:vals.length?vals[vals.length-1]:null,warranty:'',serials:''}));}
   return out;
 }
-function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.75',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
+function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.76',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
 function v662InstallAuditWrappers(){
-  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.75',parse_audit:audit},purchase,lines,file);return r;};LocalDB.prototype.__v662Import=true;}
-  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const r=await orig.call(this,doc,purchase,lines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.75',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
+  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const safeLines=prepareInventoryLinesForSave(lines);await v676RepairLegacyAutoSkuMatches(this,safeLines);const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.76',parse_audit:audit},purchase,safeLines,file);return r;};LocalDB.prototype.__v662Import=true;}
+  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const safeLines=prepareInventoryLinesForSave(lines);await v676RepairLegacyAutoSkuMatches(this,safeLines);const r=await orig.call(this,doc,purchase,safeLines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.76',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
 }
 function v662ConfigureInvoiceFileInputs(){setTimeout(()=>{document.querySelectorAll('input[type="file"]').forEach(el=>{el.accept='.pdf,.png,.jpg,.jpeg,.webp,.docx,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document';});},0);}
 function v661EffectiveInvoiceType(){
@@ -952,15 +1037,15 @@ async function launch(){
 
     src=replaceOnce(src,"function imageForItem(item){if(item.image_url)return item.image_url;const c=norm([item.category,item.item_name,item.description,item.sku].join(' '));if(c.includes('projector'))return DASH_ASSETS.projector;if(c.includes('microphone')||c.includes('wireless')||c.includes('audio'))return DASH_ASSETS.microphone;if(c.includes('cable')||c.includes('hdmi'))return DASH_ASSETS.cable;if(c.includes('display')||c.includes('monitor')||c.includes('screen'))return DASH_ASSETS.monitor;return'';}",asPatchedFunction(v672SketchKind,'v672SketchKind')+'\n'+asPatchedFunction(v672SketchSvg,'v672SketchSvg')+'\n'+asPatchedFunction(v672ImageForItem,'imageForItem'),'copyright-safe identity sketch images');
     src=replaceOnce(src,"const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2500)};","const toast=(msg)=>{const openDialogs=[...document.querySelectorAll('dialog[open]')];const dlg=openDialogs[openDialogs.length-1];if(dlg){let t=dlg.querySelector('.v667-modal-toast');if(!t){t=document.createElement('div');t.className='v667-modal-toast';t.setAttribute('role','status');t.style.cssText='position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:min(720px,calc(100vw - 40px));background:#10253f;color:#fff;border:1px solid #4c6f96;border-radius:10px;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,.32);font:600 14px/1.4 system-ui,sans-serif;text-align:center;';dlg.appendChild(t);}t.textContent=msg;t.style.display='block';clearTimeout(t._hideTimer);t._hideTimer=setTimeout(()=>{t.style.display='none';},3500);return;}const t=$('toast');if(!t)return;t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3000)};",'modal-visible toast');
-    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.75 — scanned-invoice OCR validation and service-line hardening",'version header');
-    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.75';",'APP_VERSION');
-        src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Startup hotfix: accessory-exclusion helper is injected exactly once to prevent duplicate identifier failure',\n  'Service-only invoices are blocked before Review and are not saved to Documents or Inventory',\n  'Security locks, safety wires, mounts, brackets, cables, lamp kits, carts and stands are excluded from Inventory imports',\n  'Accessory exclusion is checked during parse cleanup, inventory filtering and final save preparation',\n  'Scanned AV Media service invoices no longer create gibberish inventory rows from FAX/address/header OCR fragments',\n  'Full-page SINGLE_BLOCK OCR is added as a recovery candidate for low-quality scanned PDFs',\n  'Clear labour/installation-only invoices are classified as Service even when descriptions mention existing AV equipment',\n  'Service-only invoices show no inventory line cards and Confirm & save remains disabled',\n  'AV Media dates are left blank for manual review when only an unlabelled/footer date is readable, instead of guessing',\n  'Inventory cards now use original identity-based sketch illustrations instead of downloading or tracing web product photos',\n  'Manual image URLs remain authoritative and are never overwritten by generated sketches',\n  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so v6.75 can initialise normally',\n  'SKU/model maximum increased from 12 to 13 characters',\n  'Inventory edited Description is displayed beneath SKU/item after save and refresh',\n  'Serial-number fields exclude SKU/model identifiers from the same invoice',\n  'Recent Activities All users filter now matches the date filter width',\n  'AV Media invoices use targeted high-resolution header/table OCR when native PDF text is corrupted',\n  'Gibberish OCR item names are rejected before SKU fallback or inventory save',\n  'AV Media product codes, descriptions, quantities and prices are parsed from verified row evidence',\n  'Warranty rows attach to equipment instead of creating separate inventory items',\n  'Installation/service rows remain excluded from physical inventory',\n  'Categories are filled only from clear equipment nouns such as projector, control panel or speaker',\n  'Import drop zone is centred and reduced to 50% width on desktop',\n  'Missing SKU/model stays blank unless a printed identifier is verified in the invoice',\n  'Header/contact OCR fragments are blocked from becoming inventory items',\n  'Visible Edit button added beside SKU/item and Category for quick corrections',\n  'Import alerts display above the active modal instead of behind the blurred backdrop',\n  'Invoice dates such as 7-Dec-20 and 07-Dec-2020 are now recognised',\n  'Inventory descriptions remove quantity/UOM/price/currency/subtotal/GST/total contamination',\n  'Invoice-only import gate blocks Delivery Orders, Delivery Notes, packing lists and other non-invoice documents',\n  'Delivery Order references inside a verified invoice remain allowed',\n  'Return-trip, signed-delivery-order, courier, freight and transport rows are excluded from inventory',\n  'SKU/model values are limited to 13 characters maximum',\n  'Documents display DD/MM/YYYY-Company name and stored files use DD-MM-YYYY-Company-name',\n  'Golden-corpus regression testing added for real invoice layouts',\n  'PDF, JPG/JPEG, PNG, WEBP and DOCX use one normalised import pipeline',\n  'Native text is preferred and OCR is used as fallback/recovery for scanned content',\n  'SHA-256 file hashing and parser audit metadata are supported',\n  'Header, totals, line items and invoice type are validated across independent scans',\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
+    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.76 — no-AUTO SKU enforcement and self-rectifying invoice validation",'version header');
+    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.76';",'APP_VERSION');
+        src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Startup hotfix: accessory-exclusion helper is injected exactly once to prevent duplicate identifier failure',\n  'Service-only invoices are blocked before Review and are not saved to Documents or Inventory',\n  'Security locks, safety wires, mounts, brackets, cables, lamp kits, carts and stands are excluded from Inventory imports',\n  'Accessory exclusion is checked during parse cleanup, inventory filtering and final save preparation',\n  'Scanned AV Media service invoices no longer create gibberish inventory rows from FAX/address/header OCR fragments',\n  'Full-page SINGLE_BLOCK OCR is added as a recovery candidate for low-quality scanned PDFs',\n  'Clear labour/installation-only invoices are classified as Service even when descriptions mention existing AV equipment',\n  'Service-only invoices show no inventory line cards and Confirm & save remains disabled',\n  'AV Media dates are left blank for manual review when only an unlabelled/footer date is readable, instead of guessing',\n  'Inventory cards now use original identity-based sketch illustrations instead of downloading or tracing web product photos',\n  'Manual image URLs remain authoritative and are never overwritten by generated sketches',\n  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so the patch loader can initialise normally',\n  'SKU/model maximum increased from 12 to 13 characters',\n  'Inventory edited Description is displayed beneath SKU/item after save and refresh',\n  'Serial-number fields exclude SKU/model identifiers from the same invoice',\n  'Recent Activities All users filter now matches the date filter width',\n  'AV Media invoices use targeted high-resolution header/table OCR when native PDF text is corrupted',\n  'Gibberish OCR item names are rejected before SKU fallback or inventory save',\n  'AV Media product codes, descriptions, quantities and prices are parsed from verified row evidence',\n  'Warranty rows attach to equipment instead of creating separate inventory items',\n  'Installation/service rows remain excluded from physical inventory',\n  'Categories are filled only from clear equipment nouns such as projector, control panel or speaker',\n  'Import drop zone is centred and reduced to 50% width on desktop',\n  'Missing SKU/model stays blank unless a printed identifier is verified in the invoice',\n  'Header/contact OCR fragments are blocked from becoming inventory items',\n  'Visible Edit button added beside SKU/item and Category for quick corrections',\n  'Import alerts display above the active modal instead of behind the blurred backdrop',\n  'Invoice dates such as 7-Dec-20 and 07-Dec-2020 are now recognised',\n  'Inventory descriptions remove quantity/UOM/price/currency/subtotal/GST/total contamination',\n  'Invoice-only import gate blocks Delivery Orders, Delivery Notes, packing lists and other non-invoice documents',\n  'Delivery Order references inside a verified invoice remain allowed',\n  'Return-trip, signed-delivery-order, courier, freight and transport rows are excluded from inventory',\n  'SKU/model values are limited to 13 characters maximum',\n  'Documents display DD/MM/YYYY-Company name and stored files use DD-MM-YYYY-Company-name',\n  'Golden-corpus regression testing added for real invoice layouts',\n  'PDF, JPG/JPEG, PNG, WEBP and DOCX use one normalised import pipeline',\n  'Native text is preferred and OCR is used as fallback/recovery for scanned content',\n  'SHA-256 file hashing and parser audit metadata are supported',\n  'Header, totals, line items and invoice type are validated across independent scans',\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
 
     src=replaceSection(src,"function detectInvoiceDate(text,invoice=''){","\nfunction first(",asPatchedFunction(v661DetectInvoiceDate,'detectInvoiceDate')+'\n','detectInvoiceDate');
     src=replaceSection(src,"function parseDate(v=''){","\nfunction invoiceSignals",asPatchedFunction(v661ParseDate,'parseDate')+'\n','calendar-safe parseDate');
     src=replaceSection(src,'function detectInvoiceDateFromLayout(){','\nfunction layoutMoneyForLabel',asPatchedFunction(v661DetectInvoiceDateFromLayout,'detectInvoiceDateFromLayout')+'\n','coordinate invoice-date parser');
     src=replaceSection(src,'function isNonInventoryServiceLine(x={}){','\nfunction inventoryOnlyItems',asPatchedFunction(v665IsNonInventoryServiceLine,'isNonInventoryServiceLine')+'\n','service-line classifier');
-    src=replaceOnce(src,"function inventoryOnlyItems(items=[]){return validParsedItems(items).filter(x=>!isNonInventoryServiceLine(x));}",asPatchedFunction(v674IsExcludedInventoryAccessoryLine,'isExcludedInventoryAccessoryLine')+'\n'+"function inventoryOnlyItems(items=[]){return validParsedItems(items).filter(x=>!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x));}",'non-inventory accessory filter');
+    src=replaceOnce(src,"function inventoryOnlyItems(items=[]){return validParsedItems(items).filter(x=>!isNonInventoryServiceLine(x));}",asPatchedFunction(v674IsExcludedInventoryAccessoryLine,'isExcludedInventoryAccessoryLine')+'\n'+"function inventoryOnlyItems(items=[]){return validParsedItems(items).filter(x=>!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)&&!v676IsSupportCoverageLine(x));}",'non-inventory accessory filter');
     src=replaceOnce(src,"  return {...x,sku:x.sku||skuFromDescription(description),item_name:standardItemNameFromDescription(description),description};","  return {...x,sku:String(x.sku||'').trim(),item_name:standardItemNameFromDescription(description),description};",'do not infer SKU from description');
     src=replaceOnce(src,"        current.sku=current.sku||skuFromDescription(current.description);","        current.sku=String(current.sku||'').trim();",'remove continuation SKU guessing');
     src=replaceOnce(src,"    item.serialReviewRequired=!!item.serialReviewRequired||block.uncertain||!observed.length;","    item.serialReviewRequired=!!item.serialReviewRequired||block.uncertain;",'optional serial numbers stay optional');
@@ -993,7 +1078,7 @@ async function autoNamedPdf(file,doc){
 }
 `,'date-company source filename');
 
-    src=replaceOnce(src,'function cleanupPdfPreview(){',asPatchedFunction(v665CleanVerifiedSku,'cleanVerifiedSku')+'\n'+asPatchedFunction(v661CleanInventoryDescription,'cleanInventoryDescription')+'\n'+asPatchedFunction(v667PlausibleItemName,'v667PlausibleItemName')+'\n'+asPatchedFunction(v667ShortItemName,'v667ShortItemName')+'\n'+asPatchedFunction(v667InferCategory,'v667InferCategory')+'\n'+asPatchedFunction(v667ParseAvMediaTargetedText,'parseAvMediaTargetedText')+'\n'+asPatchedFunction(v667AddAvMediaTargetedOcr,'addAvMediaTargetedOcr')+'\n'+asPatchedFunction(v661ParseGenericPricedRows,'v661ParseGenericPricedRows')+'\n'+asPatchedFunction(v662MoneyNumber,'v662MoneyNumber')+'\n'+asPatchedFunction(v662RecoverMoneyFromText,'v662RecoverMoneyFromText')+'\n'+asPatchedFunction(v662FileSha256,'v662FileSha256')+'\n'+asPatchedFunction(v662FileKind,'v662FileKind')+'\n'+asPatchedFunction(v662EnsureJSZip,'v662EnsureJSZip')+'\n'+asPatchedFunction(v662OcrBlob,'v662OcrBlob')+'\n'+asPatchedFunction(v662ExtractDocx,'v662ExtractDocx')+'\n'+asPatchedFunction(v662TryServerInvoiceProcessing,'v662TryServerInvoiceProcessing')+'\n'+asPatchedFunction(v662ExtractInvoiceFile,'extractInvoiceFile')+'\n'+asPatchedFunction(v662ParsePhysicalEvidenceRows,'v662ParsePhysicalEvidenceRows')+'\n'+asPatchedFunction(v662ParseAuditPayload,'v662ParseAuditPayload')+'\n'+asPatchedFunction(v662InstallAuditWrappers,'installParseAuditWrappers')+'\n'+asPatchedFunction(v662ConfigureInvoiceFileInputs,'configureInvoiceFileInputs')+'\n'+asPatchedFunction(v661EvidenceSources,'v661EvidenceSources')+'\n'+asPatchedFunction(v668CompactIdentifier,'v668CompactIdentifier')+'\n'+asPatchedFunction(v668ModelIdentifierKeys,'v668ModelIdentifierKeys')+'\n'+asPatchedFunction(v668ExplicitSerialEvidence,'v668ExplicitSerialEvidence')+'\n'+asPatchedFunction(v668SanitizeSerialAssignments,'sanitizeSerialAssignments')+'\n'+asPatchedFunction(v661SanitizeParsedInventoryItems,'sanitizeParsedInventoryItems')+'\n'+asPatchedFunction(v661PrepareInventoryLinesForSave,'prepareInventoryLinesForSave')+'\n'+asPatchedFunction(v661RecoverAvMediaHeader,'recoverAvMediaHeader')+'\n'+asPatchedFunction(v661ClassifyInvoiceDocument,'classifyInvoiceDocument')+'\n'+asPatchedFunction(v661EffectiveInvoiceType,'effectiveInvoiceType')+'\n'+asPatchedFunction(v661ApplyParsedReviewToForm,'applyParsedReviewToForm')+'\n'+asPatchedFunction(v661RefreshDuplicateWarning,'refreshDuplicateWarning')+'\n'+asPatchedFunction(v661FinalizeParsedInvoice,'v661FinalizeParsedInvoice')+'\n'+asPatchedFunction(v661ReprocessConfirmedEquipmentInvoice,'reprocessConfirmedEquipmentInvoice')+'\n'+asPatchedFunction(v661RenderImportEligibility,'renderImportEligibility')+'\n'+asPatchedFunction(v661LooksServiceOnlyDocument,'looksServiceOnlyDocument')+'\n'+asPatchedFunction(v661LayoutMoney,'v661LayoutMoney')+'\n'+asPatchedFunction(v661RepairInvoiceMoneyFromLayout,'v661RepairInvoiceMoneyFromLayout')+'\n'+asPatchedFunction(v661NeedsDeepRecovery,'needsDeepRecovery')+'\n'+asPatchedFunction(v661EnsureTesseract,'v661EnsureTesseract')+'\n'+asPatchedFunction(v661ForceOcrRecovery,'forceOcrRecovery')+'\n'+asPatchedFunction(v665ClassifyDocumentType,'v665ClassifyDocumentType')+'\n'+asPatchedFunction(v665DetectImportDocumentType,'detectImportDocumentType')+'\n'+asPatchedFunction(v665EnsureInvoiceDocument,'ensureInvoiceDocument')+'\n'+asPatchedFunction(v665DisplayDocumentFilename,'displayDocumentFilename')+'\n'+asPatchedFunction(v665StoredDocumentFilename,'v665StoredDocumentFilename')+'\nfunction cleanupPdfPreview(){','import classification, verified SKU, AV Media recovery and OCR helpers');
+    src=replaceOnce(src,'function cleanupPdfPreview(){',asPatchedFunction(v665CleanVerifiedSku,'cleanVerifiedSku')+'\n'+asPatchedFunction(v661CleanInventoryDescription,'cleanInventoryDescription')+'\n'+asPatchedFunction(v667PlausibleItemName,'v667PlausibleItemName')+'\n'+asPatchedFunction(v667ShortItemName,'v667ShortItemName')+'\n'+asPatchedFunction(v667InferCategory,'v667InferCategory')+'\n'+asPatchedFunction(v667ParseAvMediaTargetedText,'parseAvMediaTargetedText')+'\n'+asPatchedFunction(v667AddAvMediaTargetedOcr,'addAvMediaTargetedOcr')+'\n'+asPatchedFunction(v661ParseGenericPricedRows,'v661ParseGenericPricedRows')+'\n'+asPatchedFunction(v662MoneyNumber,'v662MoneyNumber')+'\n'+asPatchedFunction(v662RecoverMoneyFromText,'v662RecoverMoneyFromText')+'\n'+asPatchedFunction(v662FileSha256,'v662FileSha256')+'\n'+asPatchedFunction(v662FileKind,'v662FileKind')+'\n'+asPatchedFunction(v662EnsureJSZip,'v662EnsureJSZip')+'\n'+asPatchedFunction(v662OcrBlob,'v662OcrBlob')+'\n'+asPatchedFunction(v662ExtractDocx,'v662ExtractDocx')+'\n'+asPatchedFunction(v662TryServerInvoiceProcessing,'v662TryServerInvoiceProcessing')+'\n'+asPatchedFunction(v662ExtractInvoiceFile,'extractInvoiceFile')+'\n'+asPatchedFunction(v662ParsePhysicalEvidenceRows,'v662ParsePhysicalEvidenceRows')+'\n'+asPatchedFunction(v662ParseAuditPayload,'v662ParseAuditPayload')+'\n'+asPatchedFunction(v662InstallAuditWrappers,'installParseAuditWrappers')+'\n'+asPatchedFunction(v662ConfigureInvoiceFileInputs,'configureInvoiceFileInputs')+'\n'+asPatchedFunction(v661EvidenceSources,'v661EvidenceSources')+'\n'+asPatchedFunction(v668CompactIdentifier,'v668CompactIdentifier')+'\n'+asPatchedFunction(v668ModelIdentifierKeys,'v668ModelIdentifierKeys')+'\n'+asPatchedFunction(v668ExplicitSerialEvidence,'v668ExplicitSerialEvidence')+'\n'+asPatchedFunction(v668SanitizeSerialAssignments,'sanitizeSerialAssignments')+'\n'+asPatchedFunction(v676IsForbiddenAutoSku,'v676IsForbiddenAutoSku')+'\n'+asPatchedFunction(v676ModelCandidatesFromText,'v676ModelCandidatesFromText')+'\n'+asPatchedFunction(v676EmbeddedVerifiedSku,'v676EmbeddedVerifiedSku')+'\n'+asPatchedFunction(v676SafeFallbackSku,'v676SafeFallbackSku')+'\n'+asPatchedFunction(v676IsSupportCoverageLine,'v676IsSupportCoverageLine')+'\n'+asPatchedFunction(v676CanonicalItemName,'v676CanonicalItemName')+'\n'+asPatchedFunction(v676ValidateAndRectifyItems,'v676ValidateAndRectifyItems')+'\n'+asPatchedFunction(v676RepairLegacyAutoSkuMatches,'v676RepairLegacyAutoSkuMatches')+'\n'+asPatchedFunction(v661SanitizeParsedInventoryItems,'sanitizeParsedInventoryItems')+'\n'+asPatchedFunction(v661PrepareInventoryLinesForSave,'prepareInventoryLinesForSave')+'\n'+asPatchedFunction(v661RecoverAvMediaHeader,'recoverAvMediaHeader')+'\n'+asPatchedFunction(v661ClassifyInvoiceDocument,'classifyInvoiceDocument')+'\n'+asPatchedFunction(v661EffectiveInvoiceType,'effectiveInvoiceType')+'\n'+asPatchedFunction(v661ApplyParsedReviewToForm,'applyParsedReviewToForm')+'\n'+asPatchedFunction(v661RefreshDuplicateWarning,'refreshDuplicateWarning')+'\n'+asPatchedFunction(v661FinalizeParsedInvoice,'v661FinalizeParsedInvoice')+'\n'+asPatchedFunction(v661ReprocessConfirmedEquipmentInvoice,'reprocessConfirmedEquipmentInvoice')+'\n'+asPatchedFunction(v661RenderImportEligibility,'renderImportEligibility')+'\n'+asPatchedFunction(v661LooksServiceOnlyDocument,'looksServiceOnlyDocument')+'\n'+asPatchedFunction(v661LayoutMoney,'v661LayoutMoney')+'\n'+asPatchedFunction(v661RepairInvoiceMoneyFromLayout,'v661RepairInvoiceMoneyFromLayout')+'\n'+asPatchedFunction(v661NeedsDeepRecovery,'needsDeepRecovery')+'\n'+asPatchedFunction(v661EnsureTesseract,'v661EnsureTesseract')+'\n'+asPatchedFunction(v661ForceOcrRecovery,'forceOcrRecovery')+'\n'+asPatchedFunction(v665ClassifyDocumentType,'v665ClassifyDocumentType')+'\n'+asPatchedFunction(v665DetectImportDocumentType,'detectImportDocumentType')+'\n'+asPatchedFunction(v665EnsureInvoiceDocument,'ensureInvoiceDocument')+'\n'+asPatchedFunction(v665DisplayDocumentFilename,'displayDocumentFilename')+'\n'+asPatchedFunction(v665StoredDocumentFilename,'v665StoredDocumentFilename')+'\nfunction cleanupPdfPreview(){','import classification, verified SKU, AV Media recovery and OCR helpers');
 
     src=replaceOnce(src,"async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();","async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;",'reset invoice-type choice');
 
@@ -1002,7 +1087,7 @@ async function autoNamedPdf(file,doc){
     src=replaceOnce(src,"const text=await extractPdf(file);const parsedBest=parseBestInvoice(text);state.parsed={...parsedBest,raw:parsedBest.rawText||text};","let text=await extractInvoiceFile(file);if(v662FileKind(file)==='pdf'&&/AV\s+MEDIA/i.test(text)){try{await addAvMediaTargetedOcr(file);}catch(targetErr){console.warn('AV Media targeted OCR skipped',targetErr);}}await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(parsedBest.invoiceClassification?.type==='noninventory')throw new Error('No tracked equipment detected. Security locks, safety wires, mounts, brackets, cables, lamp kits, carts and stands are excluded; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(state.parsed.invoiceClassification?.type==='noninventory')throw new Error('No tracked equipment detected. Security locks, safety wires, mounts, brackets, cables, lamp kits, carts and stands are excluded; this document was not imported.');",'automatic recovery OCR');
 
     src=replaceOnce(src,"console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});renderParsedItems();const dupe=", "console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed.items=sanitizeParsedInventoryItems(state.parsed.items||[],state.parsed.raw||text);renderParsedItems();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=",'eligibility rendering');
-    src=replaceOnce(src,",d,state.parsed.items,namedFile);state.lastImportCount=state.parsed.items.length;",",d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;",'deterministic SKU fallback');
+    src=replaceOnce(src,",d,state.parsed.items,namedFile);state.lastImportCount=state.parsed.items.length;",",d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;",'verified SKU and no-AUTO save enforcement');
     src=replaceOnce(src,"finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Confirm & save';}if($('importProgress'))$('importProgress').classList.add('hidden');}","finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}",'save-button final state');
 
     const gate="\n// V6.67 invoice-only + equipment-only save gate.\n$('saveImportBtn').addEventListener('click',e=>{\n  if(!state.parsed)return;\n  const docType=detectImportDocumentType(state.parsed.raw||state.parsed.rawText||'');\n  if(docType.type!=='invoice'){e.preventDefault();e.stopImmediatePropagation();toast(docType.type==='delivery_order'?'Only invoices can be imported. Delivery Orders are blocked.':'Only verified invoices can be saved.');return;}\n  const detected=state.parsed.invoiceClassification?.type||'uncertain';\n  const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;\n  if(effective==='equipment')return;\n  e.preventDefault();e.stopImmediatePropagation();\n  renderImportEligibility();\n  toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':effective==='noninventory'?'No tracked equipment found. Excluded accessory-only invoices cannot be imported.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');\n},true);\n";
@@ -1012,16 +1097,20 @@ async function autoNamedPdf(file,doc){
     const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
     try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch(err){
-    console.error('AV Inventory Hub V6.75 startup error:',err);
+    console.error('AV Inventory Hub V6.76 startup error:',err);
     const box=document.createElement('div');
     box.style.cssText='position:fixed;inset:20px;z-index:99999;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-    box.innerHTML='<b>AV Inventory Hub V6.75 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
+    box.innerHTML='<b>AV Inventory Hub V6.76 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
     document.body.appendChild(box);
   }
 }
 
 
 const V667_RELEASE_NOTES=[
+  'AUTO-* SKU values are rejected at parse, review and save; no random SKU is generated',
+  'Printed model codes are recovered only when supported by invoice evidence',
+  'Support/coverage, stands and labour rows are excluded before physical inventory save',
+  'Legacy AUTO-* items can be repaired on a future matching import only when the replacement is collision-free',
   'Startup hotfix: accessory-exclusion helper is injected exactly once to prevent duplicate identifier failure',
   'Service-only invoices are blocked before Review and nothing is imported',
   'Security locks, safety wires, mounts, brackets, cables, lamp kits, carts and stands are excluded from Inventory imports',
@@ -1034,7 +1123,7 @@ const V667_RELEASE_NOTES=[
   'OCR variants such as VINI7-047976 are normalised to VIN17-047976 when the pattern is unambiguous',
   'Inventory cards now use original identity-based sketch illustrations instead of downloading or tracing web product photos',
   'Manual image URLs remain authoritative and are never overwritten by generated sketches',
-  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so v6.75 can initialise normally',
+  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so the patch loader can initialise normally',
   'SKU/model maximum increased from 12 to 13 characters across import fallback, review inputs and Inventory display',
   'Inventory edited Description now appears immediately beneath SKU/item without changing item identity or purchase matching',
   'Import processing now has a real Cancel processing button that safely stops unsaved work by reloading before any save stage',
@@ -1071,11 +1160,11 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.75';
+    window.__AV_INVENTORY_VERSION__='6.76';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v6.75';if(av)av.textContent='Version 6.75';
+    if(cv)cv.textContent='v6.76';if(av)av.textContent='Version 6.76';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
-  }catch(e){console.warn('V6.75 patch-notes fallback skipped',e);}
+  }catch(e){console.warn('V6.76 patch-notes fallback skipped',e);}
 }
 document.addEventListener('click',e=>{if(e.target.closest?.('#patchNotesBtn'))setTimeout(v667EnsurePatchNotesUi,0);},true);
 setTimeout(v667EnsurePatchNotesUi,0);
