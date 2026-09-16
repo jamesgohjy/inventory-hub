@@ -1,22 +1,22 @@
-// AV Inventory Hub V6.71 — startup hotfix for 13-character SKU display patch
-// This patch loader applies V6.71 safely on top of the verified V6.55 source.
+// AV Inventory Hub V6.72 — copyright-safe identity-based sketch illustrations
+// This patch loader applies V6.72 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
 function replaceOnce(src,needle,replacement,label=needle){
   const i=src.indexOf(needle);
-  if(i<0)throw new Error('V6.71 patch marker not found: '+label);
+  if(i<0)throw new Error('V6.72 patch marker not found: '+label);
   return src.slice(0,i)+replacement+src.slice(i+needle.length);
 }
 function replaceSection(src,startMarker,endMarker,replacement,label=startMarker){
   const s=src.indexOf(startMarker),e=src.indexOf(endMarker,s+startMarker.length);
-  if(s<0||e<0)throw new Error('V6.71 patch section not found: '+label);
+  if(s<0||e<0)throw new Error('V6.72 patch section not found: '+label);
   return src.slice(0,s)+replacement+src.slice(e);
 }
 function asPatchedFunction(fn,newName){
   const source=fn.toString();
   const patched=source.replace(/^(async\s+)?function\s+[^\s(]+/,(_m,asyncPrefix='')=>`${asyncPrefix||''}function ${newName}`);
   const expected=(source.startsWith('async function ')?'async function ':'function ')+newName+'(';
-  if(!patched.startsWith(expected))throw new Error('V6.71 helper rename failed for '+newName);
+  if(!patched.startsWith(expected))throw new Error('V6.72 helper rename failed for '+newName);
   return patched;
 }
 
@@ -797,10 +797,10 @@ function v662ParsePhysicalEvidenceRows(text=''){
   for(const line of lines){if(!physical.test(line)||service.test(line))continue;const m=line.match(/^[|.,;:\-]*\s*([A-Z0-9][A-Z0-9+._\/-]{2,})\s+(.+?)\s+(\d{1,4})(?:\s+.*)?$/i);if(!m)continue;const sku=cleanVerifiedSku(m[1],text),desc=cleanInventoryDescription(m[2]);if(!sku||!desc)continue;const vals=[...line.matchAll(/(?:S?[$#]?\s*)?(\d[\d,]*[ .]\d{2})/g)].map(x=>v662MoneyNumber(x[1].replace(/ (\d{2})$/,'.$1'))).filter(Number.isFinite);out.push(normalizeParsedInvoiceItem({sku,item_name:desc,description:desc,category:'',unit:'pcs',quantity:Number(m[3]),unit_price:vals.length>=2?vals[vals.length-2]:null,amount:vals.length?vals[vals.length-1]:null,warranty:'',serials:''}));}
   return out;
 }
-function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.71',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
+function v662ParseAuditPayload(){const d=state.parsed?.doc||{},c=state.parsed?.invoiceClassification||{};return{parser_version:'6.72',file_sha256:state.importFileHash||'',file_kind:state.importFileKind||'',classification:c.type||'uncertain',classification_reason:c.reason||'',supplier:d.supplier_name||'',invoice_number:d.invoice_number||'',invoice_date:d.invoice_date||'',line_item_count:(state.parsed?.items||[]).length,excluded_service_count:Number(state.parsed?.excludedServiceCount||0),ocr_sources:(state.ocrCandidates||[]).map(x=>x.source).filter(Boolean),created_at:new Date().toISOString()};}
 function v662InstallAuditWrappers(){
-  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.71',parse_audit:audit},purchase,lines,file);return r;};LocalDB.prototype.__v662Import=true;}
-  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const r=await orig.call(this,doc,purchase,lines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.71',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
+  if(typeof LocalDB!=='undefined'&&!LocalDB.prototype.__v662Import){const orig=LocalDB.prototype.importPurchase;LocalDB.prototype.importPurchase=async function(doc,purchase,lines,file){const audit=v662ParseAuditPayload(),r=await orig.call(this,{...doc,file_sha256:audit.file_sha256,parser_version:'6.72',parse_audit:audit},purchase,lines,file);return r;};LocalDB.prototype.__v662Import=true;}
+  if(typeof SupabaseDB!=='undefined'&&!SupabaseDB.prototype.__v662Import){const orig=SupabaseDB.prototype.importPurchase;SupabaseDB.prototype.importPurchase=async function(doc,purchase,lines,file){const r=await orig.call(this,doc,purchase,lines,file);try{const audit=v662ParseAuditPayload();if(r?.document_id){const u=await this.sb.from('documents').update({file_sha256:audit.file_sha256,parser_version:'6.72',parse_audit:audit}).eq('id',r.document_id);if(u.error&&!/column|schema cache/i.test(String(u.error.message||'')))console.warn('Parse audit update failed',u.error);}}catch(e){console.warn('Parse audit metadata could not be stored.',e);}return r;};SupabaseDB.prototype.__v662Import=true;}
 }
 function v662ConfigureInvoiceFileInputs(){setTimeout(()=>{document.querySelectorAll('input[type="file"]').forEach(el=>{el.accept='.pdf,.png,.jpg,.jpeg,.webp,.docx,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document';});},0);}
 function v661EffectiveInvoiceType(){
@@ -869,6 +869,49 @@ function v661LooksServiceOnlyDocument(text='',extractedItems=[],inventoryItems=[
   return classifyInvoiceDocument(text,extractedItems,inventoryItems).type==='service';
 }
 
+
+function v672SketchKind(item){
+  const c=norm([item?.sku,item?.item_name,item?.description,item?.category].join(' '));
+  if(/\b(?:rolling stand|mobile stand|floor stand|trolley|cart|tripod stand|display stand)\b/.test(c))return'stand';
+  if(/\b(?:projector|projection)\b/.test(c))return'projector';
+  if(/\b(?:active speaker|speaker|loudspeaker|soundbar)\b/.test(c))return'speaker';
+  if(/\b(?:control panel|controller|switcher|matrix|processor|av control)\b/.test(c))return'control';
+  if(/\b(?:microphone|wireless handheld|transmitter|receiver|bodypack)\b/.test(c))return'microphone';
+  if(/\b(?:visualizer|document camera)\b/.test(c))return'visualizer';
+  if(/\b(?:camera|camcorder|ptz)\b/.test(c))return'camera';
+  if(/\b(?:hdmi|usb|cat6|cable|adapter|dongle|ideashare key)\b/.test(c))return'cable';
+  if(/\b(?:display|monitor|screen|ideahub|television|tv)\b/.test(c))return'display';
+  return'generic';
+}
+function v672SketchSvg(item){
+  const kind=v672SketchKind(item),identity=String(item?.sku||item?.item_name||item?.description||kind);
+  let hash=2166136261;for(let i=0;i<identity.length;i++){hash^=identity.charCodeAt(i);hash=Math.imul(hash,16777619)>>>0;}
+  const wobble=(hash%5)-2,tilt=((hash>>>3)%5)-2;
+  const stroke='#395269',soft='#7890a5',paper='#f3f7fb';
+  const common=`fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"`;
+  const faint=`fill="none" stroke="${soft}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity=".48"`;
+  const sketches={
+    projector:`<g transform="translate(${wobble} ${tilt})"><rect x="112" y="92" width="256" height="102" rx="18" ${common}/><circle cx="304" cy="143" r="32" ${common}/><circle cx="304" cy="143" r="17" ${faint}/><path d="M140 117h93M140 133h74M141 166h54M127 194l-9 18M353 194l10 18" ${faint}/><path d="M145 88l22-20h154l21 20" ${faint}/></g>`,
+    microphone:`<g transform="translate(${wobble} ${tilt}) rotate(-8 240 130)"><ellipse cx="184" cy="78" rx="45" ry="34" ${common}/><path d="M161 101l20 101M207 101l20 101M176 203h58" ${common}/><path d="M151 72h66M157 59h53M165 47h37" ${faint}/><path d="M268 64c24 10 34 28 29 53l-19 91M260 58c34 9 54 31 54 62" ${faint}/></g>`,
+    speaker:`<g transform="translate(${wobble} ${tilt})"><rect x="145" y="45" width="190" height="174" rx="16" ${common}/><circle cx="240" cy="148" r="50" ${common}/><circle cx="240" cy="148" r="25" ${faint}/><circle cx="240" cy="82" r="15" ${common}/><path d="M161 210h158M164 54l-9 14M316 54l9 14" ${faint}/></g>`,
+    control:`<g transform="translate(${wobble} ${tilt})"><rect x="88" y="72" width="304" height="120" rx="12" ${common}/><rect x="112" y="96" width="112" height="70" rx="7" ${faint}/><circle cx="268" cy="112" r="9" ${common}/><circle cx="307" cy="112" r="9" ${common}/><circle cx="346" cy="112" r="9" ${common}/><path d="M254 147h103M254 163h77M105 192l-12 19M375 192l12 19" ${faint}/></g>`,
+    cable:`<g transform="translate(${wobble} ${tilt})"><path d="M125 143c0-54 50-82 104-64 65 21 73 91 20 110-47 17-91-6-88-44 3-38 44-57 78-41 27 13 30 41 11 55" ${common}/><path d="M112 142h-38v-29h31l20 14M250 160l55 28" ${common}/><rect x="305" y="176" width="72" height="30" rx="5" ${common}/><path d="M322 176v-16h38v16M86 113V96" ${faint}/></g>`,
+    display:`<g transform="translate(${wobble} ${tilt})"><rect x="96" y="42" width="288" height="154" rx="12" ${common}/><path d="M240 197v28M188 226h104" ${common}/><path d="M118 67l119 0M118 84h70M335 174h26" ${faint}/><rect x="116" y="62" width="248" height="111" rx="5" ${faint}/></g>`,
+    camera:`<g transform="translate(${wobble} ${tilt})"><rect x="120" y="86" width="202" height="110" rx="18" ${common}/><circle cx="235" cy="141" r="43" ${common}/><circle cx="235" cy="141" r="22" ${faint}/><path d="M322 110l70-31v123l-70-30zM151 86l18-30h87l19 30" ${common}/></g>`,
+    visualizer:`<g transform="translate(${wobble} ${tilt})"><rect x="106" y="181" width="268" height="34" rx="8" ${common}/><path d="M186 181V79c0-20 14-34 34-34h46" ${common}/><rect x="257" y="31" width="93" height="55" rx="9" ${common}/><circle cx="316" cy="58" r="10" ${faint}/><path d="M138 197h84M272 197h61" ${faint}/></g>`,
+    stand:`<g transform="translate(${wobble} ${tilt})"><rect x="126" y="43" width="228" height="112" rx="9" ${common}/><path d="M240 155v55M240 179h-72M240 179h72M169 179l-27 35M311 179l27 35" ${common}/><circle cx="138" cy="219" r="9" ${faint}/><circle cx="342" cy="219" r="9" ${faint}/><path d="M145 57h190M145 73h117" ${faint}/></g>`,
+    generic:`<g transform="translate(${wobble} ${tilt})"><rect x="105" y="72" width="270" height="126" rx="16" ${common}/><circle cx="154" cy="135" r="17" ${common}/><circle cx="207" cy="135" r="17" ${common}/><path d="M251 112h88M251 132h68M251 152h96M124 87l16-18h201l15 18" ${faint}/></g>`
+  };
+  const art=sketches[kind]||sketches.generic;
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 260" role="img" aria-label="Generated AV equipment sketch"><rect width="480" height="260" rx="24" fill="${paper}"/><path d="M43 218c72 8 143 9 216 3 72-5 129-4 176 2" ${faint}/>${art}</svg>`;
+  return 'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg);
+}
+function v672ImageForItem(item){
+  const manual=String(item?.image_url||'').trim();
+  if(manual)return manual;
+  return v672SketchSvg(item);
+}
+
 async function launch(){
   try{
     const r=await fetch(ORIGINAL_APP_URL,{cache:'no-store'});
@@ -876,10 +919,11 @@ async function launch(){
     let src=await r.text();
     if(!src.includes("const APP_VERSION='6.55';"))throw new Error('Verified V6.55 source signature was not found.');
 
+    src=replaceOnce(src,"function imageForItem(item){if(item.image_url)return item.image_url;const c=norm([item.category,item.item_name,item.description,item.sku].join(' '));if(c.includes('projector'))return DASH_ASSETS.projector;if(c.includes('microphone')||c.includes('wireless')||c.includes('audio'))return DASH_ASSETS.microphone;if(c.includes('cable')||c.includes('hdmi'))return DASH_ASSETS.cable;if(c.includes('display')||c.includes('monitor')||c.includes('screen'))return DASH_ASSETS.monitor;return'';}",asPatchedFunction(v672SketchKind,'v672SketchKind')+'\n'+asPatchedFunction(v672SketchSvg,'v672SketchSvg')+'\n'+asPatchedFunction(v672ImageForItem,'imageForItem'),'copyright-safe identity sketch images');
     src=replaceOnce(src,"const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2500)};","const toast=(msg)=>{const openDialogs=[...document.querySelectorAll('dialog[open]')];const dlg=openDialogs[openDialogs.length-1];if(dlg){let t=dlg.querySelector('.v667-modal-toast');if(!t){t=document.createElement('div');t.className='v667-modal-toast';t.setAttribute('role','status');t.style.cssText='position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:min(720px,calc(100vw - 40px));background:#10253f;color:#fff;border:1px solid #4c6f96;border-radius:10px;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,.32);font:600 14px/1.4 system-ui,sans-serif;text-align:center;';dlg.appendChild(t);}t.textContent=msg;t.style.display='block';clearTimeout(t._hideTimer);t._hideTimer=setTimeout(()=>{t.style.display='none';},3500);return;}const t=$('toast');if(!t)return;t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3000)};",'modal-visible toast');
-    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.71 — startup hotfix for 13-character SKU display patch",'version header');
-    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.71';",'APP_VERSION');
-        src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so v6.71 can initialise normally',\n  'SKU/model maximum increased from 12 to 13 characters',\n  'Inventory edited Description is displayed beneath SKU/item after save and refresh',\n  'Serial-number fields exclude SKU/model identifiers from the same invoice',\n  'Recent Activities All users filter now matches the date filter width',\n  'AV Media invoices use targeted high-resolution header/table OCR when native PDF text is corrupted',\n  'Gibberish OCR item names are rejected before SKU fallback or inventory save',\n  'AV Media product codes, descriptions, quantities and prices are parsed from verified row evidence',\n  'Warranty rows attach to equipment instead of creating separate inventory items',\n  'Installation/service rows remain excluded from physical inventory',\n  'Categories are filled only from clear equipment nouns such as projector, control panel or speaker',\n  'Import drop zone is centred and reduced to 50% width on desktop',\n  'Safe first-13-character SKU fallback from verified standard item name when no printed SKU/model is available',\n  'SKU fallback is skipped if it would conflict with another inventory item',\n  'Visible Edit button added beside SKU/item and Category for quick corrections',\n  'Import alerts display above the active modal instead of behind the blurred backdrop',\n  'Invoice dates such as 7-Dec-20 and 07-Dec-2020 are now recognised',\n  'Inventory descriptions remove quantity/UOM/price/currency/subtotal/GST/total contamination',\n  'Invoice-only import gate blocks Delivery Orders, Delivery Notes, packing lists and other non-invoice documents',\n  'Delivery Order references inside a verified invoice remain allowed',\n  'Return-trip, signed-delivery-order, courier, freight and transport rows are excluded from inventory',\n  'SKU/model values are limited to 13 characters maximum',\n  'Documents display DD/MM/YYYY-Company name and stored files use DD-MM-YYYY-Company-name',\n  'Golden-corpus regression testing added for real invoice layouts',\n  'PDF, JPG/JPEG, PNG, WEBP and DOCX use one normalised import pipeline',\n  'Native text is preferred and OCR is used as fallback/recovery for scanned content',\n  'SHA-256 file hashing and parser audit metadata are supported',\n  'Header, totals, line items and invoice type are validated across independent scans',\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
+    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.72 — copyright-safe identity-based sketch illustrations",'version header');
+    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.72';",'APP_VERSION');
+        src=replaceOnce(src,"const RELEASE_CURRENT_NOTES=[","const RELEASE_CURRENT_NOTES=[\n  'Inventory cards now use original identity-based sketch illustrations instead of downloading or tracing web product photos',\n  'Manual image URLs remain authoritative and are never overwritten by generated sketches',\n  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so v6.72 can initialise normally',\n  'SKU/model maximum increased from 12 to 13 characters',\n  'Inventory edited Description is displayed beneath SKU/item after save and refresh',\n  'Serial-number fields exclude SKU/model identifiers from the same invoice',\n  'Recent Activities All users filter now matches the date filter width',\n  'AV Media invoices use targeted high-resolution header/table OCR when native PDF text is corrupted',\n  'Gibberish OCR item names are rejected before SKU fallback or inventory save',\n  'AV Media product codes, descriptions, quantities and prices are parsed from verified row evidence',\n  'Warranty rows attach to equipment instead of creating separate inventory items',\n  'Installation/service rows remain excluded from physical inventory',\n  'Categories are filled only from clear equipment nouns such as projector, control panel or speaker',\n  'Import drop zone is centred and reduced to 50% width on desktop',\n  'Safe first-13-character SKU fallback from verified standard item name when no printed SKU/model is available',\n  'SKU fallback is skipped if it would conflict with another inventory item',\n  'Visible Edit button added beside SKU/item and Category for quick corrections',\n  'Import alerts display above the active modal instead of behind the blurred backdrop',\n  'Invoice dates such as 7-Dec-20 and 07-Dec-2020 are now recognised',\n  'Inventory descriptions remove quantity/UOM/price/currency/subtotal/GST/total contamination',\n  'Invoice-only import gate blocks Delivery Orders, Delivery Notes, packing lists and other non-invoice documents',\n  'Delivery Order references inside a verified invoice remain allowed',\n  'Return-trip, signed-delivery-order, courier, freight and transport rows are excluded from inventory',\n  'SKU/model values are limited to 13 characters maximum',\n  'Documents display DD/MM/YYYY-Company name and stored files use DD-MM-YYYY-Company-name',\n  'Golden-corpus regression testing added for real invoice layouts',\n  'PDF, JPG/JPEG, PNG, WEBP and DOCX use one normalised import pipeline',\n  'Native text is preferred and OCR is used as fallback/recovery for scanned content',\n  'SHA-256 file hashing and parser audit metadata are supported',\n  'Header, totals, line items and invoice type are validated across independent scans',\n  'Extraction completes before Equipment/Service classification is evaluated',\n  'Clear equipment invoices are auto-classified from verified priced product rows',\n  'Clear service/labour invoices are blocked without unnecessary confirmation prompts',\n  'Equipment confirmation re-runs extraction and refreshes all review fields',\n  'AV Media Invoice No. and DATE use labelled header coordinates plus OCR fallback',\n  'AV Media PRODUCT NO. tables are parsed in either PDF coordinate direction',\n  'Serial numbers and warranty text never contaminate SKU/item identifiers',\n  'Subtotal, GST and Amount Due are recovered from labelled total rows and arithmetic checked',\n  'Recovery OCR runs automatically when key header fields or physical line items are missing',",'release notes');
 
     src=replaceSection(src,"function detectInvoiceDate(text,invoice=''){","\nfunction first(",asPatchedFunction(v661DetectInvoiceDate,'detectInvoiceDate')+'\n','detectInvoiceDate');
     src=replaceSection(src,"function parseDate(v=''){","\nfunction invoiceSignals",asPatchedFunction(v661ParseDate,'parseDate')+'\n','calendar-safe parseDate');
@@ -936,17 +980,19 @@ async function autoNamedPdf(file,doc){
     const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
     try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch(err){
-    console.error('AV Inventory Hub V6.71 startup error:',err);
+    console.error('AV Inventory Hub V6.72 startup error:',err);
     const box=document.createElement('div');
     box.style.cssText='position:fixed;inset:20px;z-index:99999;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-    box.innerHTML='<b>AV Inventory Hub V6.71 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
+    box.innerHTML='<b>AV Inventory Hub V6.72 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
     document.body.appendChild(box);
   }
 }
 
 
 const V667_RELEASE_NOTES=[
-  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so v6.71 can initialise normally',
+  'Inventory cards now use original identity-based sketch illustrations instead of downloading or tracing web product photos',
+  'Manual image URLs remain authoritative and are never overwritten by generated sketches',
+  'Startup hotfix: corrected the verified V6.55 Inventory-row patch marker so v6.72 can initialise normally',
   'SKU/model maximum increased from 12 to 13 characters across import fallback, review inputs and Inventory display',
   'Inventory edited Description now appears immediately beneath SKU/item without changing item identity or purchase matching',
   'Import processing now has a real Cancel processing button that safely stops unsaved work by reloading before any save stage',
@@ -983,11 +1029,11 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.71';
+    window.__AV_INVENTORY_VERSION__='6.72';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v6.71';if(av)av.textContent='Version 6.71';
+    if(cv)cv.textContent='v6.72';if(av)av.textContent='Version 6.72';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
-  }catch(e){console.warn('V6.71 patch-notes fallback skipped',e);}
+  }catch(e){console.warn('V6.72 patch-notes fallback skipped',e);}
 }
 document.addEventListener('click',e=>{if(e.target.closest?.('#patchNotesBtn'))setTimeout(v667EnsurePatchNotesUi,0);},true);
 setTimeout(v667EnsurePatchNotesUi,0);
