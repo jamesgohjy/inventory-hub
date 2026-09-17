@@ -113,7 +113,7 @@
           <button id="feedbackBellBtn" class="feedback-bell hidden" type="button" aria-label="Feedback notifications" title="Feedback notifications">
             <i data-lucide="bell"></i><span id="feedbackBadge" class="feedback-badge hidden">0</span>
           </button>
-          <button id="feedbackOpenBtn" class="feedback-open-btn" type="button"><i data-lucide="message-square-plus"></i> Feedback</button>
+          <button id="feedbackOpenBtn" class="feedback-open-btn hidden" type="button"><i data-lucide="message-square-plus"></i> Feedback</button>
           <div class="user-menu-wrap">
             <button id="userMenuBtn" class="user-chip user-chip-btn" type="button" aria-expanded="false">
               <div id="userAvatar" class="avatar">AV</div>
@@ -308,7 +308,7 @@
           <div class="panel-head import-items-head"><h3>Line items</h3><button id="addParsedItemBtn" class="secondary small-btn">+ Add line</button></div>
           <div id="parsedItems"></div>
           <details><summary>Raw extracted text</summary><pre id="rawText" class="raw-text"></pre></details>
-          <div class="dialog-actions"><button id="reportImportIssueBtn" class="secondary feedback-report-inline" type="button"><i data-lucide="message-square-warning"></i> Report an issue</button><span class="dialog-actions-spacer"></span><button id="cancelReviewBtn" class="secondary">Cancel</button><button id="saveImportBtn" class="primary">Confirm & save</button></div>
+          <div class="dialog-actions"><button id="reportImportIssueBtn" class="secondary feedback-report-inline hidden" type="button"><i data-lucide="message-square-warning"></i> Report an issue</button><span class="dialog-actions-spacer"></span><button id="cancelReviewBtn" class="secondary">Cancel</button><button id="saveImportBtn" class="primary">Confirm & save</button></div>
         </section>
       </div>
     </div>
@@ -403,6 +403,6 @@
   <script src="config.js"></script>
   <script src="app.js?v=6.85.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="feedback.js?v=6.85.0"></script>
+  <script src="feedback.js?v=6.85.2"></script>
 </body>
 </html>
