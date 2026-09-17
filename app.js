@@ -1,17 +1,17 @@
-// AV Inventory Hub V6.85 — Feedback Submission Assistant (V6.84 parser retained)
+// AV Inventory Hub V6.86 — Line-item reconciliation and serial ownership fix
 // This patch loader applies V6.76 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
 // V6.82 deployment marker: set the visible version before the runtime patch loader starts.
-const V682_DEPLOYMENT_BUILD='6.85.0';
+const V682_DEPLOYMENT_BUILD='6.86.0';
 function v682MarkDeployment(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.85';
+    window.__AV_INVENTORY_VERSION__='6.86';
     window.__AV_INVENTORY_BUILD__=V682_DEPLOYMENT_BUILD;
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion');
-    if(cv)cv.textContent='v6.85';
-    if(av)av.textContent='Version 6.85';
-    document.documentElement.dataset.avInventoryVersion='6.85';
+    if(cv)cv.textContent='v6.86';
+    if(av)av.textContent='Version 6.86';
+    document.documentElement.dataset.avInventoryVersion='6.86';
     document.documentElement.dataset.avInventoryBuild=V682_DEPLOYMENT_BUILD;
   }catch(e){console.warn('V6.82 deployment marker skipped',e);}
 }
@@ -733,6 +733,19 @@ function v677VerifyQuantities(items=[]){
     return line;
   });
 }
+// V6.86: serial ownership is anchored to the printed SKU/model row, not generic description words.
+function v686SerialValuesFromLabelTail(value=''){
+  const tokens=String(value||'').trim().split(/\s+/),parts=[];
+  for(const raw of tokens){
+    const t=raw.replace(/^[,;:]+|[,;:]+$/g,'');
+    if(!t)continue;
+    if(!/^[A-Z0-9][A-Z0-9._\/-]{1,31}$/i.test(t)||!/\d/.test(t))break;
+    parts.push(t);
+    if(parts.join('').length>=32)break;
+  }
+  const joined=parts.join('');
+  return joined&&joined.length>=5?[joined]:[];
+}
 function v677ReassignSerialsByEvidence(items=[],sourceText=''){
   const out=(items||[]).map(x=>({...x,serials:''}));
   const lines=normalizePdfText(sourceText).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
@@ -740,18 +753,24 @@ function v677ReassignSerialsByEvidence(items=[],sourceText=''){
   const serialEvents=[];
   for(let i=0;i<lines.length;i++){
     const m=lines[i].match(serialRe);if(!m)continue;
-    const vals=(String(m[1]||'').match(/\b[A-Z0-9][A-Z0-9._\/-]{4,31}\b/gi)||[]).filter(v=>/\d/.test(v));
+    const vals=v686SerialValuesFromLabelTail(m[1]);
     if(vals.length)serialEvents.push({i,vals:[...new Set(vals)]});
   }
   const occurrences=out.map((item,idx)=>{
-    const keys=[item.sku,...(String(item.item_name||'').match(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)||[])].map(v=>v668CompactIdentifier(v)).filter(k=>k.length>=3);
+    const skuKey=v668CompactIdentifier(item.sku||'');
+    let keys=skuKey.length>=3?[skuKey]:[];
+    if(!keys.length){
+      const descTokens=(String(item.item_name||item.description||'').match(/\b[A-Z0-9][A-Z0-9+._\/-]{3,}\b/gi)||[])
+        .map(v=>v668CompactIdentifier(v)).filter(k=>k.length>=5&&!/^(?:ABTUS|PANASONIC|ACTIVE|SPEAKER|PROJECTOR|CONTROL|PANEL)$/i.test(k));
+      keys=[...new Set(descTokens)].slice(0,3);
+    }
     const pos=[];for(let i=0;i<lines.length;i++){const compact=v668CompactIdentifier(lines[i]);if(keys.some(k=>compact.includes(k)))pos.push(i);}
     return {idx,pos};
   });
   const owners=new Map();
   for(const ev of serialEvents){
     let best=null;
-    for(const oc of occurrences)for(const pos of oc.pos){const d=Math.abs(ev.i-pos),after=ev.i>=pos?0:3,score=d+after;if(d<=8&&(!best||score<best.score))best={idx:oc.idx,score};}
+    for(const oc of occurrences)for(const pos of oc.pos){const delta=ev.i-pos;if(delta<0||delta>8)continue;const score=delta;if(!best||score<best.score)best={idx:oc.idx,score};}
     for(const sn of ev.vals){const key=v668CompactIdentifier(sn);if(!key)continue;if(!best){owners.set(key,{conflict:true});continue;}const prev=owners.get(key);if(prev&&prev.idx!==best.idx)owners.set(key,{conflict:true});else owners.set(key,{idx:best.idx,sn});}
   }
   for(const [key,owner] of owners){if(owner.conflict||owner.idx==null)continue;const item=out[owner.idx],arr=parseSerials(item.serials||'');if(!arr.some(v=>v668CompactIdentifier(v)===key))arr.push(owner.sn);item.serials=arr.join(', ');}
@@ -759,6 +778,7 @@ function v677ReassignSerialsByEvidence(items=[],sourceText=''){
   for(const owner of owners.values())if(owner.conflict)for(const item of out)item.serialConflictReviewRequired=true;
   return out;
 }
+
 function v677ValidateInvoiceLines(items=[],sourceText=''){
   let out=v677ReassignSerialsByEvidence(items,sourceText);
   out=v677VerifyQuantities(out);
@@ -1090,7 +1110,7 @@ function v682InvoiceMarkdown(n={}){
   return out.join('\n');
 }
 function v682AttachNormalization(parsed={},sourceText=''){
-  const normalized=v682NormalizeInvoice(parsed,sourceText);return{...parsed,normalizedInvoice:normalized,normalizedMarkdown:v682InvoiceMarkdown(normalized),parseEvidence:{...(parsed.parseEvidence||{}),normalization_schema:'1.0',normalization_parser:'6.84'}};
+  const normalized=v682NormalizeInvoice(parsed,sourceText);return{...parsed,normalizedInvoice:normalized,normalizedMarkdown:v682InvoiceMarkdown(normalized),parseEvidence:{...(parsed.parseEvidence||{}),normalization_schema:'1.0',normalization_parser:'6.86'}};
 }
 
 // V6.84: reconcile independently verified equipment rows across parser candidates.
@@ -1238,8 +1258,8 @@ async function launch(){
 
     src=replaceOnce(src,"function imageForItem(item){if(item.image_url)return item.image_url;const c=norm([item.category,item.item_name,item.description,item.sku].join(' '));if(c.includes('projector'))return DASH_ASSETS.projector;if(c.includes('microphone')||c.includes('wireless')||c.includes('audio'))return DASH_ASSETS.microphone;if(c.includes('cable')||c.includes('hdmi'))return DASH_ASSETS.cable;if(c.includes('display')||c.includes('monitor')||c.includes('screen'))return DASH_ASSETS.monitor;return'';}",asPatchedFunction(v672SketchKind,'v672SketchKind')+'\n'+asPatchedFunction(v672SketchSvg,'v672SketchSvg')+'\n'+asPatchedFunction(v672ImageForItem,'imageForItem'),'copyright-safe identity sketch images');
     src=replaceOnce(src,"const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2500)};","const toast=(msg)=>{const openDialogs=[...document.querySelectorAll('dialog[open]')];const dlg=openDialogs[openDialogs.length-1];if(dlg){let t=dlg.querySelector('.v667-modal-toast');if(!t){t=document.createElement('div');t.className='v667-modal-toast';t.setAttribute('role','status');t.style.cssText='position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:min(720px,calc(100vw - 40px));background:#10253f;color:#fff;border:1px solid #4c6f96;border-radius:10px;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,.32);font:600 14px/1.4 system-ui,sans-serif;text-align:center;';dlg.appendChild(t);}t.textContent=msg;t.style.display='block';clearTimeout(t._hideTimer);t._hideTimer=setTimeout(()=>{t.style.display='none';},3500);return;}const t=$('toast');if(!t)return;t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3000)};",'modal-visible toast');
-    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.85 — Feedback Submission Assistant (V6.84 parser retained)",'version header');
-    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.85';",'APP_VERSION');
+    src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V6.86 — Line-item reconciliation and serial ownership fix",'version header');
+    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='6.86';",'APP_VERSION');
     src=replaceOnce(src,"const currentRole=()=>CFG.mode==='supabase'?(state.profile?.role||'viewer'):'admin';","const currentRole=()=>CFG.mode==='supabase'?String(state.profile?.role||'viewer').trim().toLowerCase():'admin';",'normalize account role');
     src=replaceOnce(src,"if(raw.includes('row-level security')||raw.includes('permission')||raw.includes('admin access required')||raw.includes('editor or admin access required'))return 'Your account role does not allow this action. Please contact an Admin.';","if(raw.includes('row-level security')||raw.includes('permission')||raw.includes('admin access required')||raw.includes('editor or admin access required'))return canEdit()?('Your account is '+currentRole().replace(/^./,c=>c.toUpperCase())+', but Supabase rejected the database/storage write. This is a database policy permission error, not an account-role restriction.'):'Your account role does not allow this action. Please contact an Admin.';",'accurate permission error');
     src=replaceOnce(src,"if(state.importSaving)return;if(!requireEdit())return;collectParsed();","if(state.importSaving)return;if(CFG.mode==='supabase'&&state.session?.user?.id&&state.db?.profileForUser){try{const freshProfile=await state.db.profileForUser(state.session.user.id);if(freshProfile){state.profile=freshProfile;setUserIdentity(state.session);}}catch(roleErr){console.warn('Could not refresh role before import save',roleErr);}}if(!requireEdit())return;collectParsed();",'refresh role before invoice save');
@@ -1282,7 +1302,7 @@ async function autoNamedPdf(file,doc){
 }
 `,'date-company source filename');
 
-    src=replaceOnce(src,'function cleanupPdfPreview(){',asPatchedFunction(v682FieldEvidence,'v682FieldEvidence')+'\n'+asPatchedFunction(v682NormalizeInvoice,'v682NormalizeInvoice')+'\n'+asPatchedFunction(v682MarkdownCell,'v682MarkdownCell')+'\n'+asPatchedFunction(v682InvoiceMarkdown,'v682InvoiceMarkdown')+'\n'+asPatchedFunction(v682AttachNormalization,'v682AttachNormalization')+'\n'+asPatchedFunction(v665CleanVerifiedSku,'cleanVerifiedSku')+'\n'+asPatchedFunction(v661CleanInventoryDescription,'cleanInventoryDescription')+'\n'+asPatchedFunction(v667PlausibleItemName,'v667PlausibleItemName')+'\n'+asPatchedFunction(v667ShortItemName,'v667ShortItemName')+'\n'+asPatchedFunction(v667InferCategory,'v667InferCategory')+'\n'+asPatchedFunction(v667ParseAvMediaTargetedText,'parseAvMediaTargetedText')+'\n'+asPatchedFunction(v667AddAvMediaTargetedOcr,'addAvMediaTargetedOcr')+'\n'+asPatchedFunction(v661ParseGenericPricedRows,'v661ParseGenericPricedRows')+'\n'+asPatchedFunction(v662MoneyNumber,'v662MoneyNumber')+'\n'+asPatchedFunction(v662RecoverMoneyFromText,'v662RecoverMoneyFromText')+'\n'+asPatchedFunction(v662FileSha256,'v662FileSha256')+'\n'+asPatchedFunction(v662FileKind,'v662FileKind')+'\n'+asPatchedFunction(v662EnsureJSZip,'v662EnsureJSZip')+'\n'+asPatchedFunction(v662OcrBlob,'v662OcrBlob')+'\n'+asPatchedFunction(v662ExtractDocx,'v662ExtractDocx')+'\n'+asPatchedFunction(v662TryServerInvoiceProcessing,'v662TryServerInvoiceProcessing')+'\n'+asPatchedFunction(v662ExtractInvoiceFile,'extractInvoiceFile')+'\n'+asPatchedFunction(v662ParsePhysicalEvidenceRows,'v662ParsePhysicalEvidenceRows')+'\n'+asPatchedFunction(v662ParseAuditPayload,'v662ParseAuditPayload')+'\n'+asPatchedFunction(v662InstallAuditWrappers,'installParseAuditWrappers')+'\n'+asPatchedFunction(v662ConfigureInvoiceFileInputs,'configureInvoiceFileInputs')+'\n'+asPatchedFunction(v661EvidenceSources,'v661EvidenceSources')+'\n'+asPatchedFunction(v668CompactIdentifier,'v668CompactIdentifier')+'\n'+asPatchedFunction(v668ModelIdentifierKeys,'v668ModelIdentifierKeys')+'\n'+asPatchedFunction(v668ExplicitSerialEvidence,'v668ExplicitSerialEvidence')+'\n'+asPatchedFunction(v668SanitizeSerialAssignments,'sanitizeSerialAssignments')+'\n'+asPatchedFunction(v677VerifyQuantities,'v677VerifyQuantities')+'\n'+asPatchedFunction(v677ReassignSerialsByEvidence,'v677ReassignSerialsByEvidence')+'\n'+asPatchedFunction(v677ValidateInvoiceLines,'v677ValidateInvoiceLines')+'\n'+asPatchedFunction(v679StrictLayoutItems,'v679StrictLayoutItems')+'\n'+asPatchedFunction(v679EconomicQuality,'v679EconomicQuality')+'\n'+asPatchedFunction(v679MatchExistingSku,'v679MatchExistingSku')+'\n'+asPatchedFunction(v679ImproveSkuMatches,'v679ImproveSkuMatches')+'\n'+asPatchedFunction(v684EconomicSignature,'v684EconomicSignature')+'\n'+asPatchedFunction(v684DescriptionKey,'v684DescriptionKey')+'\n'+asPatchedFunction(v684ReconcileCandidateItems,'v684ReconcileCandidateItems')+'\n'+asPatchedFunction(v676IsForbiddenAutoSku,'v676IsForbiddenAutoSku')+'\n'+asPatchedFunction(v676ModelCandidatesFromText,'v676ModelCandidatesFromText')+'\n'+asPatchedFunction(v676EmbeddedVerifiedSku,'v676EmbeddedVerifiedSku')+'\n'+asPatchedFunction(v676SafeFallbackSku,'v676SafeFallbackSku')+'\n'+asPatchedFunction(v676IsSupportCoverageLine,'v676IsSupportCoverageLine')+'\n'+asPatchedFunction(v676CanonicalItemName,'v676CanonicalItemName')+'\n'+asPatchedFunction(v676ValidateAndRectifyItems,'v676ValidateAndRectifyItems')+'\n'+asPatchedFunction(v676RepairLegacyAutoSkuMatches,'v676RepairLegacyAutoSkuMatches')+'\n'+asPatchedFunction(v661SanitizeParsedInventoryItems,'sanitizeParsedInventoryItems')+'\n'+asPatchedFunction(v661PrepareInventoryLinesForSave,'prepareInventoryLinesForSave')+'\n'+asPatchedFunction(v661RecoverAvMediaHeader,'recoverAvMediaHeader')+'\n'+asPatchedFunction(v661ClassifyInvoiceDocument,'classifyInvoiceDocument')+'\n'+asPatchedFunction(v661EffectiveInvoiceType,'effectiveInvoiceType')+'\n'+asPatchedFunction(v661ApplyParsedReviewToForm,'applyParsedReviewToForm')+'\n'+asPatchedFunction(v661RefreshDuplicateWarning,'refreshDuplicateWarning')+'\n'+asPatchedFunction(v661FinalizeParsedInvoice,'v661FinalizeParsedInvoice')+'\n'+asPatchedFunction(v661ReprocessConfirmedEquipmentInvoice,'reprocessConfirmedEquipmentInvoice')+'\n'+asPatchedFunction(v661RenderImportEligibility,'renderImportEligibility')+'\n'+asPatchedFunction(v661LooksServiceOnlyDocument,'looksServiceOnlyDocument')+'\n'+asPatchedFunction(v661LayoutMoney,'v661LayoutMoney')+'\n'+asPatchedFunction(v661RepairInvoiceMoneyFromLayout,'v661RepairInvoiceMoneyFromLayout')+'\n'+asPatchedFunction(v661NeedsDeepRecovery,'needsDeepRecovery')+'\n'+asPatchedFunction(v661EnsureTesseract,'v661EnsureTesseract')+'\n'+asPatchedFunction(v661ForceOcrRecovery,'forceOcrRecovery')+'\n'+asPatchedFunction(v665ClassifyDocumentType,'v665ClassifyDocumentType')+'\n'+asPatchedFunction(v665DetectImportDocumentType,'detectImportDocumentType')+'\n'+asPatchedFunction(v665EnsureInvoiceDocument,'ensureInvoiceDocument')+'\n'+asPatchedFunction(v665DisplayDocumentFilename,'displayDocumentFilename')+'\n'+asPatchedFunction(v665StoredDocumentFilename,'v665StoredDocumentFilename')+'\nfunction cleanupPdfPreview(){','import classification, verified SKU, AV Media recovery and OCR helpers');
+    src=replaceOnce(src,'function cleanupPdfPreview(){',asPatchedFunction(v682FieldEvidence,'v682FieldEvidence')+'\n'+asPatchedFunction(v682NormalizeInvoice,'v682NormalizeInvoice')+'\n'+asPatchedFunction(v682MarkdownCell,'v682MarkdownCell')+'\n'+asPatchedFunction(v682InvoiceMarkdown,'v682InvoiceMarkdown')+'\n'+asPatchedFunction(v682AttachNormalization,'v682AttachNormalization')+'\n'+asPatchedFunction(v665CleanVerifiedSku,'cleanVerifiedSku')+'\n'+asPatchedFunction(v661CleanInventoryDescription,'cleanInventoryDescription')+'\n'+asPatchedFunction(v667PlausibleItemName,'v667PlausibleItemName')+'\n'+asPatchedFunction(v667ShortItemName,'v667ShortItemName')+'\n'+asPatchedFunction(v667InferCategory,'v667InferCategory')+'\n'+asPatchedFunction(v667ParseAvMediaTargetedText,'parseAvMediaTargetedText')+'\n'+asPatchedFunction(v667AddAvMediaTargetedOcr,'addAvMediaTargetedOcr')+'\n'+asPatchedFunction(v661ParseGenericPricedRows,'v661ParseGenericPricedRows')+'\n'+asPatchedFunction(v662MoneyNumber,'v662MoneyNumber')+'\n'+asPatchedFunction(v662RecoverMoneyFromText,'v662RecoverMoneyFromText')+'\n'+asPatchedFunction(v662FileSha256,'v662FileSha256')+'\n'+asPatchedFunction(v662FileKind,'v662FileKind')+'\n'+asPatchedFunction(v662EnsureJSZip,'v662EnsureJSZip')+'\n'+asPatchedFunction(v662OcrBlob,'v662OcrBlob')+'\n'+asPatchedFunction(v662ExtractDocx,'v662ExtractDocx')+'\n'+asPatchedFunction(v662TryServerInvoiceProcessing,'v662TryServerInvoiceProcessing')+'\n'+asPatchedFunction(v662ExtractInvoiceFile,'extractInvoiceFile')+'\n'+asPatchedFunction(v662ParsePhysicalEvidenceRows,'v662ParsePhysicalEvidenceRows')+'\n'+asPatchedFunction(v662ParseAuditPayload,'v662ParseAuditPayload')+'\n'+asPatchedFunction(v662InstallAuditWrappers,'installParseAuditWrappers')+'\n'+asPatchedFunction(v662ConfigureInvoiceFileInputs,'configureInvoiceFileInputs')+'\n'+asPatchedFunction(v661EvidenceSources,'v661EvidenceSources')+'\n'+asPatchedFunction(v668CompactIdentifier,'v668CompactIdentifier')+'\n'+asPatchedFunction(v668ModelIdentifierKeys,'v668ModelIdentifierKeys')+'\n'+asPatchedFunction(v668ExplicitSerialEvidence,'v668ExplicitSerialEvidence')+'\n'+asPatchedFunction(v668SanitizeSerialAssignments,'sanitizeSerialAssignments')+'\n'+asPatchedFunction(v677VerifyQuantities,'v677VerifyQuantities')+'\n'+asPatchedFunction(v686SerialValuesFromLabelTail,'v686SerialValuesFromLabelTail')+'\n'+asPatchedFunction(v677ReassignSerialsByEvidence,'v677ReassignSerialsByEvidence')+'\n'+asPatchedFunction(v677ValidateInvoiceLines,'v677ValidateInvoiceLines')+'\n'+asPatchedFunction(v679StrictLayoutItems,'v679StrictLayoutItems')+'\n'+asPatchedFunction(v679EconomicQuality,'v679EconomicQuality')+'\n'+asPatchedFunction(v679MatchExistingSku,'v679MatchExistingSku')+'\n'+asPatchedFunction(v679ImproveSkuMatches,'v679ImproveSkuMatches')+'\n'+asPatchedFunction(v684EconomicSignature,'v684EconomicSignature')+'\n'+asPatchedFunction(v684DescriptionKey,'v684DescriptionKey')+'\n'+asPatchedFunction(v684ReconcileCandidateItems,'v684ReconcileCandidateItems')+'\n'+asPatchedFunction(v676IsForbiddenAutoSku,'v676IsForbiddenAutoSku')+'\n'+asPatchedFunction(v676ModelCandidatesFromText,'v676ModelCandidatesFromText')+'\n'+asPatchedFunction(v676EmbeddedVerifiedSku,'v676EmbeddedVerifiedSku')+'\n'+asPatchedFunction(v676SafeFallbackSku,'v676SafeFallbackSku')+'\n'+asPatchedFunction(v676IsSupportCoverageLine,'v676IsSupportCoverageLine')+'\n'+asPatchedFunction(v676CanonicalItemName,'v676CanonicalItemName')+'\n'+asPatchedFunction(v676ValidateAndRectifyItems,'v676ValidateAndRectifyItems')+'\n'+asPatchedFunction(v676RepairLegacyAutoSkuMatches,'v676RepairLegacyAutoSkuMatches')+'\n'+asPatchedFunction(v661SanitizeParsedInventoryItems,'sanitizeParsedInventoryItems')+'\n'+asPatchedFunction(v661PrepareInventoryLinesForSave,'prepareInventoryLinesForSave')+'\n'+asPatchedFunction(v661RecoverAvMediaHeader,'recoverAvMediaHeader')+'\n'+asPatchedFunction(v661ClassifyInvoiceDocument,'classifyInvoiceDocument')+'\n'+asPatchedFunction(v661EffectiveInvoiceType,'effectiveInvoiceType')+'\n'+asPatchedFunction(v661ApplyParsedReviewToForm,'applyParsedReviewToForm')+'\n'+asPatchedFunction(v661RefreshDuplicateWarning,'refreshDuplicateWarning')+'\n'+asPatchedFunction(v661FinalizeParsedInvoice,'v661FinalizeParsedInvoice')+'\n'+asPatchedFunction(v661ReprocessConfirmedEquipmentInvoice,'reprocessConfirmedEquipmentInvoice')+'\n'+asPatchedFunction(v661RenderImportEligibility,'renderImportEligibility')+'\n'+asPatchedFunction(v661LooksServiceOnlyDocument,'looksServiceOnlyDocument')+'\n'+asPatchedFunction(v661LayoutMoney,'v661LayoutMoney')+'\n'+asPatchedFunction(v661RepairInvoiceMoneyFromLayout,'v661RepairInvoiceMoneyFromLayout')+'\n'+asPatchedFunction(v661NeedsDeepRecovery,'needsDeepRecovery')+'\n'+asPatchedFunction(v661EnsureTesseract,'v661EnsureTesseract')+'\n'+asPatchedFunction(v661ForceOcrRecovery,'forceOcrRecovery')+'\n'+asPatchedFunction(v665ClassifyDocumentType,'v665ClassifyDocumentType')+'\n'+asPatchedFunction(v665DetectImportDocumentType,'detectImportDocumentType')+'\n'+asPatchedFunction(v665EnsureInvoiceDocument,'ensureInvoiceDocument')+'\n'+asPatchedFunction(v665DisplayDocumentFilename,'displayDocumentFilename')+'\n'+asPatchedFunction(v665StoredDocumentFilename,'v665StoredDocumentFilename')+'\nfunction cleanupPdfPreview(){','import classification, verified SKU, AV Media recovery and OCR helpers');
 
     src=replaceOnce(src,"async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();","async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;",'reset invoice-type choice');
 
@@ -1301,10 +1321,10 @@ async function autoNamedPdf(file,doc){
     const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
     try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch(err){
-    console.error('AV Inventory Hub V6.85 startup error:',err);
+    console.error('AV Inventory Hub V6.86 startup error:',err);
     const box=document.createElement('div');
     box.style.cssText='position:fixed;inset:20px;z-index:99999;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-    box.innerHTML='<b>AV Inventory Hub V6.85 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
+    box.innerHTML='<b>AV Inventory Hub V6.86 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
     document.body.appendChild(box);
   }
 }
@@ -1364,9 +1384,9 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.85';
+    window.__AV_INVENTORY_VERSION__='6.86';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v6.85';if(av)av.textContent='Version 6.85';
+    if(cv)cv.textContent='v6.86';if(av)av.textContent='Version 6.86';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
   }catch(e){console.warn('V6.81 patch-notes fallback skipped',e);}
 }
