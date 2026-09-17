@@ -2,7 +2,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const cfg=window.INVENTORY_CONFIG||{};
-let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,identitySeq=0;
+let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,identitySeq=0,liveFallbackTimer=null,lastUnread=0;
 const wordCount=v=>String(v||'').trim()?String(v).trim().split(/\s+/).filter(Boolean).length:0;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDate=v=>{try{return new Intl.DateTimeFormat('en-SG',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v));}catch{return String(v||'');}};
@@ -30,6 +30,7 @@ async function applyIdentity(user){
  if(openBtn)openBtn.classList.toggle('hidden',!canSubmit);
  if(importBtn)importBtn.classList.toggle('hidden',!canSubmit);
  await syncRealtime();
+ syncFallback();
  if(currentRole==='admin')await loadInbox(false);else updateBadge(0);
 }
 async function refreshIdentity(){
@@ -44,9 +45,19 @@ async function syncRealtime(){
  if(realtimeChannel){try{await client.removeChannel(realtimeChannel);}catch{}realtimeChannel=null;}
  if(currentRole!=='admin'||!currentUser)return;
  realtimeChannel=client.channel('inventory-feedback-admin-'+currentUser.id)
-  .on('postgres_changes',{event:'*',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false);})
-  .subscribe(status=>{if(status==='CHANNEL_ERROR')console.warn('Feedback realtime channel error');});
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,true);})
+  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,false);})
+  .on('postgres_changes',{event:'DELETE',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,false);})
+  .subscribe(status=>{
+    if(status==='SUBSCRIBED')loadInbox(false,false);
+    if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){console.warn('Feedback realtime channel '+status);setTimeout(()=>{if(currentRole==='admin')syncRealtime();},2500);}
+  });
 }
+function syncFallback(){
+ if(liveFallbackTimer){clearInterval(liveFallbackTimer);liveFallbackTimer=null;}
+ if(currentRole==='admin'&&currentUser)liveFallbackTimer=setInterval(()=>{if(!document.hidden)loadInbox(false,false);},10000);
+}
+function animateBell(){const bell=$('feedbackBellBtn');if(!bell||currentRole!=='admin')return;bell.classList.remove('feedback-bell-ring');void bell.offsetWidth;bell.classList.add('feedback-bell-ring');setTimeout(()=>bell.classList.remove('feedback-bell-ring'),1800);}
 function openFeedback(context='general'){
  if(!currentUser){toast('Sign in before submitting feedback.');return;}
  if(currentRole==='admin'){toast('Admin accounts manage feedback from the notification bell.');return;}
@@ -57,8 +68,8 @@ function openFeedback(context='general'){
  if(context==='invoice')$('feedbackType').value='Missing parsed details';
  dlg.showModal();
 }
-function updateBadge(n){const b=$('feedbackBadge');if(!b)return;b.textContent=n>99?'99+':String(n);b.classList.toggle('hidden',!n);}
-async function uploadImage(file,feedbackId){
+function updateBadge(n,animate=false){const b=$('feedbackBadge'),bell=$('feedbackBellBtn');if(!b)return;b.textContent=n>99?'99+':String(n);b.classList.toggle('hidden',!n);if(bell)bell.classList.toggle('feedback-bell-unread',n>0);if(animate&&n>lastUnread)animateBell();lastUnread=n;}
+async function uploadAttachment(file,feedbackId){
  if(!file)return null;
  const ext=(file.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'');
  const path=`${currentUser.id}/${feedbackId}.${ext}`;
@@ -70,21 +81,22 @@ async function submitFeedback(ev){
  const message=$('feedbackMessage').value.trim(),words=wordCount(message),file=$('feedbackImage').files?.[0]||null;
  if(!message){setError('Describe the issue before submitting.');return;}
  if(words>150){setError('Feedback is limited to 150 words.');return;}
- if(file&&file.size>5*1024*1024){setError('Screenshot must be 5 MB or smaller.');return;}
+ if(file&&file.size>5*1024*1024){setError('Attachment must be 5 MB or smaller.');return;}
+ if(file&&!['image/png','image/jpeg','image/webp','application/pdf'].includes(file.type)){setError('Attachment must be PNG, JPG, WebP or PDF.');return;}
  const btn=$('submitFeedbackBtn');btn.disabled=true;btn.textContent='Submitting…';
  try{
   const feedbackId=crypto.randomUUID();let attachmentPath=null;
-  if(file)attachmentPath=await uploadImage(file,feedbackId);
+  if(file)attachmentPath=await uploadAttachment(file,feedbackId);
   const payload={id:feedbackId,submitted_by:currentUser.id,submitter_name:String(currentUser.user_metadata?.full_name||currentUser.user_metadata?.name||'').trim()||null,submitter_email:currentUser.email||null,issue_type:$('feedbackType').value,message,status:'new',is_read:false,source_context:$('importDialog')?.open?'invoice_review':'general',attachment_path:attachmentPath};
   const {error}=await client.from('feedback_submissions').insert(payload);if(error){if(attachmentPath){try{await client.storage.from('feedback-attachments').remove([attachmentPath]);}catch{}}throw error;}
   $('feedbackDialog').close();toast('Feedback submitted to Admin.');
  }catch(err){console.error(err);setError(err?.message||'Unable to submit feedback.');}
  finally{btn.disabled=false;btn.innerHTML='<i data-lucide="send"></i> Submit feedback';window.lucide?.createIcons?.();}
 }
-async function loadInbox(open=false){
+async function loadInbox(open=false,animate=false){
  if(currentRole!=='admin')return;
  const filter=$('feedbackStatusFilter')?.value||'';let q=client.from('feedback_submissions').select('id,submitted_by,submitter_name,submitter_email,issue_type,message,status,is_read,attachment_path,source_context,created_at,updated_at').order('created_at',{ascending:false}).limit(100);if(filter)q=q.eq('status',filter);
- const {data,error}=await q;if(error){console.error('Feedback inbox',error);return;}items=data||[];updateBadge(items.filter(x=>!x.is_read).length);renderInbox();if(open)$('feedbackInboxDialog')?.showModal();
+ const {data,error}=await q;if(error){console.error('Feedback inbox',error);return;}items=data||[];updateBadge(items.filter(x=>!x.is_read).length,animate);renderInbox();if(open)$('feedbackInboxDialog')?.showModal();
 }
 function renderInbox(){
  const host=$('feedbackInboxList');if(!host)return;const unread=items.filter(x=>!x.is_read).length;$('feedbackUnreadSummary').textContent=`${unread} unread`;
@@ -96,19 +108,20 @@ async function openDetail(id){
  if(currentRole!=='admin')return;active=items.find(x=>String(x.id)===String(id));if(!active)return;
  if(!active.is_read){const {error}=await client.from('feedback_submissions').update({is_read:true,read_at:new Date().toISOString()}).eq('id',active.id);if(!error){active.is_read=true;updateBadge(items.filter(x=>!x.is_read).length);renderInbox();}}
  $('feedbackDetailTitle').textContent=active.issue_type||'Feedback';$('feedbackDetailMeta').textContent=`${active.submitter_name||active.submitter_email||'Team member'} · ${fmtDate(active.created_at)}`;$('feedbackDetailStatus').value=active.status||'new';
- let image='';if(active.attachment_path){const {data}=await client.storage.from('feedback-attachments').createSignedUrl(active.attachment_path,300);if(data?.signedUrl)image=`<img class="feedback-detail-image" src="${esc(data.signedUrl)}" alt="Feedback screenshot">`;}
- $('feedbackDetailBody').innerHTML=`<div class="feedback-detail-message">${esc(active.message)}</div>${image}`;$('feedbackDetailDialog').showModal();window.lucide?.createIcons?.();
+ let attachment='';if(active.attachment_path){const {data}=await client.storage.from('feedback-attachments').createSignedUrl(active.attachment_path,300);if(data?.signedUrl){const isPdf=/\.pdf$/i.test(active.attachment_path);attachment=isPdf?`<a class="feedback-detail-pdf" href="${esc(data.signedUrl)}" target="_blank" rel="noopener"><span>PDF attachment</span><small>Open securely in a new tab</small></a>`:`<img class="feedback-detail-image" src="${esc(data.signedUrl)}" alt="Feedback attachment">`;}}
+ $('feedbackDetailBody').innerHTML=`<div class="feedback-detail-message">${esc(active.message)}</div>${attachment}`;$('feedbackDetailDialog').showModal();window.lucide?.createIcons?.();
 }
 async function saveStatus(){if(currentRole!=='admin'||!active)return;const status=$('feedbackDetailStatus').value;const {error}=await client.from('feedback_submissions').update({status}).eq('id',active.id);if(error){toast(error.message);return;}active.status=status;$('feedbackDetailDialog').close();await loadInbox(false);toast('Feedback status updated.');}
 function install(){
  $('feedbackOpenBtn')?.addEventListener('click',()=>openFeedback('general'));$('reportImportIssueBtn')?.addEventListener('click',()=>openFeedback('invoice'));$('closeFeedbackBtn')?.addEventListener('click',()=>$('feedbackDialog').close());$('cancelFeedbackBtn')?.addEventListener('click',()=>$('feedbackDialog').close());$('feedbackForm')?.addEventListener('submit',submitFeedback);
  $('feedbackMessage')?.addEventListener('input',e=>{const n=wordCount(e.target.value),el=$('feedbackWordCount');el.textContent=`${n} / 150`;el.classList.toggle('over',n>150);$('submitFeedbackBtn').disabled=n>150;});
- $('feedbackImage')?.addEventListener('change',e=>{const f=e.target.files?.[0],host=$('feedbackImagePreview');if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl='';}if(!f){host.innerHTML='';host.classList.add('hidden');return;}previewUrl=URL.createObjectURL(f);host.innerHTML=`<img src="${previewUrl}" alt="Screenshot preview"><small>${esc(f.name)}</small>`;host.classList.remove('hidden');});
+ $('feedbackImage')?.addEventListener('change',e=>{const f=e.target.files?.[0],host=$('feedbackImagePreview');if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl='';}if(!f){host.innerHTML='';host.classList.add('hidden');return;}if(f.type==='application/pdf'){host.innerHTML=`<div class="feedback-file-preview"><strong>PDF</strong><span>${esc(f.name)}</span></div>`;host.classList.remove('hidden');return;}previewUrl=URL.createObjectURL(f);host.innerHTML=`<img src="${previewUrl}" alt="Attachment preview"><small>${esc(f.name)}</small>`;host.classList.remove('hidden');});
  $('feedbackBellBtn')?.addEventListener('click',()=>loadInbox(true));$('closeFeedbackInboxBtn')?.addEventListener('click',()=>$('feedbackInboxDialog').close());$('feedbackStatusFilter')?.addEventListener('change',()=>loadInbox(false));$('closeFeedbackDetailBtn')?.addEventListener('click',()=>$('feedbackDetailDialog').close());$('saveFeedbackStatusBtn')?.addEventListener('click',saveStatus);
  window.lucide?.createIcons?.();
  ensureClient().then(c=>{if(!c)return;refreshIdentity();const {data}=c.auth.onAuthStateChange((_event,session)=>{queueMicrotask(()=>applyIdentity(session?.user||null));});authSubscription=data?.subscription||null;});
  // Visibility refresh is only a safety reconciliation; auth visibility no longer depends on a page reload.
- document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshIdentity();});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshIdentity();if(currentRole==='admin')loadInbox(false,false);}});
+ window.addEventListener('focus',()=>{if(currentRole==='admin')loadInbox(false,false);});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
