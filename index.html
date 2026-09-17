@@ -384,7 +384,7 @@
   <dialog id="feedbackDetailDialog" class="dialog feedback-detail-dialog">
     <div class="dialog-head"><div><h2 id="feedbackDetailTitle">Feedback</h2><p id="feedbackDetailMeta"></p></div><button id="closeFeedbackDetailBtn" class="icon-btn" type="button"><i data-lucide="x"></i></button></div>
     <div id="feedbackDetailBody" class="feedback-detail-body"></div>
-    <div class="feedback-detail-actions"><label>Status<select id="feedbackDetailStatus"><option value="new">New</option><option value="reviewing">Reviewing</option><option value="resolved">Resolved</option></select></label><button id="saveFeedbackStatusBtn" class="primary" type="button">Update status</button></div>
+    <div class="feedback-detail-actions"><label>Status<select id="feedbackDetailStatus"><option value="new">New</option><option value="reviewing">Reviewing</option><option value="resolved">Resolved</option></select></label><button id="deleteFeedbackBtn" class="danger hidden" type="button"><i data-lucide="trash-2"></i> Delete resolved</button><button id="saveFeedbackStatusBtn" class="primary" type="button">Update status</button></div>
   </dialog>
 
   <div id="idleWarning" class="idle-warning hidden" role="alertdialog" aria-modal="true" aria-labelledby="idleWarningTitle">
@@ -403,6 +403,6 @@
   <script src="config.js"></script>
   <script src="app.js?v=6.85.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="feedback.js?v=6.85.3"></script>
+  <script src="feedback.js?v=6.85.4"></script>
 </body>
 </html>
