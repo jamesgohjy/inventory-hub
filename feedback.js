@@ -2,7 +2,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const cfg=window.INVENTORY_CONFIG||{};
-let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,identitySeq=0,liveFallbackTimer=null,lastUnread=0;
+let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,broadcastChannel=null,identitySeq=0,liveFallbackTimer=null,lastUnread=0,realtimeReconnectTimer=null;
 const wordCount=v=>String(v||'').trim()?String(v).trim().split(/\s+/).filter(Boolean).length:0;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDate=v=>{try{return new Intl.DateTimeFormat('en-SG',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v));}catch{return String(v||'');}};
@@ -42,20 +42,43 @@ async function refreshIdentity(){
 }
 async function syncRealtime(){
  if(!client)return;
+ if(realtimeReconnectTimer){clearTimeout(realtimeReconnectTimer);realtimeReconnectTimer=null;}
  if(realtimeChannel){try{await client.removeChannel(realtimeChannel);}catch{}realtimeChannel=null;}
+ if(broadcastChannel){try{await client.removeChannel(broadcastChannel);}catch{}broadcastChannel=null;}
  if(currentRole!=='admin'||!currentUser)return;
- realtimeChannel=client.channel('inventory-feedback-admin-'+currentUser.id)
-  .on('postgres_changes',{event:'INSERT',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,true);})
+ const reconnect=()=>{
+  if(realtimeReconnectTimer)clearTimeout(realtimeReconnectTimer);
+  realtimeReconnectTimer=setTimeout(()=>{if(currentRole==='admin'&&currentUser)syncRealtime();},2000);
+ };
+ // Primary DB change stream.
+ realtimeChannel=client.channel('inventory-feedback-db-'+currentUser.id)
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'feedback_submissions'},async payload=>{console.info('[Feedback Live] DB INSERT',payload?.new?.id||'');await loadInbox(false,true);})
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,false);})
   .on('postgres_changes',{event:'DELETE',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,false);})
   .subscribe(status=>{
+    console.info('[Feedback Live] DB channel',status);
     if(status==='SUBSCRIBED')loadInbox(false,false);
-    if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){console.warn('Feedback realtime channel '+status);setTimeout(()=>{if(currentRole==='admin')syncRealtime();},2500);}
+    if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED')reconnect();
   });
+ // Immediate lightweight signal from the submitting browser. No feedback content is broadcast; Admin re-queries under RLS.
+ broadcastChannel=client.channel('inventory-feedback-signal')
+  .on('broadcast',{event:'feedback-created'},async payload=>{console.info('[Feedback Live] broadcast',payload?.payload?.id||'');await loadInbox(false,true);})
+  .subscribe(status=>{console.info('[Feedback Live] broadcast channel',status);if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED')reconnect();});
+}
+async function broadcastFeedbackCreated(id){
+ if(!client||!currentUser)return;
+ let ch=broadcastChannel;
+ let temporary=false;
+ if(!ch){
+  temporary=true;ch=client.channel('inventory-feedback-signal');
+  await new Promise(resolve=>{let done=false;const finish=()=>{if(!done){done=true;resolve();}};ch.subscribe(status=>{if(status==='SUBSCRIBED'||status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED')finish();});setTimeout(finish,1500);});
+ }
+ try{await ch.send({type:'broadcast',event:'feedback-created',payload:{id:String(id)}});}catch(err){console.warn('[Feedback Live] broadcast send failed',err);}
+ if(temporary){setTimeout(()=>{try{client.removeChannel(ch);}catch{}},500);}
 }
 function syncFallback(){
  if(liveFallbackTimer){clearInterval(liveFallbackTimer);liveFallbackTimer=null;}
- if(currentRole==='admin'&&currentUser)liveFallbackTimer=setInterval(()=>{if(!document.hidden)loadInbox(false,false);},10000);
+ if(currentRole==='admin'&&currentUser)liveFallbackTimer=setInterval(()=>{if(!document.hidden)loadInbox(false,false);},3000);
 }
 function animateBell(){const bell=$('feedbackBellBtn');if(!bell||currentRole!=='admin')return;bell.classList.remove('feedback-bell-ring');void bell.offsetWidth;bell.classList.add('feedback-bell-ring');setTimeout(()=>bell.classList.remove('feedback-bell-ring'),1800);}
 function openFeedback(context='general'){
@@ -89,6 +112,7 @@ async function submitFeedback(ev){
   if(file)attachmentPath=await uploadAttachment(file,feedbackId);
   const payload={id:feedbackId,submitted_by:currentUser.id,submitter_name:String(currentUser.user_metadata?.full_name||currentUser.user_metadata?.name||'').trim()||null,submitter_email:currentUser.email||null,issue_type:$('feedbackType').value,message,status:'new',is_read:false,source_context:$('importDialog')?.open?'invoice_review':'general',attachment_path:attachmentPath};
   const {error}=await client.from('feedback_submissions').insert(payload);if(error){if(attachmentPath){try{await client.storage.from('feedback-attachments').remove([attachmentPath]);}catch{}}throw error;}
+  await broadcastFeedbackCreated(feedbackId);
   $('feedbackDialog').close();toast('Feedback submitted to Admin.');
  }catch(err){console.error(err);setError(err?.message||'Unable to submit feedback.');}
  finally{btn.disabled=false;btn.innerHTML='<i data-lucide="send"></i> Submit feedback';window.lucide?.createIcons?.();}
@@ -107,16 +131,28 @@ function renderInbox(){
 async function openDetail(id){
  if(currentRole!=='admin')return;active=items.find(x=>String(x.id)===String(id));if(!active)return;
  if(!active.is_read){const {error}=await client.from('feedback_submissions').update({is_read:true,read_at:new Date().toISOString()}).eq('id',active.id);if(!error){active.is_read=true;updateBadge(items.filter(x=>!x.is_read).length);renderInbox();}}
- $('feedbackDetailTitle').textContent=active.issue_type||'Feedback';$('feedbackDetailMeta').textContent=`${active.submitter_name||active.submitter_email||'Team member'} · ${fmtDate(active.created_at)}`;$('feedbackDetailStatus').value=active.status||'new';
+ $('feedbackDetailTitle').textContent=active.issue_type||'Feedback';$('feedbackDetailMeta').textContent=`${active.submitter_name||active.submitter_email||'Team member'} · ${fmtDate(active.created_at)}`;$('feedbackDetailStatus').value=active.status||'new';syncDeleteButton();
  let attachment='';if(active.attachment_path){const {data}=await client.storage.from('feedback-attachments').createSignedUrl(active.attachment_path,300);if(data?.signedUrl){const isPdf=/\.pdf$/i.test(active.attachment_path);attachment=isPdf?`<a class="feedback-detail-pdf" href="${esc(data.signedUrl)}" target="_blank" rel="noopener"><span>PDF attachment</span><small>Open securely in a new tab</small></a>`:`<img class="feedback-detail-image" src="${esc(data.signedUrl)}" alt="Feedback attachment">`;}}
  $('feedbackDetailBody').innerHTML=`<div class="feedback-detail-message">${esc(active.message)}</div>${attachment}`;$('feedbackDetailDialog').showModal();window.lucide?.createIcons?.();
 }
-async function saveStatus(){if(currentRole!=='admin'||!active)return;const status=$('feedbackDetailStatus').value;const {error}=await client.from('feedback_submissions').update({status}).eq('id',active.id);if(error){toast(error.message);return;}active.status=status;$('feedbackDetailDialog').close();await loadInbox(false);toast('Feedback status updated.');}
+async function saveStatus(){if(currentRole!=='admin'||!active)return;const status=$('feedbackDetailStatus').value;const {error}=await client.from('feedback_submissions').update({status}).eq('id',active.id);if(error){toast(error.message);return;}active.status=status;syncDeleteButton();$('feedbackDetailDialog').close();await loadInbox(false);toast('Feedback status updated.');}
+function syncDeleteButton(){const btn=$('deleteFeedbackBtn');if(btn)btn.classList.toggle('hidden',!(currentRole==='admin'&&active?.status==='resolved'));}
+async function deleteResolvedFeedback(){
+ if(currentRole!=='admin'||!active||active.status!=='resolved')return;
+ if(!window.confirm('Permanently delete this resolved feedback? This cannot be undone.'))return;
+ const btn=$('deleteFeedbackBtn');if(btn)btn.disabled=true;
+ try{
+  if(active.attachment_path){const {error:storageError}=await client.storage.from('feedback-attachments').remove([active.attachment_path]);if(storageError)throw storageError;}
+  const {error}=await client.from('feedback_submissions').delete().eq('id',active.id).eq('status','resolved');if(error)throw error;
+  $('feedbackDetailDialog').close();active=null;await loadInbox(false,false);toast('Resolved feedback deleted.');
+ }catch(err){console.error(err);toast(err?.message||'Unable to delete feedback.');}
+ finally{if(btn)btn.disabled=false;}
+}
 function install(){
  $('feedbackOpenBtn')?.addEventListener('click',()=>openFeedback('general'));$('reportImportIssueBtn')?.addEventListener('click',()=>openFeedback('invoice'));$('closeFeedbackBtn')?.addEventListener('click',()=>$('feedbackDialog').close());$('cancelFeedbackBtn')?.addEventListener('click',()=>$('feedbackDialog').close());$('feedbackForm')?.addEventListener('submit',submitFeedback);
  $('feedbackMessage')?.addEventListener('input',e=>{const n=wordCount(e.target.value),el=$('feedbackWordCount');el.textContent=`${n} / 150`;el.classList.toggle('over',n>150);$('submitFeedbackBtn').disabled=n>150;});
  $('feedbackImage')?.addEventListener('change',e=>{const f=e.target.files?.[0],host=$('feedbackImagePreview');if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl='';}if(!f){host.innerHTML='';host.classList.add('hidden');return;}if(f.type==='application/pdf'){host.innerHTML=`<div class="feedback-file-preview"><strong>PDF</strong><span>${esc(f.name)}</span></div>`;host.classList.remove('hidden');return;}previewUrl=URL.createObjectURL(f);host.innerHTML=`<img src="${previewUrl}" alt="Attachment preview"><small>${esc(f.name)}</small>`;host.classList.remove('hidden');});
- $('feedbackBellBtn')?.addEventListener('click',()=>loadInbox(true));$('closeFeedbackInboxBtn')?.addEventListener('click',()=>$('feedbackInboxDialog').close());$('feedbackStatusFilter')?.addEventListener('change',()=>loadInbox(false));$('closeFeedbackDetailBtn')?.addEventListener('click',()=>$('feedbackDetailDialog').close());$('saveFeedbackStatusBtn')?.addEventListener('click',saveStatus);
+ $('feedbackBellBtn')?.addEventListener('click',()=>loadInbox(true));$('closeFeedbackInboxBtn')?.addEventListener('click',()=>$('feedbackInboxDialog').close());$('feedbackStatusFilter')?.addEventListener('change',()=>loadInbox(false));$('closeFeedbackDetailBtn')?.addEventListener('click',()=>$('feedbackDetailDialog').close());$('saveFeedbackStatusBtn')?.addEventListener('click',saveStatus);$('deleteFeedbackBtn')?.addEventListener('click',deleteResolvedFeedback);
  window.lucide?.createIcons?.();
  ensureClient().then(c=>{if(!c)return;refreshIdentity();const {data}=c.auth.onAuthStateChange((_event,session)=>{queueMicrotask(()=>applyIdentity(session?.user||null));});authSubscription=data?.subscription||null;});
  // Visibility refresh is only a safety reconciliation; auth visibility no longer depends on a page reload.
