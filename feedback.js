@@ -2,7 +2,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const cfg=window.INVENTORY_CONFIG||{};
-let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='';
+let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,identitySeq=0;
 const wordCount=v=>String(v||'').trim()?String(v).trim().split(/\s+/).filter(Boolean).length:0;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDate=v=>{try{return new Intl.DateTimeFormat('en-SG',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v));}catch{return String(v||'');}};
@@ -14,15 +14,43 @@ async function ensureClient(){
  client=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
  return client;
 }
+async function applyIdentity(user){
+ const seq=++identitySeq;currentUser=user||null;let role='viewer';
+ if(currentUser){
+  const {data,error}=await client.from('profiles').select('role').eq('id',currentUser.id).maybeSingle();
+  if(error)console.warn('Feedback profile lookup',error);
+  role=String(data?.role||'viewer').trim().toLowerCase();
+ }
+ if(seq!==identitySeq)return;
+ currentRole=role;
+ const bell=$('feedbackBellBtn'),openBtn=$('feedbackOpenBtn'),importBtn=$('reportImportIssueBtn');
+ if(bell)bell.classList.toggle('hidden',currentRole!=='admin');
+ // Feedback submission controls are for Editor/Viewer only. Admin receives/manages submissions instead.
+ const canSubmit=currentRole==='editor'||currentRole==='viewer';
+ if(openBtn)openBtn.classList.toggle('hidden',!canSubmit);
+ if(importBtn)importBtn.classList.toggle('hidden',!canSubmit);
+ await syncRealtime();
+ if(currentRole==='admin')await loadInbox(false);else updateBadge(0);
+}
 async function refreshIdentity(){
  const c=await ensureClient();if(!c)return;
- const {data:{user}}=await c.auth.getUser();currentUser=user||null;currentRole='viewer';
- if(currentUser){const {data}=await c.from('profiles').select('role').eq('id',currentUser.id).maybeSingle();currentRole=String(data?.role||'viewer').trim().toLowerCase();}
- const bell=$('feedbackBellBtn');if(bell)bell.classList.toggle('hidden',currentRole!=='admin');
- if(currentRole==='admin')await loadInbox(false);else updateBadge(0);
+ // getSession reads the persisted session immediately and avoids the initial getUser race seen after page navigation/login.
+ const {data,error}=await c.auth.getSession();
+ if(error)console.warn('Feedback session lookup',error);
+ await applyIdentity(data?.session?.user||null);
+}
+async function syncRealtime(){
+ if(!client)return;
+ if(realtimeChannel){try{await client.removeChannel(realtimeChannel);}catch{}realtimeChannel=null;}
+ if(currentRole!=='admin'||!currentUser)return;
+ realtimeChannel=client.channel('inventory-feedback-admin-'+currentUser.id)
+  .on('postgres_changes',{event:'*',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false);})
+  .subscribe(status=>{if(status==='CHANNEL_ERROR')console.warn('Feedback realtime channel error');});
 }
 function openFeedback(context='general'){
  if(!currentUser){toast('Sign in before submitting feedback.');return;}
+ if(currentRole==='admin'){toast('Admin accounts manage feedback from the notification bell.');return;}
+ if(currentRole!=='editor'&&currentRole!=='viewer'){toast('Feedback submission is available to Editor and Viewer accounts only.');return;}
  const dlg=$('feedbackDialog');if(!dlg)return;
  $('feedbackForm').reset();$('feedbackWordCount').textContent='0 / 150';$('feedbackWordCount').classList.remove('over');setError('');
  if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl='';}$('feedbackImagePreview').innerHTML='';$('feedbackImagePreview').classList.add('hidden');
@@ -77,7 +105,9 @@ function install(){
  $('feedbackMessage')?.addEventListener('input',e=>{const n=wordCount(e.target.value),el=$('feedbackWordCount');el.textContent=`${n} / 150`;el.classList.toggle('over',n>150);$('submitFeedbackBtn').disabled=n>150;});
  $('feedbackImage')?.addEventListener('change',e=>{const f=e.target.files?.[0],host=$('feedbackImagePreview');if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl='';}if(!f){host.innerHTML='';host.classList.add('hidden');return;}previewUrl=URL.createObjectURL(f);host.innerHTML=`<img src="${previewUrl}" alt="Screenshot preview"><small>${esc(f.name)}</small>`;host.classList.remove('hidden');});
  $('feedbackBellBtn')?.addEventListener('click',()=>loadInbox(true));$('closeFeedbackInboxBtn')?.addEventListener('click',()=>$('feedbackInboxDialog').close());$('feedbackStatusFilter')?.addEventListener('change',()=>loadInbox(false));$('closeFeedbackDetailBtn')?.addEventListener('click',()=>$('feedbackDetailDialog').close());$('saveFeedbackStatusBtn')?.addEventListener('click',saveStatus);
- window.lucide?.createIcons?.();refreshIdentity();setInterval(refreshIdentity,60000);
+ window.lucide?.createIcons?.();
+ ensureClient().then(c=>{if(!c)return;refreshIdentity();const {data}=c.auth.onAuthStateChange((_event,session)=>{queueMicrotask(()=>applyIdentity(session?.user||null));});authSubscription=data?.subscription||null;});
+ // Visibility refresh is only a safety reconciliation; auth visibility no longer depends on a page reload.
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshIdentity();});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
