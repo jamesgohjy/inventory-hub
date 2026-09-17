@@ -671,3 +671,8 @@ button:disabled{cursor:not-allowed;opacity:.62}
 @keyframes feedbackBellRing{0%,100%{transform:rotate(0)}25%{transform:rotate(12deg) scale(1.06)}75%{transform:rotate(-12deg) scale(1.06)}}
 @media(prefers-reduced-motion:reduce){.feedback-bell.feedback-bell-ring{animation:none}}
 .feedback-detail-pdf{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border:1px solid #bfd7f3;border-radius:10px;background:#f4f9ff;color:#1769c2;text-decoration:none;font-weight:800}.feedback-detail-pdf small{font-weight:500;color:#64748b}.feedback-file-preview{display:flex;align-items:center;gap:10px}.feedback-file-preview strong{display:inline-flex;padding:5px 8px;border-radius:6px;background:#e9f2ff;color:#1769c2}
+
+/* v6.85.4 feedback inbox cleanup */
+#deleteFeedbackBtn{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #ef4444;color:#b91c1c;border-radius:9px;padding:10px 12px;font-weight:800;cursor:pointer}
+#deleteFeedbackBtn:hover{background:#fff1f2}
+#deleteFeedbackBtn.hidden{display:none}
