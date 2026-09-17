@@ -368,7 +368,7 @@
       <label>Issue type<select id="feedbackType"><option>Invoice import</option><option>Missing parsed details</option><option>Incorrect parsed details</option><option>Inventory / document issue</option><option>Application issue</option><option>Other</option></select></label>
       <label>Describe the issue <span class="required">*</span><textarea id="feedbackMessage" rows="6" placeholder="Tell the Admin what happened, what you expected, and what you saw." required></textarea></label>
       <div class="feedback-word-row"><span>Maximum 150 words</span><strong id="feedbackWordCount">0 / 150</strong></div>
-      <label class="feedback-upload-label">Screenshot <span>(optional)</span><input id="feedbackImage" type="file" accept="image/png,image/jpeg,image/webp" /><small>PNG, JPG or WebP · maximum 5 MB</small></label>
+      <label class="feedback-upload-label">Attachment <span>(optional)</span><input id="feedbackImage" type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" /><small>PNG, JPG, WebP or PDF · maximum 5 MB</small></label>
       <div id="feedbackImagePreview" class="feedback-image-preview hidden"></div>
       <p id="feedbackFormError" class="field-error hidden"></p>
       <div class="dialog-actions"><button id="cancelFeedbackBtn" class="secondary" type="button">Cancel</button><button id="submitFeedbackBtn" class="primary" type="submit"><i data-lucide="send"></i> Submit feedback</button></div>
@@ -403,6 +403,6 @@
   <script src="config.js"></script>
   <script src="app.js?v=6.85.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="feedback.js?v=6.85.2"></script>
+  <script src="feedback.js?v=6.85.3"></script>
 </body>
 </html>
