@@ -495,3 +495,62 @@ button:disabled{cursor:not-allowed;opacity:.62}
 .maintenance-history-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin:2px 0 12px;color:#667085;font-size:11px}.maintenance-frequency{display:inline-flex;align-items:center;gap:5px;background:#fff7e8;color:#b26a00;border:1px solid #f8dfac;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:700}.maintenance-frequency svg{width:12px;height:12px}
 .maintenance-timeline{position:relative;margin:4px 0 8px 5px}.maintenance-timeline:before{content:"";position:absolute;left:8px;top:8px;bottom:12px;width:2px;background:#dfe8f2}.maintenance-timeline-item{position:relative;display:grid;grid-template-columns:22px 1fr;gap:10px;padding:0 0 18px}.maintenance-timeline-item:last-child{padding-bottom:4px}.maintenance-dot{z-index:1;width:18px;height:18px;margin-top:2px;border:5px solid #eaf3ff;background:#0877f9;border-radius:50%}.maintenance-timeline-content{border:1px solid #e3e9f0;border-radius:10px;background:#fbfdff;padding:11px 13px}.maintenance-timeline-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px}.maintenance-timeline-content p{margin:4px 0;font-size:11px}.maintenance-timeline-content small{display:block;margin-top:7px;color:#667085}
 @media(max-width:700px){.health-overview{grid-template-columns:1fr}.health-breakdown{grid-template-columns:1fr}.health-review-all{justify-self:start}.maintenance-history-head{align-items:flex-start;flex-direction:column}}
+
+/* V6.83.1 — Option 1 hero: match approved dashboard preview proportions */
+@media (min-width: 941px){
+  .dashboard-view .hero{
+    grid-template-columns:minmax(430px,42%) minmax(0,58%);
+    min-height:250px;
+    height:250px;
+    background:#061827;
+  }
+  .dashboard-view .hero-content{
+    padding:30px 30px 30px 38px;
+    align-self:center;
+  }
+  .dashboard-view .hero h1{
+    font-size:34px;
+    line-height:1.08;
+    max-width:430px;
+    letter-spacing:-1.2px;
+  }
+  .dashboard-view .hero p{margin:12px 0 20px;font-size:14px}
+  .dashboard-view .hero-actions button{height:42px;padding:0 16px}
+  .dashboard-view .hero-visual{min-height:250px;height:250px}
+  .dashboard-view .hero-projector-img{
+    width:100%;height:100%;object-fit:cover;
+    object-position:center 48%;
+    transform:none;
+  }
+  .dashboard-view .hero-photo:before{
+    background:linear-gradient(90deg,rgba(6,24,39,.82) 0%,rgba(6,24,39,.28) 13%,rgba(6,24,39,0) 31%);
+  }
+  .dashboard-view .hero-photo:after{
+    background:linear-gradient(180deg,rgba(1,9,16,.01),rgba(1,9,16,.10));
+  }
+}
+@media (min-width: 1280px){
+  .dashboard-view .hero{grid-template-columns:minmax(460px,40%) minmax(0,60%);height:260px;min-height:260px}
+  .dashboard-view .hero-visual{height:260px;min-height:260px}
+  .dashboard-view .hero-content{padding-left:42px}
+  .dashboard-view .hero h1{font-size:36px;max-width:455px}
+}
+
+/* V6.83.1 — Option 1 hero: match approved dashboard preview proportions */
+@media (min-width: 941px){
+.dashboard-view .hero{grid-template-columns:minmax(430px,42%) minmax(0,58%);min-height:250px;height:250px;background:#061827}
+.dashboard-view .hero-content{padding:30px 30px 30px 38px;align-self:center}
+.dashboard-view .hero h1{font-size:34px;line-height:1.08;max-width:430px;letter-spacing:-1.2px}
+.dashboard-view .hero p{margin:12px 0 20px;font-size:14px}
+.dashboard-view .hero-actions button{height:42px;padding:0 16px}
+.dashboard-view .hero-visual{min-height:250px;height:250px}
+.dashboard-view .hero-projector-img{width:100%;height:100%;object-fit:cover;object-position:center 48%;transform:none}
+.dashboard-view .hero-photo:before{background:linear-gradient(90deg,rgba(6,24,39,.82) 0%,rgba(6,24,39,.28) 13%,rgba(6,24,39,0) 31%)}
+.dashboard-view .hero-photo:after{background:linear-gradient(180deg,rgba(1,9,16,.01),rgba(1,9,16,.10))}
+}
+@media (min-width:1280px){
+.dashboard-view .hero{grid-template-columns:minmax(460px,40%) minmax(0,60%);height:260px;min-height:260px}
+.dashboard-view .hero-visual{height:260px;min-height:260px}
+.dashboard-view .hero-content{padding-left:42px}
+.dashboard-view .hero h1{font-size:36px;max-width:455px}
+}
