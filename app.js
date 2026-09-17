@@ -2,6 +2,21 @@
 // This patch loader applies V6.76 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
+// V6.82 deployment marker: set the visible version before the runtime patch loader starts.
+const V682_DEPLOYMENT_BUILD='6.82.1';
+function v682MarkDeployment(){
+  try{
+    window.__AV_INVENTORY_VERSION__='6.82';
+    window.__AV_INVENTORY_BUILD__=V682_DEPLOYMENT_BUILD;
+    const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion');
+    if(cv)cv.textContent='v6.82';
+    if(av)av.textContent='Version 6.82';
+    document.documentElement.dataset.avInventoryVersion='6.82';
+    document.documentElement.dataset.avInventoryBuild=V682_DEPLOYMENT_BUILD;
+  }catch(e){console.warn('V6.82 deployment marker skipped',e);}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',v682MarkDeployment,{once:true});else v682MarkDeployment();
+
 function replaceOnce(src,needle,replacement,label=needle){
   const i=src.indexOf(needle);
   if(i<0)throw new Error('V6.76 patch marker not found: '+label);
