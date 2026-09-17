@@ -586,3 +586,77 @@ button:disabled{cursor:not-allowed;opacity:.62}
   .dashboard-view .hero-content{min-height:270px;padding-left:46px}
   .dashboard-view .hero h1{font-size:38px}
 }
+
+/* V6.83.3 — final preview-matched hero. This block is the sole desktop authority. */
+@media (min-width:941px){
+  .dashboard-view .hero{
+    display:block !important;
+    position:relative !important;
+    height:320px !important;
+    min-height:320px !important;
+    overflow:hidden !important;
+    border-radius:16px !important;
+    background:#051827 !important;
+  }
+  .dashboard-view .hero-visual{
+    display:block !important;
+    position:absolute !important;
+    inset:0 !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:0 !important;
+    z-index:0 !important;
+    overflow:hidden !important;
+    background:#051827 !important;
+  }
+  .dashboard-view .hero-projector-img{
+    position:absolute !important;
+    inset:0 !important;
+    width:100% !important;
+    height:100% !important;
+    max-width:none !important;
+    object-fit:cover !important;
+    object-position:center center !important;
+    transform:none !important;
+    display:block !important;
+  }
+  .dashboard-view .hero-photo:before{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 !important;
+    z-index:1 !important;
+    pointer-events:none !important;
+    background:linear-gradient(90deg,#051827 0%,rgba(5,24,39,.98) 29%,rgba(5,24,39,.78) 38%,rgba(5,24,39,.20) 50%,rgba(5,24,39,0) 62%) !important;
+  }
+  .dashboard-view .hero-photo:after{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 !important;
+    z-index:1 !important;
+    pointer-events:none !important;
+    background:linear-gradient(180deg,rgba(0,7,14,.02),rgba(0,7,14,.10)) !important;
+  }
+  .dashboard-view .hero-content{
+    position:relative !important;
+    z-index:3 !important;
+    box-sizing:border-box !important;
+    width:42% !important;
+    max-width:650px !important;
+    min-height:320px !important;
+    padding:38px 20px 34px 44px !important;
+    display:flex !important;
+    flex-direction:column !important;
+    justify-content:center !important;
+    align-items:flex-start !important;
+  }
+  .dashboard-view .eyebrow{margin:0 0 16px !important;letter-spacing:6px !important}
+  .dashboard-view .hero h1{margin:0 !important;max-width:560px !important;font-size:40px !important;line-height:1.08 !important;letter-spacing:-1.5px !important}
+  .dashboard-view .hero p{margin:14px 0 24px !important;font-size:15px !important}
+  .dashboard-view .hero-actions{gap:12px !important}
+  .dashboard-view .hero-actions button{height:46px !important;padding:0 18px !important}
+}
+@media (min-width:1600px){
+  .dashboard-view .hero{height:350px !important;min-height:350px !important}
+  .dashboard-view .hero-content{min-height:350px !important;padding-left:48px !important}
+  .dashboard-view .hero h1{font-size:42px !important}
+}
