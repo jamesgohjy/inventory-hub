@@ -1307,9 +1307,9 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='6.81';
+    window.__AV_INVENTORY_VERSION__='6.82';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v6.81';if(av)av.textContent='Version 6.81';
+    if(cv)cv.textContent='v6.82';if(av)av.textContent='Version 6.82';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
   }catch(e){console.warn('V6.81 patch-notes fallback skipped',e);}
 }
