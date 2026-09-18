@@ -1,6 +1,6 @@
-/* AV Inventory Hub v7.03 parser core
+/* AV Inventory Hub v7.01 parser core
  * Global rules: evidence-only fields, stable source-row identity, independent extraction,
- * optional serials, no SKU invention, classification before completeness, and V7-primary evidence verification.
+ * optional serials, no SKU invention, classification before completeness, and shadow AI verification.
  */
 (function(root,factory){
   const api=factory();
@@ -20,10 +20,11 @@
     microphoneStandIncluded:true,
     genericStandExcluded:true,
     currentReviewValuesBeforeSaveValidation:true,
-    aiShadowOnlyByDefault:false,
-    v7PrimarySourceOfTruth:true,
-    legacyEmergencyFallbackOnly:true,
-    actualPdfRegressionRequired:true
+    aiShadowOnlyByDefault:true,
+    actualPdfRegressionRequired:true,
+    descriptionNumbersNeverQuantity:true,
+    repeatedSkuUsesSourceRowEconomics:true,
+    serialCountCannotExceedQuantity:true
   });
 
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
@@ -312,12 +313,49 @@
     return out;
   }
 
+  function quantityLooksLikeSpecification(row={}){
+    const q=Number(row.quantity);if(!(q>0))return false;
+    const desc=clean([row.item_name,row.description].filter(Boolean).join(' '));
+    if(!desc)return false;
+    const qx=String(q).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    return new RegExp('(?:^|\\b)'+qx+'\\s*(?:ansi\\s*)?(?:lumens?|lm|watts?|w|hz|khz|mhz|inch(?:es)?|mm|cm|meters?|metres?|gb|tb|mah)\\b','i').test(desc);
+  }
+
+  function hasTrustedQuantityProvenance(row={}){
+    const p=row.v7Provenance?.quantity||row.provenance?.quantity||{};
+    const src=clean([p.source,p.column].filter(Boolean).join(' '));
+    return /(?:qty|quantity|economic-cross-check|amount.{0,8}unit price|user-review|manual)/i.test(src);
+  }
+
+  function guardSpecDerivedQuantities(rows=[]){
+    return (rows||[]).map(raw=>{
+      const r={...raw};
+      if(quantityLooksLikeSpecification(r)&&!hasTrustedQuantityProvenance(r)){
+        r.quantity=null;r.quantityReviewRequired=true;r.quantitySpecCollision=true;
+        const p=r.v7Provenance?.quantity||r.provenance?.quantity||{};
+        r.v7Provenance={...(r.v7Provenance||r.provenance||{}),quantity:{...p,value:null,source:'v7.01-spec-guard',reason:'Description/specification number cannot be used as quantity.'}};
+      }
+      return r;
+    });
+  }
+
+  function economicAgreement(a={},b={}){
+    let score=0,compared=0;
+    for(const k of ['quantity','unit_price','amount']){
+      const av=Number(a[k]),bv=Number(b[k]);
+      if(!Number.isFinite(av)||!Number.isFinite(bv))continue;
+      compared++;
+      const same=Math.abs(av-bv)<0.02;
+      if(k==='quantity')score+=same?6:-8;else if(k==='amount')score+=same?5:-5;else score+=same?3:-3;
+    }
+    return {score,compared};
+  }
+
   function rowMatchScore(a,b){
-    let s=0;const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb){if(sa===sb)s+=8;else if(sa.replace(/[^A-Z0-9]/g,'')===sb.replace(/[^A-Z0-9]/g,''))s+=6;}
+    let s=0;const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb){if(sa===sb)s+=8;else if(sa.replace(/[^A-Z0-9]/g,'')===sb.replace(/[^A-Z0-9]/g,''))s+=6;else{const astem=sa.replace(/[A-Z]$/,''),bstem=sb.replace(/[A-Z]$/,'');if(astem.length>=5&&(astem===sb||bstem===sa||astem===bstem))s+=5;}}
     const sim=similarity(a.description||a.item_name,b.description||b.item_name);s+=sim*5;
-    if(Number(a.quantity)>0&&Number(b.quantity)>0&&Number(a.quantity)===Number(b.quantity))s+=3;
-    if(Number.isFinite(Number(a.unit_price))&&Number.isFinite(Number(b.unit_price))&&Math.abs(Number(a.unit_price)-Number(b.unit_price))<0.02)s+=2;
-    if(Number.isFinite(Number(a.amount))&&Number.isFinite(Number(b.amount))&&Math.abs(Number(a.amount)-Number(b.amount))<0.02)s+=2;
+    const econ=economicAgreement(a,b);s+=econ.score;
+    const aps=serialList(a.serials),bps=serialList(b.serials);if(aps.length&&bps.length&&aps.some(x=>bps.some(y=>normalizeSerial(x)===normalizeSerial(y))))s+=6;
     return s;
   }
 
@@ -352,9 +390,9 @@
   function serialIntegrity(rows=[]){
     const out=(rows||[]).map(r=>({...r,serials:serialList(r.serials).join(', ')})),seen=new Map(),conflicts=[];
     for(let i=0;i<out.length;i++){
-      delete out[i].serialConflict;const ss=serialList(out[i].serials);
-      for(const sn of ss){const k=normalizeSerial(sn);if(!k)continue;if(seen.has(k)&&seen.get(k)!==i){const j=seen.get(k);out[i].serialConflict=true;out[j].serialConflict=true;conflicts.push({serial:sn,rows:[out[j].rowId,out[i].rowId]});}else seen.set(k,i);}
-      const q=Number(out[i].quantity);if(Number.isInteger(q)&&q>0&&ss.length>q)out[i].serialCountReview=true;
+      delete out[i].serialConflict;delete out[i].serialCountReview;const ss=serialList(out[i].serials);
+      for(const sn of ss){const k=normalizeSerial(sn);if(!k)continue;if(seen.has(k)&&seen.get(k)!==i){const j=seen.get(k);out[i].serialConflict=true;out[j].serialConflict=true;out[i].serialReviewRequired=true;out[j].serialReviewRequired=true;conflicts.push({serial:sn,rows:[out[j].rowId,out[i].rowId]});}else seen.set(k,i);}
+      const q=Number(out[i].quantity);if(Number.isInteger(q)&&q>0&&ss.length>q){out[i].serialCountReview=true;out[i].serialReviewRequired=true;}
     }
     return {rows:out,conflicts};
   }
@@ -382,21 +420,26 @@
 
 
   function mergeLegacyItems(legacyItems=[],v7Rows=[]){
-    const legacy=(legacyItems||[]).map(x=>({...x})), used=new Set();
+    const legacy=guardSpecDerivedQuantities((legacyItems||[]).map(x=>({...x}))),used=new Set();
     const safeV7=(v7Rows||[]).filter(r=>(r.classification||classifyRow(r)).type==='equipment'&&!r.serialConflict);
+    const skuCounts=new Map();for(const r of safeV7){const k=compact(r.sku||'');if(k)skuCounts.set(k,(skuCounts.get(k)||0)+1);}
     for(let li=0;li<legacy.length;li++){
-      const l=legacy[li];let best=-1,bestScore=-1;
+      const l=legacy[li];let best=-1,bestScore=-Infinity;const lsku=compact(l.sku||'');
       for(let i=0;i<safeV7.length;i++){
-        if(used.has(i))continue;const sc=rowMatchScore(l,safeV7[i]);if(sc>bestScore){best=i;bestScore=sc;}
+        if(used.has(i))continue;const r=safeV7[i],rsku=compact(r.sku||'');let sc=rowMatchScore(l,r);
+        // Repeated SKU rows are distinct purchases/rows. Economics and source order outrank identical descriptions.
+        if(lsku&&rsku&&lsku===rsku&&(skuCounts.get(rsku)||0)>1){const econ=economicAgreement(l,r);if(econ.compared)sc+=econ.score*1.5;sc-=Math.abs(li-i)*0.35;}
+        if(sc>bestScore){best=i;bestScore=sc;}
       }
       if(best<0||bestScore<5)continue;
-      used.add(best);const r=safeV7[best], verified=!!(r.verification?.coreVerified??!r.needsReview);
-      // V7 may correct economics only when independent evidence agrees. Descriptive fields are conservative.
+      used.add(best);const r=safeV7[best],verified=!!(r.verification?.coreVerified??!r.needsReview);
       if(verified){
         if(Number(r.quantity)>0)l.quantity=Number(r.quantity);
         if(Number.isFinite(Number(r.unit_price)))l.unit_price=Number(r.unit_price);
         if(Number.isFinite(Number(r.amount)))l.amount=Number(r.amount);
-        if(!r.serialReviewRequired&&serialList(r.serials).length)l.serials=serialList(r.serials).join(', ');
+        const rss=serialList(r.serials),rq=Number(r.quantity);
+        if(r.serialReviewRequired){l.serials='';l.serialReviewRequired=true;}
+        else if(!Number.isInteger(rq)||rq<=0||rss.length<=rq){l.serials=rss.join(', ');delete l.serialReviewRequired;}
       }
       if(!clean(l.sku)&&clean(r.sku))l.sku=clean(r.sku);
       if(!clean(l.item_name)&&clean(r.item_name||r.description))l.item_name=clean(r.item_name||r.description);
@@ -405,21 +448,20 @@
       if(verified){delete l.quantityReviewRequired;delete l.priceReviewRequired;delete l.amountReviewRequired;}
     }
     for(let i=0;i<safeV7.length;i++){
-      if(used.has(i))continue;const r=safeV7[i];
-      // Recovery of a missing line requires independent agreement; a single extractor may only flag review.
-      if(!(r.verification?.coreVerified??!r.needsReview))continue;
+      if(used.has(i))continue;const r=safeV7[i];if(!(r.verification?.coreVerified??!r.needsReview))continue;
       legacy.push({sku:clean(r.sku),item_name:clean(r.item_name||r.description),description:clean(r.description||r.item_name),category:r.category||'',unit:r.unit||'pcs',quantity:Number(r.quantity),unit_price:r.unit_price??null,amount:r.amount??null,warranty:r.warranty||'',serials:r.serials||'',v7RowId:r.rowId,v7Provenance:r.provenance,v7Verified:true});
     }
-    return legacy;
+    return guardSpecDerivedQuantities(legacy);
   }
 
   function prepareSave(rows=[]){
-    const integrity=serialIntegrity(rows);const errors=[];
+    const guarded=guardSpecDerivedQuantities(rows),integrity=serialIntegrity(guarded);const errors=[];
     for(const r of integrity.rows){
-      if(!clean(r.item_name||r.description))errors.push({rowId:r.rowId,field:'item_name',message:'Item name is required.'});
-      if(!(Number(r.quantity)>0))errors.push({rowId:r.rowId,field:'quantity',message:'Quantity must be greater than zero.'});
-      if(r.serialConflict)errors.push({rowId:r.rowId,field:'serials',message:'Confirmed duplicate serial appears on another inventory row.'});
-      // SKU, category, warranty, serial, price and amount stay optional.
+      if(!clean(r.item_name||r.description))errors.push({rowId:r.rowId||r.v7RowId,field:'item_name',message:'Item name is required.'});
+      if(!(Number(r.quantity)>0))errors.push({rowId:r.rowId||r.v7RowId,field:'quantity',message:r.quantitySpecCollision?'A specification number (for example lumens/watts) cannot be used as Qty. Verify the Qty from the invoice table.':'Quantity must be greater than zero.'});
+      if(r.serialConflict)errors.push({rowId:r.rowId||r.v7RowId,field:'serials',message:'Confirmed duplicate serial appears on another inventory row.'});
+      if(r.serialCountReview)errors.push({rowId:r.rowId||r.v7RowId,field:'serials',message:'Serial-number count exceeds Qty. Verify serial ownership against the PDF.'});
+      else if(r.serialReviewRequired&&!r.serialConflict&&serialList(r.serials).length)errors.push({rowId:r.rowId||r.v7RowId,field:'serials',message:'Serial-number ownership requires review against the PDF.'});
     }
     return {ok:errors.length===0,rows:integrity.rows.map(r=>({...r,sku:clean(r.sku||''),serials:serialList(r.serials).join(', ')})),errors,conflicts:integrity.conflicts};
   }
@@ -435,22 +477,18 @@
     return {primary:ranked[0]||{source:'none',rows:[]},candidates:ranked};
   }
 
-  function structuralInvoiceNumber(layout=[],texts=[]){
-    const labelRe=/\b(?:tax\s+)?invoice\s*(?:no\.?|number|#)\s*[:#-]?\s*(.*)$/i;
-    const cleanValue=v=>clean(v).replace(/^[\s:#-]+/,'').trim();
-    for(const page of layout||[])for(const r of (page?.rows||[])){const items=[...(r.items||[])].sort((a,b)=>Number(a.x||0)-Number(b.x||0));for(let i=0;i<items.length;i++){const m=clean(items[i].text).match(labelRe);if(!m)continue;const inline=cleanValue(m[1]);if(inline)return {value:inline,source:'layout-label-inline',attempted:true};const x=Number(items[i].x||0),right=items.slice(i+1).filter(it=>Number(it.x||0)>x).map(it=>cleanValue(it.text)).find(Boolean);if(right)return {value:right,source:'layout-label-right',attempted:true};return {value:'',source:'layout-label-no-value',attempted:true};}}
-    for(const src of texts||[]){const lines=String(src?.text||'').split(/\r?\n/).map(clean);for(let i=0;i<lines.length;i++){const m=lines[i].match(labelRe);if(!m)continue;const inline=cleanValue(m[1]);if(inline)return {value:inline,source:(src.source||'text')+':label-inline',attempted:true};const next=cleanValue(lines[i+1]||'');if(next)return {value:next,source:(src.source||'text')+':label-next-line',attempted:true};return {value:'',source:(src.source||'text')+':label-no-value',attempted:true};}}
-    return {value:'',source:'not-found',attempted:false};
-  }
-  function toInventoryItem(r){return {sku:clean(r.sku||''),item_name:clean(r.item_name||r.description),description:clean(r.description||r.item_name),category:r.category||'',unit:r.unit||'pcs',quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,warranty:r.warranty||'',serials:r.serials||'',rowId:r.rowId,provenance:r.provenance,verification:r.verification,needsReview:!!r.needsReview,serialConflict:!!r.serialConflict,serialCountReview:!!r.serialCountReview,serialReviewRequired:!!r.serialReviewRequired};}
   function enhanceParsed({parsed={},raw='',layout=[],evidenceSources=[]}={}){
     const texts=[...evidenceSources];if(raw&&!texts.some(x=>x.text===raw))texts.push({source:'raw',text:raw,page:1});
-    const chosen=choosePrimary({layout,texts}),primary=chosen.primary.rows,secondaryCandidate=chosen.candidates.find(x=>x!==chosen.primary&&x.rows.length),secondary=secondaryCandidate?.rows||[];
-    const verified=verifyIndependent(primary,secondary),serial=serialIntegrity(verified.rows),inv=inventoryRows(serial.rows),useV7=inv.length>0;
-    const header=structuralInvoiceNumber(layout,texts),doc={...(parsed.doc||{})};if(header.attempted)doc.invoice_number=header.value||'';
-    const items=useV7?inv.map(toInventoryItem):(parsed.items||[]);
-    return {...parsed,doc,items,v7:{globalRules:GLOBAL_RULES,mode:useV7?'primary':'legacy-fallback',sourceParser:chosen.primary.source,secondaryParser:secondaryCandidate?.source||null,sourceRows:chosen.primary.rows,verification:verified,serialIntegrity:serial,completeness:completeness(chosen.primary.rows),invoiceNumberEvidence:header,promoted:useV7,mergeMode:useV7?'v7-source-of-truth':'legacy-emergency-fallback',fallbackUsed:!useV7,fallbackReason:useV7?'':'V7 produced no verified equipment rows.'}};
+    const chosen=choosePrimary({layout,texts});const primary=chosen.primary.rows;
+    const secondary=chosen.candidates.find(x=>x!==chosen.primary&&x.rows.length)?.rows||[];
+    const verified=verifyIndependent(primary,secondary);const serial=serialIntegrity(verified.rows);const inv=inventoryRows(serial.rows);
+    // Safe promotion: only replace old items when source-row parser found at least one tracked item
+    // and did not create a confirmed serial conflict. Otherwise preserve legacy result and attach diagnostics.
+    const canPromote=inv.length>0&&!serial.conflicts.length;
+    const merged=canPromote?mergeLegacyItems(parsed.items||[],serial.rows):guardSpecDerivedQuantities(parsed.items||[]);
+    const finalIntegrity=serialIntegrity(guardSpecDerivedQuantities(merged));
+    return {...parsed,items:finalIntegrity.rows,v7:{globalRules:GLOBAL_RULES,sourceParser:chosen.primary.source,sourceRows:chosen.primary.rows,verification:verified,serialIntegrity:finalIntegrity,completeness:completeness(chosen.primary.rows),promoted:canPromote,mergeMode:'legacy-preserving-v701'}};
   }
 
-  return {GLOBAL_RULES,clean,norm,compact,money,qtyNumber,normalizeSerial,extractSerialTail,serialList,reassignOptionalSerials,classifyRow,sourceRowId,rowWithProvenance,headerColumns,inferLayoutColumns,parseLayout,parseText,rowMatchScore,verifyIndependent,serialIntegrity,inventoryRows,completeness,validateAiShadow,mergeLegacyItems,prepareSave,choosePrimary,structuralInvoiceNumber,enhanceParsed};
+  return {GLOBAL_RULES,clean,norm,compact,money,qtyNumber,normalizeSerial,extractSerialTail,serialList,reassignOptionalSerials,classifyRow,sourceRowId,rowWithProvenance,headerColumns,inferLayoutColumns,parseLayout,parseText,quantityLooksLikeSpecification,guardSpecDerivedQuantities,economicAgreement,rowMatchScore,verifyIndependent,serialIntegrity,inventoryRows,completeness,validateAiShadow,mergeLegacyItems,prepareSave,choosePrimary,enhanceParsed};
 });
