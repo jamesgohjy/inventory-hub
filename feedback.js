@@ -2,7 +2,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const cfg=window.INVENTORY_CONFIG||{};
-let client=null,currentUser=null,currentRole='viewer',items=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,broadcastChannel=null,identitySeq=0,liveFallbackTimer=null,lastUnread=0,realtimeReconnectTimer=null;
+let client=null,currentUser=null,currentRole='viewer',items=[],adminNotices=[],active=null,previewUrl='',authSubscription=null,realtimeChannel=null,broadcastChannel=null,identitySeq=0,liveFallbackTimer=null,lastUnread=0,realtimeReconnectTimer=null;
 const wordCount=v=>String(v||'').trim()?String(v).trim().split(/\s+/).filter(Boolean).length:0;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDate=v=>{try{return new Intl.DateTimeFormat('en-SG',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v));}catch{return String(v||'');}};
@@ -55,6 +55,8 @@ async function syncRealtime(){
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'feedback_submissions'},async payload=>{console.info('[Feedback Live] DB INSERT',payload?.new?.id||'');await loadInbox(false,true);})
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,false);})
   .on('postgres_changes',{event:'DELETE',schema:'public',table:'feedback_submissions'},async()=>{await loadInbox(false,false);})
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'admin_notifications'},async payload=>{console.info('[Admin Live] account notification',payload?.new?.id||'');await loadInbox(false,true);})
+  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'admin_notifications'},async()=>{await loadInbox(false,false);})
   .subscribe(status=>{
     console.info('[Feedback Live] DB channel',status);
     if(status==='SUBSCRIBED')loadInbox(false,false);
@@ -120,14 +122,27 @@ async function submitFeedback(ev){
 async function loadInbox(open=false,animate=false){
  if(currentRole!=='admin')return;
  const filter=$('feedbackStatusFilter')?.value||'';let q=client.from('feedback_submissions').select('id,submitted_by,submitter_name,submitter_email,issue_type,message,status,is_read,attachment_path,source_context,created_at,updated_at').order('created_at',{ascending:false}).limit(100);if(filter)q=q.eq('status',filter);
- const {data,error}=await q;if(error){console.error('Feedback inbox',error);return;}items=data||[];updateBadge(items.filter(x=>!x.is_read).length,animate);renderInbox();if(open)$('feedbackInboxDialog')?.showModal();
+ const {data,error}=await q;if(error){console.error('Feedback inbox',error);return;}items=data||[];
+ const {data:noticeData,error:noticeError}=await client.from('admin_notifications').select('id,type,title,message,user_email,is_read,created_at').order('created_at',{ascending:false}).limit(100);
+ if(noticeError){console.warn('Admin notifications',noticeError);adminNotices=[];}else adminNotices=noticeData||[];
+ updateBadge(items.filter(x=>!x.is_read).length+adminNotices.filter(x=>!x.is_read).length,animate);renderInbox();if(open)$('feedbackInboxDialog')?.showModal();
 }
 function renderInbox(){
- const host=$('feedbackInboxList');if(!host)return;const unread=items.filter(x=>!x.is_read).length;$('feedbackUnreadSummary').textContent=`${unread} unread`;
- if(!items.length){host.innerHTML='<div class="feedback-empty">No feedback submissions yet.</div>';return;}
- host.innerHTML=items.map(x=>`<article class="feedback-inbox-item" data-feedback-id="${esc(x.id)}"><span class="feedback-unread-dot ${x.is_read?'read':''}"></span><div class="feedback-inbox-main"><strong>${esc(x.issue_type||'Feedback')}</strong><p>${esc(x.message)}</p><span class="feedback-status ${esc(x.status)}">${esc(x.status)}</span></div><div class="feedback-inbox-meta">${esc(x.submitter_name||x.submitter_email||'Team member')}<br>${esc(fmtDate(x.created_at))}</div></article>`).join('');
+ const host=$('feedbackInboxList');if(!host)return;const unread=items.filter(x=>!x.is_read).length+adminNotices.filter(x=>!x.is_read).length;$('feedbackUnreadSummary').textContent=`${unread} unread`;
+ const notices=adminNotices.map(x=>`<article class="feedback-inbox-item admin-account-notice" data-admin-notice-id="${esc(x.id)}"><span class="feedback-unread-dot ${x.is_read?'read':''}"></span><div class="feedback-inbox-main"><strong>${esc(x.title||'New account created')}</strong><p>${esc(x.message||x.user_email||'A new account was created.')}</p><span class="feedback-status reviewing">account</span></div><div class="feedback-inbox-meta">${esc(x.user_email||'New user')}<br>${esc(fmtDate(x.created_at))}</div></article>`).join('');
+ const feedback=items.map(x=>`<article class="feedback-inbox-item" data-feedback-id="${esc(x.id)}"><span class="feedback-unread-dot ${x.is_read?'read':''}"></span><div class="feedback-inbox-main"><strong>${esc(x.issue_type||'Feedback')}</strong><p>${esc(x.message)}</p><span class="feedback-status ${esc(x.status)}">${esc(x.status)}</span></div><div class="feedback-inbox-meta">${esc(x.submitter_name||x.submitter_email||'Team member')}<br>${esc(fmtDate(x.created_at))}</div></article>`).join('');
+ host.innerHTML=notices+feedback||'<div class="feedback-empty">No Admin notifications yet.</div>';
  host.querySelectorAll('[data-feedback-id]').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.feedbackId)));
+ host.querySelectorAll('[data-admin-notice-id]').forEach(el=>el.addEventListener('click',()=>markAdminNoticeRead(el.dataset.adminNoticeId)));
 }
+
+async function markAdminNoticeRead(id){
+ if(currentRole!=='admin')return;
+ const notice=adminNotices.find(x=>String(x.id)===String(id));if(!notice)return;
+ if(!notice.is_read){const {error}=await client.from('admin_notifications').update({is_read:true,read_at:new Date().toISOString()}).eq('id',notice.id);if(error){toast(error.message);return;}notice.is_read=true;}
+ updateBadge(items.filter(x=>!x.is_read).length+adminNotices.filter(x=>!x.is_read).length,false);renderInbox();toast(notice.title||'Notification read.');
+}
+
 async function openDetail(id){
  if(currentRole!=='admin')return;active=items.find(x=>String(x.id)===String(id));if(!active)return;
  if(!active.is_read){const {error}=await client.from('feedback_submissions').update({is_read:true,read_at:new Date().toISOString()}).eq('id',active.id);if(!error){active.is_read=true;updateBadge(items.filter(x=>!x.is_read).length);renderInbox();}}
