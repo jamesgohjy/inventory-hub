@@ -1,6 +1,6 @@
-/* AV Inventory Hub v7.00 parser core
+/* AV Inventory Hub v7.03 parser core
  * Global rules: evidence-only fields, stable source-row identity, independent extraction,
- * optional serials, no SKU invention, classification before completeness, and shadow AI verification.
+ * optional serials, no SKU invention, classification before completeness, and V7-primary evidence verification.
  */
 (function(root,factory){
   const api=factory();
@@ -20,7 +20,9 @@
     microphoneStandIncluded:true,
     genericStandExcluded:true,
     currentReviewValuesBeforeSaveValidation:true,
-    aiShadowOnlyByDefault:true,
+    aiShadowOnlyByDefault:false,
+    v7PrimarySourceOfTruth:true,
+    legacyEmergencyFallbackOnly:true,
     actualPdfRegressionRequired:true
   });
 
@@ -433,17 +435,22 @@
     return {primary:ranked[0]||{source:'none',rows:[]},candidates:ranked};
   }
 
+  function structuralInvoiceNumber(layout=[],texts=[]){
+    const labelRe=/\b(?:tax\s+)?invoice\s*(?:no\.?|number|#)\s*[:#-]?\s*(.*)$/i;
+    const cleanValue=v=>clean(v).replace(/^[\s:#-]+/,'').trim();
+    for(const page of layout||[])for(const r of (page?.rows||[])){const items=[...(r.items||[])].sort((a,b)=>Number(a.x||0)-Number(b.x||0));for(let i=0;i<items.length;i++){const m=clean(items[i].text).match(labelRe);if(!m)continue;const inline=cleanValue(m[1]);if(inline)return {value:inline,source:'layout-label-inline',attempted:true};const x=Number(items[i].x||0),right=items.slice(i+1).filter(it=>Number(it.x||0)>x).map(it=>cleanValue(it.text)).find(Boolean);if(right)return {value:right,source:'layout-label-right',attempted:true};return {value:'',source:'layout-label-no-value',attempted:true};}}
+    for(const src of texts||[]){const lines=String(src?.text||'').split(/\r?\n/).map(clean);for(let i=0;i<lines.length;i++){const m=lines[i].match(labelRe);if(!m)continue;const inline=cleanValue(m[1]);if(inline)return {value:inline,source:(src.source||'text')+':label-inline',attempted:true};const next=cleanValue(lines[i+1]||'');if(next)return {value:next,source:(src.source||'text')+':label-next-line',attempted:true};return {value:'',source:(src.source||'text')+':label-no-value',attempted:true};}}
+    return {value:'',source:'not-found',attempted:false};
+  }
+  function toInventoryItem(r){return {sku:clean(r.sku||''),item_name:clean(r.item_name||r.description),description:clean(r.description||r.item_name),category:r.category||'',unit:r.unit||'pcs',quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,warranty:r.warranty||'',serials:r.serials||'',rowId:r.rowId,provenance:r.provenance,verification:r.verification,needsReview:!!r.needsReview,serialConflict:!!r.serialConflict,serialCountReview:!!r.serialCountReview,serialReviewRequired:!!r.serialReviewRequired};}
   function enhanceParsed({parsed={},raw='',layout=[],evidenceSources=[]}={}){
     const texts=[...evidenceSources];if(raw&&!texts.some(x=>x.text===raw))texts.push({source:'raw',text:raw,page:1});
-    const chosen=choosePrimary({layout,texts});const primary=chosen.primary.rows;
-    const secondary=chosen.candidates.find(x=>x!==chosen.primary&&x.rows.length)?.rows||[];
-    const verified=verifyIndependent(primary,secondary);const serial=serialIntegrity(verified.rows);const inv=inventoryRows(serial.rows);
-    // Safe promotion: only replace old items when source-row parser found at least one tracked item
-    // and did not create a confirmed serial conflict. Otherwise preserve legacy result and attach diagnostics.
-    const canPromote=inv.length>0&&!serial.conflicts.length;
-    const merged=canPromote?mergeLegacyItems(parsed.items||[],serial.rows):(parsed.items||[]);
-    return {...parsed,items:merged,v7:{globalRules:GLOBAL_RULES,sourceParser:chosen.primary.source,sourceRows:chosen.primary.rows,verification:verified,serialIntegrity:serial,completeness:completeness(chosen.primary.rows),promoted:canPromote,mergeMode:'legacy-preserving'}};
+    const chosen=choosePrimary({layout,texts}),primary=chosen.primary.rows,secondaryCandidate=chosen.candidates.find(x=>x!==chosen.primary&&x.rows.length),secondary=secondaryCandidate?.rows||[];
+    const verified=verifyIndependent(primary,secondary),serial=serialIntegrity(verified.rows),inv=inventoryRows(serial.rows),useV7=inv.length>0;
+    const header=structuralInvoiceNumber(layout,texts),doc={...(parsed.doc||{})};if(header.attempted)doc.invoice_number=header.value||'';
+    const items=useV7?inv.map(toInventoryItem):(parsed.items||[]);
+    return {...parsed,doc,items,v7:{globalRules:GLOBAL_RULES,mode:useV7?'primary':'legacy-fallback',sourceParser:chosen.primary.source,secondaryParser:secondaryCandidate?.source||null,sourceRows:chosen.primary.rows,verification:verified,serialIntegrity:serial,completeness:completeness(chosen.primary.rows),invoiceNumberEvidence:header,promoted:useV7,mergeMode:useV7?'v7-source-of-truth':'legacy-emergency-fallback',fallbackUsed:!useV7,fallbackReason:useV7?'':'V7 produced no verified equipment rows.'}};
   }
 
-  return {GLOBAL_RULES,clean,norm,compact,money,qtyNumber,normalizeSerial,extractSerialTail,serialList,reassignOptionalSerials,classifyRow,sourceRowId,rowWithProvenance,headerColumns,inferLayoutColumns,parseLayout,parseText,rowMatchScore,verifyIndependent,serialIntegrity,inventoryRows,completeness,validateAiShadow,mergeLegacyItems,prepareSave,choosePrimary,enhanceParsed};
+  return {GLOBAL_RULES,clean,norm,compact,money,qtyNumber,normalizeSerial,extractSerialTail,serialList,reassignOptionalSerials,classifyRow,sourceRowId,rowWithProvenance,headerColumns,inferLayoutColumns,parseLayout,parseText,rowMatchScore,verifyIndependent,serialIntegrity,inventoryRows,completeness,validateAiShadow,mergeLegacyItems,prepareSave,choosePrimary,structuralInvoiceNumber,enhanceParsed};
 });
