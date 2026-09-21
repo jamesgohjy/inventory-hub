@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03 parser core
+/* AV Inventory Hub v7.03.1 parser core
  * Global rules: evidence-only fields, stable source-row identity, independent extraction,
  * optional serials, no SKU invention, classification before completeness, and shadow AI verification.
  */
@@ -67,8 +67,11 @@
     if(Array.isArray(v))return uniq(v.map(clean).filter(Boolean).filter(x=>!/^N\/?A$/i.test(x)),x=>normalizeSerial(x));
     const s=String(v||'');
     if(!s.trim())return [];
-    // If this looks like a labelled OCR tail, use the conservative token extractor.
-    if(/(?:S\s*[/.-]?\s*N|S\.?N\.?|Serial)/i.test(s))return extractSerialTail(s.replace(/^.*?(?:S\s*[/.-]?\s*N|S\.?N\.?|Serial(?:\s*(?:No\.?|Number))?)\s*[:#.-]?\s*/i,''));
+    // Treat SN as a label only when it is visibly separated from the serial value.
+    // This prevents real serials such as SN123456 from being stripped as if 'SN' were only a label.
+    const labelled=/^.*?(?:Serial(?:\s*(?:No\.?|Number))?\s*[:#.-]?\s*|S\s*[/.-]\s*N\s*[:#.-]?\s*|S\.N\.?\s*[:#.-]?\s*|SN\s*[:#.-]\s*|SN\s+)/i;
+    const lm=s.match(labelled);
+    if(lm)return extractSerialTail(s.slice(lm[0].length));
     return uniq(s.split(/[,;\n]+/).map(clean).filter(Boolean).filter(x=>!/^N\/?A$/i.test(x)),x=>normalizeSerial(x));
   }
 
