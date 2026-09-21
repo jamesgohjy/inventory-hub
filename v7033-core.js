@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.1';
+  const VERSION='7.03.3.2';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -44,7 +44,7 @@
   }
   function equipmentType(text=''){
     const s=norm(text);
-    const pairs=[['manual screen','Manual Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['control panel','Control Panel'],['controller','Controller'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
+    const pairs=[['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['control panel','Control Panel'],['controller','Controller'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
     for(const [k,v] of pairs)if(s.includes(k))return v;return '';
   }
   function contentWords(s=''){return norm(s).split(' ').filter(w=>w.length>=4&&!/^(?:with|from|year|only|stock|warranty|supply|install|installation|safety|wired|secure|classroom)$/.test(w));}
@@ -187,7 +187,7 @@
     const canonical=same.find(i=>credible.length===1&&compact(i.sku||'')===compact(credible[0]))||same[0];
     return {matched:true,reason:credible.length===1?'same-name-single-verified-model':'same-normalized-name',item:canonical,line:{...incoming,sku:clean(canonical.sku||incoming.sku||''),item_name:canonical.item_name||incoming.item_name,category:incoming.category||canonical.category||''}};
   }
-  function prepareLinesForInventory(lines=[],items=[]){return (lines||[]).map(x=>resolveInventoryMatch(x,items).line);}
+  function prepareLinesForInventory(lines=[],items=[]){return (lines||[]).map(x=>{const resolved=resolveInventoryMatch(x,items).line;const standard=clean(resolved.item_name||'');return standard?{...resolved,description:standard}:resolved;});}
   function safeDuplicateGroups(items=[]){
     const groups=new Map();
     for(const i of items||[]){const k=normalizedItemIdentity(i.item_name||i.description||'');if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);}
@@ -217,7 +217,9 @@
     'Level 3 appears only for a real unresolved conflict; missing secondary extraction alone is not enough.',
     'Future imports reuse an existing master item when verified SKU or safe normalized identity matches.',
     'Existing exact duplicate inventory groups can be safely consolidated by the bundled Supabase migration/RPC.',
-    'Conflicting verified models are never auto-merged.'
+    'Conflicting verified models are never auto-merged.',
+    'Inventory Description now stores the verified Standard Item Name instead of the long supplier description.',
+    'Standard item names are assembled from verified brand + model + product type; installation wording stays only as source evidence.'
   ];
   function applyVersionUi(){
     try{
