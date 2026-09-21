@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3';
+  const VERSION='7.03.3.1';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -222,15 +222,27 @@
   function applyVersionUi(){
     try{
       globalThis.__AV_INVENTORY_VERSION__=VERSION;globalThis.__AV_INVENTORY_BUILD__=VERSION;
-      document.documentElement.dataset.avInventoryVersion=VERSION;document.documentElement.dataset.avInventoryBuild=VERSION;
+      const root=document.documentElement;
+      if(root.dataset.avInventoryVersion!==VERSION)root.dataset.avInventoryVersion=VERSION;
+      if(root.dataset.avInventoryBuild!==VERSION)root.dataset.avInventoryBuild=VERSION;
       const cv=document.getElementById('releaseCurrentVersion'),uv=document.getElementById('releaseUpcomingVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-      if(cv)cv.textContent='v'+VERSION;if(uv)uv.textContent='v7.03.4';if(av)av.textContent='Version '+VERSION;
+      if(cv&&cv.textContent!=='v'+VERSION)cv.textContent='v'+VERSION;
+      if(uv&&uv.textContent!=='v7.03.4')uv.textContent='v7.03.4';
+      if(av&&av.textContent!=='Version '+VERSION)av.textContent='Version '+VERSION;
       if(notes&&notes.dataset.v7033Notes!==VERSION){notes.innerHTML=RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');notes.dataset.v7033Notes=VERSION;}
-    }catch(e){console.warn('v7.03.3 version sync skipped',e);}
+    }catch(e){console.warn('v7.03.3.1 version sync skipped',e);}
   }
   function installUiVersionSync(){
-    if(typeof document==='undefined')return false;applyVersionUi();
-    if(!globalThis.__V7033_VERSION_OBSERVER__){const obs=new MutationObserver(()=>applyVersionUi());const start=()=>{if(document.body)obs.observe(document.body,{childList:true,subtree:true});applyVersionUi();};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();globalThis.__V7033_VERSION_OBSERVER__=obs;for(const ms of [50,250,750,1500,3000])setTimeout(applyVersionUi,ms);}return true;
+    if(typeof document==='undefined')return false;
+    applyVersionUi();
+    // Freeze hotfix: do not observe the whole document. The former body-wide MutationObserver
+    // wrote version text in response to its own DOM mutations and could create an endless loop.
+    if(!globalThis.__V7033_VERSION_SYNC_INSTALLED__){
+      globalThis.__V7033_VERSION_SYNC_INSTALLED__=true;
+      document.addEventListener('click',e=>{if(e.target.closest?.('#patchNotesBtn'))setTimeout(applyVersionUi,0);},true);
+      for(const ms of [50,250,750,1500,3000])setTimeout(applyVersionUi,ms);
+    }
+    return true;
   }
 
   return {VERSION,BASELINE_VERSION,clean,norm,compact,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES};
