@@ -1,17 +1,17 @@
-// AV Inventory Hub V7.03 — Evidence verification + human review gate
+// AV Inventory Hub V7.03.1 — Startup hotfix + evidence verification + human review gate
 // This patch loader applies V6.76 safely on top of the verified V6.55 source.
 const ORIGINAL_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/d45233b134921b3085a1318b10443d488fd832a0/app.js';
 
 // V6.82 deployment marker: set the visible version before the runtime patch loader starts.
-const V682_DEPLOYMENT_BUILD='7.03.0';
+const V682_DEPLOYMENT_BUILD='7.03.1';
 function v682MarkDeployment(){
   try{
-    window.__AV_INVENTORY_VERSION__='7.03';
+    window.__AV_INVENTORY_VERSION__='7.03.1';
     window.__AV_INVENTORY_BUILD__=V682_DEPLOYMENT_BUILD;
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion');
-    if(cv)cv.textContent='v7.03';
-    if(av)av.textContent='Version 7.03';
-    document.documentElement.dataset.avInventoryVersion='7.00';
+    if(cv)cv.textContent='v7.03.1';
+    if(av)av.textContent='Version 7.03.1';
+    document.documentElement.dataset.avInventoryVersion='7.03.1';
     document.documentElement.dataset.avInventoryBuild=V682_DEPLOYMENT_BUILD;
   }catch(e){console.warn('V6.82 deployment marker skipped',e);}
 }
@@ -1425,7 +1425,7 @@ async function launch(){
     src=replaceOnce(src,"function imageForItem(item){if(item.image_url)return item.image_url;const c=norm([item.category,item.item_name,item.description,item.sku].join(' '));if(c.includes('projector'))return DASH_ASSETS.projector;if(c.includes('microphone')||c.includes('wireless')||c.includes('audio'))return DASH_ASSETS.microphone;if(c.includes('cable')||c.includes('hdmi'))return DASH_ASSETS.cable;if(c.includes('display')||c.includes('monitor')||c.includes('screen'))return DASH_ASSETS.monitor;return'';}",asPatchedFunction(v672SketchKind,'v672SketchKind')+'\n'+asPatchedFunction(v672SketchSvg,'v672SketchSvg')+'\n'+asPatchedFunction(v672ImageForItem,'imageForItem'),'copyright-safe identity sketch images');
     src=replaceOnce(src,"const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),2500)};","const toast=(msg)=>{const openDialogs=[...document.querySelectorAll('dialog[open]')];const dlg=openDialogs[openDialogs.length-1];if(dlg){let t=dlg.querySelector('.v667-modal-toast');if(!t){t=document.createElement('div');t.className='v667-modal-toast';t.setAttribute('role','status');t.style.cssText='position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:2147483647;max-width:min(720px,calc(100vw - 40px));background:#10253f;color:#fff;border:1px solid #4c6f96;border-radius:10px;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,.32);font:600 14px/1.4 system-ui,sans-serif;text-align:center;';dlg.appendChild(t);}t.textContent=msg;t.style.display='block';clearTimeout(t._hideTimer);t._hideTimer=setTimeout(()=>{t.style.display='none';},3500);return;}const t=$('toast');if(!t)return;t.textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),3000)};",'modal-visible toast');
     src=replaceOnce(src,"// AV Inventory Hub V6.55 — evidence-only inventory parsing and verified invoice dates","// AV Inventory Hub V7.00 — Structured parser core + regression-safe migration",'version header');
-    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='7.02';",'APP_VERSION');
+    src=replaceOnce(src,"const APP_VERSION='6.55';","const APP_VERSION='7.03.1';",'APP_VERSION');
     src=replaceOnce(src,"const currentRole=()=>CFG.mode==='supabase'?(state.profile?.role||'viewer'):'admin';","const currentRole=()=>CFG.mode==='supabase'?String(state.profile?.role||'viewer').trim().toLowerCase():'admin';",'normalize account role');
     src=replaceOnce(src,"if(raw.includes('row-level security')||raw.includes('permission')||raw.includes('admin access required')||raw.includes('editor or admin access required'))return 'Your account role does not allow this action. Please contact an Admin.';","if(raw.includes('row-level security')||raw.includes('permission')||raw.includes('admin access required')||raw.includes('editor or admin access required'))return canEdit()?('Your account is '+currentRole().replace(/^./,c=>c.toUpperCase())+', but Supabase rejected the database/storage write. This is a database policy permission error, not an account-role restriction.'):'Your account role does not allow this action. Please contact an Admin.';",'accurate permission error');
     src=replaceOnce(src,"if(state.importSaving)return;if(!requireEdit())return;collectParsed();","if(state.importSaving)return;if(CFG.mode==='supabase'&&state.session?.user?.id&&state.db?.profileForUser){try{const freshProfile=await state.db.profileForUser(state.session.user.id);if(freshProfile){state.profile=freshProfile;setUserIdentity(state.session);}}catch(roleErr){console.warn('Could not refresh role before import save',roleErr);}}if(!requireEdit())return;collectParsed();",'refresh role before invoice save');
@@ -1491,24 +1491,51 @@ async function autoNamedPdf(file,doc){
     src=replaceOnce(src,",d,state.parsed.items,namedFile);state.lastImportCount=state.parsed.items.length;",",d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;",'verified SKU and no-AUTO save enforcement');
     src=replaceOnce(src,"finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Confirm & save';}if($('importProgress'))$('importProgress').classList.add('hidden');}","finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}",'save-button final state');
 
-    const gate="\n// V7.03 invoice-only + equipment-only + three-layer verification save gate.\n$('saveImportBtn').addEventListener('click',e=>{\n  if(!state.parsed)return;\n  try{collectParsed();}catch(collectErr){console.warn('V7.03 could not collect current review fields',collectErr);}\n  const docType=detectImportDocumentType(state.parsed.raw||state.parsed.rawText||'');\n  if(docType.type!=='invoice'){e.preventDefault();e.stopImmediatePropagation();toast(docType.type==='delivery_order'?'Only invoices can be imported. Delivery Orders are blocked.':'Only verified invoices can be saved.');return;}\n  const detected=state.parsed.invoiceClassification?.type||'uncertain';\n  const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;\n  if(effective!=='equipment'){e.preventDefault();e.stopImmediatePropagation();renderImportEligibility();toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':effective==='noninventory'?'No tracked equipment found. Excluded accessory-only invoices cannot be imported.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');return;}\n  state.parsed.items=v689SerialIntegrityGate(state.parsed.items||[],state.parsed.raw||state.parsed.rawText||'');\n  if(!(state.parsed.items||[]).length){e.preventDefault();e.stopImmediatePropagation();toast('No verified physical inventory line item is available to save.');return;}\n  if(globalThis.AVParserV7){try{\n    const completeness=state.parsed?.v7?.completenessValidation||state.parsed?.parseEvidence?.v7?.completenessValidation||state.parsed?.parseEvidence?.completeness||null;\n    let prep=globalThis.AVParserV7.prepareSave(state.parsed.items||[],{humanReviewed:false,completeness});state.parsed.items=prep.rows;\n    if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'A confirmed validation error prevents saving.');return;}\n    if(prep.status==='review'){\n      const notes=(prep.warnings||[]).slice(0,5).map(x=>'• '+x.message).join('\n');\n      const accepted=window.confirm('Level 3 — Human review required.\n\nLevel 1 and Level 2 could not fully verify one or more fields. Compare the Parsed Fields with the PDF and correct anything uncertain.\n\n'+notes+'\n\nSelect OK only after you have checked these values against the PDF.');\n      if(!accepted){e.preventDefault();e.stopImmediatePropagation();toast('Save paused for human review.');v703RenderVerificationNotice();return;}\n      prep=globalThis.AVParserV7.prepareSave(state.parsed.items||[],{humanReviewed:true,completeness});state.parsed.items=prep.rows;\n      if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'A confirmed validation error prevents saving.');return;}\n    }\n  }catch(v7SaveErr){console.warn('V7.03 save validation error',v7SaveErr);e.preventDefault();e.stopImmediatePropagation();toast('Parser validation could not complete. Save has been stopped for safety.');return;}}\n  return;\n},true);\n";
+    const gate=String.raw`
+// V7.03 invoice-only + equipment-only + three-layer verification save gate.
+$('saveImportBtn').addEventListener('click',e=>{
+  if(!state.parsed)return;
+  try{collectParsed();}catch(collectErr){console.warn('V7.03 could not collect current review fields',collectErr);}
+  const docType=detectImportDocumentType(state.parsed.raw||state.parsed.rawText||'');
+  if(docType.type!=='invoice'){e.preventDefault();e.stopImmediatePropagation();toast(docType.type==='delivery_order'?'Only invoices can be imported. Delivery Orders are blocked.':'Only verified invoices can be saved.');return;}
+  const detected=state.parsed.invoiceClassification?.type||'uncertain';
+  const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;
+  if(effective!=='equipment'){e.preventDefault();e.stopImmediatePropagation();renderImportEligibility();toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':effective==='noninventory'?'No tracked equipment found. Excluded accessory-only invoices cannot be imported.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');return;}
+  state.parsed.items=v689SerialIntegrityGate(state.parsed.items||[],state.parsed.raw||state.parsed.rawText||'');
+  if(!(state.parsed.items||[]).length){e.preventDefault();e.stopImmediatePropagation();toast('No verified physical inventory line item is available to save.');return;}
+  if(globalThis.AVParserV7){try{
+    const completeness=state.parsed?.v7?.completenessValidation||state.parsed?.parseEvidence?.v7?.completenessValidation||state.parsed?.parseEvidence?.completeness||null;
+    let prep=globalThis.AVParserV7.prepareSave(state.parsed.items||[],{humanReviewed:false,completeness});state.parsed.items=prep.rows;
+    if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'A confirmed validation error prevents saving.');return;}
+    if(prep.status==='review'){
+      const notes=(prep.warnings||[]).slice(0,5).map(x=>'• '+x.message).join('\n');
+      const accepted=window.confirm('Level 3 — Human review required.\n\nLevel 1 and Level 2 could not fully verify one or more fields. Compare the Parsed Fields with the PDF and correct anything uncertain.\n\n'+notes+'\n\nSelect OK only after you have checked these values against the PDF.');
+      if(!accepted){e.preventDefault();e.stopImmediatePropagation();toast('Save paused for human review.');v703RenderVerificationNotice();return;}
+      prep=globalThis.AVParserV7.prepareSave(state.parsed.items||[],{humanReviewed:true,completeness});state.parsed.items=prep.rows;
+      if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'A confirmed validation error prevents saving.');return;}
+    }
+  }catch(v7SaveErr){console.warn('V7.03 save validation error',v7SaveErr);e.preventDefault();e.stopImmediatePropagation();toast('Parser validation could not complete. Save has been stopped for safety.');return;}}
+  return;
+},true);
+`;
+
     src=replaceOnce(src,'// Final evidence gate runs before the existing save handler.',gate+'// Final evidence gate runs before the existing save handler.','invoice classification save gate');
 
     src+='\ntry{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn(\'V6.69 optional audit/file-input setup skipped\',e);}\n';
     const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
     try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch(err){
-    console.error('AV Inventory Hub V7.03 startup error:',err);
+    console.error('AV Inventory Hub V7.03.1 startup error:',err);
     const box=document.createElement('div');
     box.style.cssText='position:fixed;inset:20px;z-index:99999;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-    box.innerHTML='<b>AV Inventory Hub V7.03 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
+    box.innerHTML='<b>AV Inventory Hub V7.03.1 could not start.</b><br>The verified V6.55 base was left untouched in Git history.<br><br><code>'+String(err.message||err).replace(/[&<>]/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[s]))+'</code>';
     document.body.appendChild(box);
   }
 }
 
 
 const V667_RELEASE_NOTES=[
-  'V7.03 baseline: built directly from verified V7.02 Startup Fix package',
+  'V7.03.1 startup hotfix: built directly from verified V7.02 Startup Fix baseline with the reviewed V7.03 parser delta',
   'Three-layer verification: primary evidence parser, independent re-check, then human review only when unresolved',
   'Blank serial numbers are valid and no longer create duplicate/review failures by themselves',
   'Only confirmed duplicate non-empty serials are hard-blocked; uncertain ownership is routed to human review',
@@ -1569,9 +1596,9 @@ const V667_RELEASE_NOTES=[
 ];
 function v667EnsurePatchNotesUi(){
   try{
-    window.__AV_INVENTORY_VERSION__='7.03';
+    window.__AV_INVENTORY_VERSION__='7.03.1';
     const cv=document.getElementById('releaseCurrentVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
-    if(cv)cv.textContent='v7.03';if(av)av.textContent='Version 7.03';
+    if(cv)cv.textContent='v7.03.1';if(av)av.textContent='Version 7.03.1';
     if(notes&&!notes.children.length)notes.innerHTML=V667_RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');
   }catch(e){console.warn('V6.81 patch-notes fallback skipped',e);}
 }
