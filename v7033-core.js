@@ -10,12 +10,42 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.7';
+  const VERSION='7.03.3.9';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const compact=(v='')=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const uniq=(xs,key=x=>x)=>{const out=[],seen=new Set();for(const x of xs||[]){const k=key(x);if(!k||seen.has(k))continue;seen.add(k);out.push(x);}return out;};
+
+
+  // HARD GATE: only pages positively classified as INVOICE or TAX INVOICE may feed parsing.
+  // Non-invoice supporting pages remain in the stored PDF but contribute zero parser evidence.
+  function classifyInvoicePage(text=''){
+    const raw=clean(text), t=raw.replace(/\r/g,'\n');
+    if(!raw)return {allowed:false,type:'blank',reason:'No readable text.'};
+    const hardExclude=/\b(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+requisition|purchase\s+request|purchase\s+order|goods\s+received\s+note|service\s+report|installation\s+report)\b/i;
+    if(hardExclude.test(t))return {allowed:false,type:'non-invoice',reason:'Explicit non-invoice document marker.'};
+    const taxInvoice=/\btax\s+invoice\b/i.test(t);
+    const invoiceTitle=/(?:^|\n)\s*invoice\s*(?:$|\n)/im.test(t);
+    const invoiceNo=/\binvoice\s*(?:no\.?|number|#)\s*[:#.-]?\s*[A-Z0-9]/i.test(t);
+    const itemTable=/\b(?:product\s*no\.?|item|description)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:unit\s*price|price|amount)\b/i.test(t);
+    const totals=/\b(?:sub\s*total|subtotal)\b/i.test(t)&&/\b(?:gst|tax)\b/i.test(t)&&/\b(?:amount|total)\b/i.test(t);
+    if(taxInvoice)return {allowed:true,type:'tax_invoice',reason:'Explicit TAX INVOICE title.'};
+    if(invoiceTitle&&(invoiceNo||itemTable||totals))return {allowed:true,type:'invoice',reason:'Explicit INVOICE title with invoice structure.'};
+    // OCR-safe fallback: accept only a labelled invoice number plus BOTH line-item and totals structure.
+    // This does not allow generic tables, DOs, quotations or photos into the parser.
+    if(invoiceNo&&itemTable&&totals)return {allowed:true,type:'invoice',reason:'Invoice number + item table + invoice totals independently confirm invoice structure.'};
+    return {allowed:false,type:'non-invoice',reason:'Page is not positively identified as Invoice/Tax Invoice.'};
+  }
+  function filterInvoicePages(pageTexts=[],pageLayouts=[]){
+    const accepted=[],layouts=[],decisions=[];
+    for(let i=0;i<(pageTexts||[]).length;i++){
+      const text=String(pageTexts[i]||''), verdict=classifyInvoicePage(text);
+      decisions.push({page:i+1,...verdict});
+      if(verdict.allowed){accepted.push(text);if(pageLayouts?.[i])layouts.push(pageLayouts[i]);}
+    }
+    return {texts:accepted,layouts,decisions,text:accepted.join('\n')};
+  }
 
   const MODEL_STOP=/^(?:SGD|GST|UEN|QTY|QUANTITY|PRICE|AMOUNT|TOTAL|SUBTOTAL|INVOICE|DATE|REF|REFERENCE|SHIPMENT|CUSTOMER|PO|DO)$/i;
   function looksLikeDimensionOrSpec(token='',line=''){
@@ -144,6 +174,7 @@
   function normalizeInvoiceNumberCandidate(value='',supplier='',raw=''){
     let v=clean(value).replace(/^[#:\s.-]+|[#:\s.-]+$/g,'');
     if(!v||INVOICE_LABEL_STOP.test(v))return '';
+    if(/\b(?:REF(?:ERENCE)?\.?\s*NO|DATE|P\/?O\s*NO|SALESMAN|TERMS|DESCRIPTION|QTY|QUANTITY|UNIT\s*PRICE|AMOUNT)\b.*\b(?:DATE|P\/?O\s*NO|SALESMAN|TERMS|AMOUNT)\b/i.test(v))return '';
     const supplierKey=norm(supplier||raw);
     // AV Media's printed family is VIN17-######. Correct only tightly matching OCR variants
     // when AV Media evidence is present; never apply this substitution to other suppliers.
@@ -255,7 +286,8 @@
     'Inventory Description now stores the verified Standard Item Name instead of the long supplier description.',
     'Standard item names are assembled from verified brand + model + product type; installation wording stays only as source evidence.',
     'Invoice-number validation rejects header labels such as Amount and corrects tightly evidenced AV Media VIN17 OCR variants.',
-    'Documents now support manual metadata correction with linked purchase/inventory detail synchronization.'
+    'Documents now support manual metadata correction with linked purchase/inventory detail synchronization.',
+    'Hard invoice-only page gate: only Invoice/Tax Invoice pages can contribute header fields, line items or verification evidence; quotations, delivery documents, forms and photos are excluded.'
   ];
   function applyVersionUi(){
     try{
@@ -283,5 +315,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES};
 });
