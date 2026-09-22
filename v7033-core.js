@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.9c';
+  const VERSION='7.03.3.11';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -275,21 +275,25 @@
   }
 
   const RELEASE_NOTES=[
-    'Added Vault for invoices dated before Year 2020; archived invoices remain separate from current Inventory and Documents.',
-    'Vault supports View, Download and Delete with existing role permissions and duplicate protection.',
-    'Vault uses the Documents-style search controls with Group by Company and invoice-date sorting.',
-    'Refined the Vault toolbar: grouping and sorting controls are approximately 50% narrower so Search has more room.',
-    'Removed the repeated Vault heading/description inside the content panel and improved company-to-invoice-count spacing.',
-    'Patch Notes now synchronize the current version, current patch details, upcoming version and upcoming patch details.',
-    'Retained the hard invoice-only page gate and existing validated parser/inventory regression protections.'
+    'Corrected deployment/version instructions so the replacement-file list matches this release.',
+    'Synchronized front-end cache versions so updated HTML, CSS and JavaScript are loaded together.',
+    'Added accessible names and Close titles to icon-only dialog controls without changing their IDs or event bindings.',
+    'Improved readability of the smallest labels, badges and status text while preserving the compact interface.',
+    'Reduced the desktop Dashboard hero height so operational metrics and Automation Centre appear sooner.',
+    'Clarified Import Intelligence as a status-only card while Needs Attention and Stock Take remain actionable controls.',
+    'Normalized equivalent inventory categories in the Inventory view: Projector/Projection variants display and filter as Projection; Audio/Speaker variants display and filter as Audio, case-insensitively.',
+    'Inventory row descriptions now explicitly display the stored Standard item name and never substitute the raw Description field.',
   ];
   const RELEASE_UPCOMING_VERSION='7.03.4.0';
   const RELEASE_UPCOMING_NOTES=[
-    'Add Vault statistics for archived invoice and supplier counts.',
-    'Add year filtering for historical Vault invoices.',
-    'Strengthen Vault duplicate-invoice detection and deletion recovery feedback.',
-    'Expand Vault search across supplier, invoice number, filename and year.',
-    'Continue parser regression hardening without changing validated extraction rules.'
+    'Improve invoice-page classification so genuine Invoice/Tax Invoice pages may contain Delivery Order, Purchase Order or quotation references without being rejected.',
+    'Tighten duplicate consolidation so generic same-name items with blank or unverified SKU/model evidence cannot be auto-merged.',
+    'Restrict the duplicate-consolidation database RPC to Admin at the database level.',
+    'Improve password policy handling so accounts are not restricted to exactly eight characters while preserving a minimum security requirement.',
+    'Plan a dedicated architecture release to reduce the fragile runtime source-string patch loader without combining it with functional changes.',
+    'Move document metadata edits to one database transaction after live Supabase validation and rollback testing.',
+    'Consolidate legacy CSS overrides in a dedicated visual-regression release instead of a large one-step stylesheet rewrite.',
+    'Redesign tablet/mobile navigation in a separate responsive-UX patch after device-level regression testing.'
   ];
   function applyVersionUi(){
     try{
