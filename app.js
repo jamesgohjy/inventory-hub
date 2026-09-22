@@ -1,11 +1,11 @@
-// AV Inventory Hub v7.03.3.12a — Aerospace line review safety + Standard Item Name display patch
+// AV Inventory Hub v7.03.3.12b — Aerospace line review safety + Standard Item Name display patch
 // Live baseline: v7.03.2. Verified underlying source: v7.03.1 @ f088a9602929d24165fd1ab98fc6744cbada1cb3
 (function(){
   'use strict';
   if(window.__AV_V7033_LOADER_STARTED__)return;
   window.__AV_V7033_LOADER_STARTED__=true;
 
-  const VERSION='7.03.3.12a';
+  const VERSION='7.03.3.12b';
   const BASELINE_VERSION='7.03.1';
   const BASELINE_SHA='f088a9602929d24165fd1ab98fc6744cbada1cb3';
   const BASELINE_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/'+BASELINE_SHA+'/app.js';
@@ -73,11 +73,18 @@ function v7033InstallReviewObserver(){const area=document.getElementById('review
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',v7033InstallReviewObserver,{once:true});else v7033InstallReviewObserver();
 \n\nfunction v703312InstallSubtractLine(){
   const add=document.getElementById('addParsedItemBtn');if(!add||document.getElementById('subtractParsedItemBtn'))return;
-  const btn=document.createElement('button');btn.id='subtractParsedItemBtn';btn.type='button';btn.className='secondary small-btn';btn.textContent='− Subtract line';btn.title='Select a line item below, then subtract it from this import review.';add.insertAdjacentElement('afterend',btn);
-  const box=document.getElementById('parsedItems');if(!box)return;let selected=-1;
-  const refresh=()=>{[...box.children].forEach((el,i)=>{el.dataset.v703312Index=i;el.style.outline=i===selected?'2px solid currentColor':'';el.style.outlineOffset=i===selected?'2px':'';el.style.cursor='pointer';});btn.disabled=selected<0||selected>=(state.parsed?.items||[]).length;};
-  box.addEventListener('click',e=>{const row=e.target.closest('[data-v703312-index]');if(!row||e.target.closest('input,textarea,select,button'))return;selected=Number(row.dataset.v703312Index);refresh();});
-  btn.onclick=()=>{const items=state.parsed?.items||[];if(selected<0||selected>=items.length){toast('Select the unwanted line item first.');return;}items.splice(selected,1);selected=-1;renderParsedItems();setTimeout(refresh,0);};
+  const box=document.getElementById('parsedItems');if(!box)return;
+  const btn=document.createElement('button');btn.id='subtractParsedItemBtn';btn.type='button';btn.className='secondary small-btn';btn.textContent='− Subtract line';btn.title='Select one or more line items to remove from this import review.';const actions=document.createElement('div');actions.id='v703312LineActions';actions.style.cssText='display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap';add.parentNode.insertBefore(actions,add);actions.append(add,btn);
+  let selecting=false;const selected=new Set();
+  const ensureModal=()=>{
+    let overlay=document.getElementById('v703312SubtractOverlay');if(overlay)return overlay;
+    overlay=document.createElement('div');overlay.id='v703312SubtractOverlay';overlay.hidden=true;overlay.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(15,23,42,.48);display:none;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML='<section role="dialog" aria-modal="true" aria-labelledby="v703312SubtractTitle" style="width:min(460px,94vw);background:#fff;color:#172033;border-radius:16px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.32)"><h3 id="v703312SubtractTitle" style="margin:0 0 8px">Remove selected line items?</h3><p id="v703312SubtractText" style="margin:0;color:#64748b"></p><p style="margin:14px 0 0;padding:12px;border:1px solid #dbe4f0;border-radius:10px;font-size:13px">This only removes the selected items from the current invoice review. Existing Inventory Hub records are not affected.</p><div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px"><button type="button" id="v703312SubtractCancel" class="secondary">Cancel</button><button type="button" id="v703312SubtractConfirm">Remove selected</button></div></section>';
+    document.body.appendChild(overlay);const close=()=>{overlay.style.display='none';overlay.hidden=true;btn.focus();};document.getElementById('v703312SubtractCancel').onclick=close;overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
+    document.getElementById('v703312SubtractConfirm').onclick=()=>{const items=state.parsed?.items||[],indexes=[...selected].sort((a,b)=>b-a);if(!indexes.length){close();return;}for(const i of indexes)if(i>=0&&i<items.length)items.splice(i,1);const count=indexes.length;selected.clear();selecting=false;close();renderParsedItems();setTimeout(refresh,0);toast('Removed '+count+' selected line item'+(count===1?'':'s')+' from this review.');};return overlay;
+  };
+  const refresh=()=>{const items=state.parsed?.items||[];[...box.children].forEach((el,i)=>{el.dataset.v703312Index=i;let wrap=el.querySelector(':scope > .v703312-select-wrap');if(selecting){if(!wrap){wrap=document.createElement('label');wrap.className='v703312-select-wrap';wrap.style.cssText='display:flex;align-items:center;gap:7px;margin:0 0 10px;font-size:12px;font-weight:700;color:#334155';wrap.innerHTML='<input type="checkbox" class="v703312-select-check" style="width:18px;height:18px"> Select this line';el.prepend(wrap);}const cb=wrap.querySelector('input');cb.checked=selected.has(i);cb.onchange=()=>{cb.checked?selected.add(i):selected.delete(i);refresh();};el.style.outline=selected.has(i)?'2px solid #2563eb':'';el.style.outlineOffset=selected.has(i)?'2px':'';}else{if(wrap)wrap.remove();el.style.outline='';el.style.outlineOffset='';}});for(const i of [...selected])if(i>=items.length)selected.delete(i);btn.disabled=!items.length;btn.textContent=selecting&&selected.size?'− Subtract selected ('+selected.size+')':'− Subtract line';};
+  btn.onclick=()=>{const items=state.parsed?.items||[];if(!items.length){toast('There are no line items to subtract.');return;}if(!selecting){selecting=true;selected.clear();refresh();toast('Select the line items to remove, then click Subtract again.');return;}if(!selected.size){selecting=false;refresh();toast('No line items selected. Subtract mode cancelled.');return;}const overlay=ensureModal(),count=selected.size,all=count===items.length;document.getElementById('v703312SubtractText').textContent=all?'You selected all '+count+' line items. No line items will remain after removal.':'You selected '+count+' line item'+(count===1?'':'s')+' for removal.';overlay.hidden=false;overlay.style.display='flex';document.getElementById('v703312SubtractCancel').focus();};
   new MutationObserver(refresh).observe(box,{childList:true});refresh();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(v703312InstallSubtractLine,0),{once:true});else setTimeout(v703312InstallSubtractLine,0);
@@ -100,9 +107,9 @@ window.v7033ConsolidateExistingSafeDuplicates=v7033ConsolidateExistingSafeDuplic
       window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='7.03.2 cumulative on '+BASELINE_VERSION+'@'+BASELINE_SHA;
       console.info('AV Inventory Hub v'+VERSION+' loaded cumulatively from live v7.03.2 logic with freeze hotfix.');
     }catch(err){
-      console.error('AV Inventory Hub v7.03.3.12a startup error:',err);
+      console.error('AV Inventory Hub v7.03.3.12b startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub v7.03.3.12a could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
+      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub v7.03.3.12b could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
     }
   }
   launch();
