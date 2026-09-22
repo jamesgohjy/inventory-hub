@@ -1,11 +1,11 @@
-// AV Inventory Hub v7.03.3.11 — category normalization + Standard Item Name display patch
+// AV Inventory Hub v7.03.3.12a — Aerospace line review safety + Standard Item Name display patch
 // Live baseline: v7.03.2. Verified underlying source: v7.03.1 @ f088a9602929d24165fd1ab98fc6744cbada1cb3
 (function(){
   'use strict';
   if(window.__AV_V7033_LOADER_STARTED__)return;
   window.__AV_V7033_LOADER_STARTED__=true;
 
-  const VERSION='7.03.3.11';
+  const VERSION='7.03.3.12a';
   const BASELINE_VERSION='7.03.1';
   const BASELINE_SHA='f088a9602929d24165fd1ab98fc6744cbada1cb3';
   const BASELINE_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/'+BASELINE_SHA+'/app.js';
@@ -71,6 +71,17 @@ async function v7033AutoWebVerify(){
 }
 function v7033InstallReviewObserver(){const area=document.getElementById('reviewArea');if(!area)return;const run=()=>{if(!area.classList.contains('hidden'))setTimeout(v7033AutoWebVerify,250);};new MutationObserver(run).observe(area,{attributes:true,attributeFilter:['class']});document.addEventListener('click',e=>{if(e.target.closest?.('#addParsedItemBtn,#saveImportBtn'))setTimeout(v7033AutoWebVerify,150);},true);run();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',v7033InstallReviewObserver,{once:true});else v7033InstallReviewObserver();
+\n\nfunction v703312InstallSubtractLine(){
+  const add=document.getElementById('addParsedItemBtn');if(!add||document.getElementById('subtractParsedItemBtn'))return;
+  const btn=document.createElement('button');btn.id='subtractParsedItemBtn';btn.type='button';btn.className='secondary small-btn';btn.textContent='− Subtract line';btn.title='Select a line item below, then subtract it from this import review.';add.insertAdjacentElement('afterend',btn);
+  const box=document.getElementById('parsedItems');if(!box)return;let selected=-1;
+  const refresh=()=>{[...box.children].forEach((el,i)=>{el.dataset.v703312Index=i;el.style.outline=i===selected?'2px solid currentColor':'';el.style.outlineOffset=i===selected?'2px':'';el.style.cursor='pointer';});btn.disabled=selected<0||selected>=(state.parsed?.items||[]).length;};
+  box.addEventListener('click',e=>{const row=e.target.closest('[data-v703312-index]');if(!row||e.target.closest('input,textarea,select,button'))return;selected=Number(row.dataset.v703312Index);refresh();});
+  btn.onclick=()=>{const items=state.parsed?.items||[];if(selected<0||selected>=items.length){toast('Select the unwanted line item first.');return;}items.splice(selected,1);selected=-1;renderParsedItems();setTimeout(refresh,0);};
+  new MutationObserver(refresh).observe(box,{childList:true});refresh();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(v703312InstallSubtractLine,0),{once:true});else setTimeout(v703312InstallSubtractLine,0);
+document.addEventListener('click',e=>{if(e.target.closest?.('#sidebarImportBtn,#importBtn,[data-empty-import]'))setTimeout(v703312InstallSubtractLine,50);},true);
 
 
 let __v7033ConsolidationTried=false;
@@ -89,9 +100,9 @@ window.v7033ConsolidateExistingSafeDuplicates=v7033ConsolidateExistingSafeDuplic
       window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='7.03.2 cumulative on '+BASELINE_VERSION+'@'+BASELINE_SHA;
       console.info('AV Inventory Hub v'+VERSION+' loaded cumulatively from live v7.03.2 logic with freeze hotfix.');
     }catch(err){
-      console.error('AV Inventory Hub v7.03.3.11 startup error:',err);
+      console.error('AV Inventory Hub v7.03.3.12a startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub v7.03.3.11 could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
+      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub v7.03.3.12a could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
     }
   }
   launch();
