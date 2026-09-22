@@ -1,0 +1,44 @@
+/* AV Inventory Hub v7.03.3.10 — selective low-risk UI layer
+   Active scope: accessibility/readability/dashboard hero/status-card improvements only.
+   Deferred: architecture refactor, transactional metadata edit, legacy CSS cleanup, mobile/tablet navigation redesign. */
+
+/* Recommendation 11 — improve readability of only the smallest labels/badges. */
+.brand-copy>span:not(.mode-badge),
+.sidebar-patch-head span,
+.release-badge,
+.user-role{font-size:10px}
+.mode-badge,
+.sidebar-release-title small,
+.sidebar-release-card ul,
+.confidence,
+.health-pill,
+.stock-status,
+.supplier-rule-badge,
+.linked-count,
+.maintenance-frequency{font-size:10px}
+.automation-card small,
+.automation-card em,
+.attention-row p{font-size:11px}
+
+/* Recommendation 14 — Import Intelligence is informational, not an action. */
+.automation-card.intelligence{
+  cursor:default;
+  border-style:dashed;
+  background:#f7f9fc;
+  box-shadow:none;
+}
+.automation-card.intelligence:hover{transform:none}
+
+/* Recommendation 13 — reduce desktop hero so operational data appears sooner. */
+@media (min-width:941px){
+  .dashboard-view .hero{height:220px!important;min-height:220px!important}
+  .dashboard-view .hero-content{min-height:220px!important;padding-top:24px!important;padding-bottom:22px!important}
+  .dashboard-view .hero h1{font-size:34px!important;line-height:1.08!important}
+  .dashboard-view .hero p{margin:10px 0 16px!important;font-size:14px!important}
+  .dashboard-view .hero-actions button{height:42px!important}
+}
+@media (min-width:1600px){
+  .dashboard-view .hero{height:240px!important;min-height:240px!important}
+  .dashboard-view .hero-content{min-height:240px!important}
+  .dashboard-view .hero h1{font-size:36px!important}
+}
