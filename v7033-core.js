@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.2';
+  const VERSION='7.03.3.3';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -140,10 +140,44 @@
   function dedupeReviewRows(rows=[]){
     const seen=new Set();return (rows||[]).filter(x=>{const reason=clean(x.reason||'').replace(/No independent extraction matched this row\.?/ig,'').trim();const k=[reason,JSON.stringify(x.choices||{})].join('|');if(!reason||seen.has(k))return false;seen.add(k);x.reason=reason;return true;});
   }
+  const INVOICE_LABEL_STOP=/^(?:AMOUNT|TOTAL|SUBTOTAL|DATE|QTY|QUANTITY|PRICE|UNIT|DESCRIPTION|TAX|GST|BALANCE|TERMS|SALESMAN|CUSTOMER|REFERENCE|REF|PO|DO|INVOICE)$/i;
+  function normalizeInvoiceNumberCandidate(value='',supplier='',raw=''){
+    let v=clean(value).replace(/^[#:\s.-]+|[#:\s.-]+$/g,'');
+    if(!v||INVOICE_LABEL_STOP.test(v))return '';
+    const supplierKey=norm(supplier||raw);
+    // AV Media's printed family is VIN17-######. Correct only tightly matching OCR variants
+    // when AV Media evidence is present; never apply this substitution to other suppliers.
+    if(supplierKey.includes('av media')){
+      const c=v.toUpperCase().replace(/\s+/g,'');
+      const m=c.match(/^(?:VIN17|VINI7|VN17|YN17)[.\-:]?(\d{6})$/);
+      if(m)return 'VIN17-'+m[1];
+    }
+    return v;
+  }
+  function invoiceNumberFromLabel(raw='',supplier=''){
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+    for(let i=0;i<lines.length;i++){
+      if(!/\binvoice\s*(?:no|number|#)\b/i.test(lines[i]))continue;
+      const same=lines[i].match(/\binvoice\s*(?:no|number|#)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,30})/i);
+      const candidates=[same?.[1],lines[i+1]].filter(Boolean);
+      for(const c of candidates){const n=normalizeInvoiceNumberCandidate(c,supplier,raw);if(n)return n;}
+    }
+    return '';
+  }
+  function fixDocumentHeader(doc={},raw=''){
+    const d={...doc};
+    const supplier=clean(d.supplier_name||'');
+    const labelled=invoiceNumberFromLabel(raw,supplier);
+    const current=normalizeInvoiceNumberCandidate(d.invoice_number||'',supplier,raw);
+    d.invoice_number=labelled||current||'';
+    if(!d.invoice_number&&clean(doc.invoice_number||''))d.invoiceNumberReviewRequired=true;
+    if(d.invoice_number!==clean(doc.invoice_number||''))d.v7033InvoiceNumberCorrectedFrom=clean(doc.invoice_number||'');
+    return d;
+  }
   function applyParsedFixes(parsed={},raw=''){
     if(!parsed||typeof parsed!=='object')return parsed;
     const source=String(raw||parsed.raw||parsed.rawText||'');
-    const out={...parsed,items:(parsed.items||[]).map(r=>fixRow(r,source))};
+    const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},source),items:(parsed.items||[]).map(r=>fixRow(r,source))};
     const v7={...(out.v7||out.parseEvidence?.v7||{})};
     if(v7.verification){
       const vr={...v7.verification};
@@ -219,7 +253,9 @@
     'Existing exact duplicate inventory groups can be safely consolidated by the bundled Supabase migration/RPC.',
     'Conflicting verified models are never auto-merged.',
     'Inventory Description now stores the verified Standard Item Name instead of the long supplier description.',
-    'Standard item names are assembled from verified brand + model + product type; installation wording stays only as source evidence.'
+    'Standard item names are assembled from verified brand + model + product type; installation wording stays only as source evidence.',
+    'Invoice-number validation rejects header labels such as Amount and corrects tightly evidenced AV Media VIN17 OCR variants.',
+    'Documents now support manual metadata correction with linked purchase/inventory detail synchronization.'
   ];
   function applyVersionUi(){
     try{
@@ -247,5 +283,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES};
 });
