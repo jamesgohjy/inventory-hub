@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12f';
+  const VERSION='7.03.3.12h';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -74,7 +74,7 @@
   }
   function equipmentType(text=''){
     const s=norm(text);
-    const pairs=[['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['control panel','Control Panel'],['controller','Controller'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
+    const pairs=[['projector controller','Projector Controller'],['projector control','Projector Controller'],['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['control panel','Control Panel'],['controller','Controller'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
     for(const [k,v] of pairs)if(s.includes(k))return v;return '';
   }
   function contentWords(s=''){return norm(s).split(' ').filter(w=>w.length>=4&&!/^(?:with|from|year|only|stock|warranty|supply|install|installation|safety|wired|secure|classroom)$/.test(w));}
@@ -195,8 +195,25 @@
     }
     return '';
   }
+  function supplierFromEvidence(raw='',current=''){
+    const existing=clean(current||'');
+    if(existing)return existing;
+    const text=String(raw||'').replace(/\r/g,'\n');
+    // Evidence-only supplier recovery: never derive a supplier from the customer blocks.
+    if(/\bAV\s+MEDIA\s+PTE\s+LTD\b/i.test(text)||(/\bAV\s+MEDIA\b/i.test(text)&&/\bavmedia\.com\.sg\b/i.test(text)))return 'AV Media Pte Ltd';
+    if(/\bLOUD\s+TECHNOLOGIES\s+ASIA\s+PTE\s+LTD\b/i.test(text))return 'Loud Technologies Asia Pte Ltd';
+    const lines=text.split(/\n+/).map(clean).filter(Boolean).slice(0,45);
+    const blocked=/\b(?:sold\s+to|delivered\s+to|bill\s+to|ship\s+to|customer|attention|attn|invoice|tax\s+invoice|page\s+\d)\b/i;
+    for(const line of lines){
+      if(blocked.test(line))continue;
+      const m=line.match(/\b([A-Z][A-Za-z0-9&.,'()\- ]{2,80}?\s+Pte\.?\s+Ltd\.?)\b/i);
+      if(m)return clean(m[1]);
+    }
+    return '';
+  }
   function fixDocumentHeader(doc={},raw=''){
     const d={...doc};
+    d.supplier_name=supplierFromEvidence(raw,d.supplier_name||'');
     const supplier=clean(d.supplier_name||'');
     const labelled=invoiceNumberFromLabel(raw,supplier);
     const current=normalizeInvoiceNumberCandidate(d.invoice_number||'',supplier,raw);
@@ -304,8 +321,11 @@
   }
 
   const RELEASE_NOTES=[
+    'Supplier recovery now treats a missing supplier as a deep-scan condition and accepts only company evidence actually read from the invoice header/OCR; Sold To / Delivered To customer text is not used as supplier evidence.',
+    'AVS-320 identity regression fixed: projector controller is preserved as Projector Controller instead of being shortened to Projector.',
+    'Level 3 user messaging is now plain-language review guidance; internal independent-extraction disagreement details remain internal and are not shown to the user.',
     'Fixed Dashboard Coming Next so it always displays the same v7.03.4.0 roadmap as Patch Notes instead of stale legacy items.',
-    'Fixed Subtract line at the root cause: the feature now runs inside the real invoice-review runtime, where state.parsed and renderParsedItems are actually available; checkbox multi-select and the confirmation overlay are runtime-bound.',
+    'Fixed Subtract selected confirmation layering: the confirmation is now a native modal dialog opened after the invoice-review dialog, placing it in the browser top layer above Parsed fields instead of behind it.',
     'Added conservative parser deduplication: only line items with the same normalized identity, quantity, unit price, amount and serial evidence collapse.',
     'Added SKU/model + quantity + economic cross-validation; unsupported SKU, invalid quantity, quantity/price/amount mismatch or serial-count mismatch is flagged for review.',
     'Aerospace regression fixture verified PT-VW540 quantity 1 at 804 with serial DC2210037 while preserving genuinely distinct serial-number rows.',
@@ -359,5 +379,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES};
 });
