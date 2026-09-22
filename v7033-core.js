@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.9a';
+  const VERSION='7.03.3.9c';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -275,19 +275,21 @@
   }
 
   const RELEASE_NOTES=[
-    'Product No / Model / SKU-labelled invoice fields now outrank description/specification fragments.',
-    'Dimension/spec fragments such as x70, 70x70 and resolution/lumen values are rejected as SKU/model evidence.',
-    'REMACO MAS-1818 is resolved as brand REMACO + model MAS-1818 when supported by the invoice.',
-    'Unsupported OCR substitutions such as P80 are corrected only when stronger invoice evidence supports another model such as P60.',
-    'Level 3 appears only for a real unresolved conflict; missing secondary extraction alone is not enough.',
-    'Future imports reuse an existing master item when verified SKU or safe normalized identity matches.',
-    'Existing exact duplicate inventory groups can be safely consolidated by the bundled Supabase migration/RPC.',
-    'Conflicting verified models are never auto-merged.',
-    'Inventory Description now stores the verified Standard Item Name instead of the long supplier description.',
-    'Standard item names are assembled from verified brand + model + product type; installation wording stays only as source evidence.',
-    'Invoice-number validation rejects header labels such as Amount and corrects tightly evidenced AV Media VIN17 OCR variants.',
-    'Documents now support manual metadata correction with linked purchase/inventory detail synchronization.',
-    'Hard invoice-only page gate: only Invoice/Tax Invoice pages can contribute header fields, line items or verification evidence; quotations, delivery documents, forms and photos are excluded.'
+    'Added Vault for invoices dated before Year 2020; archived invoices remain separate from current Inventory and Documents.',
+    'Vault supports View, Download and Delete with existing role permissions and duplicate protection.',
+    'Vault uses the Documents-style search controls with Group by Company and invoice-date sorting.',
+    'Refined the Vault toolbar: grouping and sorting controls are approximately 50% narrower so Search has more room.',
+    'Removed the repeated Vault heading/description inside the content panel and improved company-to-invoice-count spacing.',
+    'Patch Notes now synchronize the current version, current patch details, upcoming version and upcoming patch details.',
+    'Retained the hard invoice-only page gate and existing validated parser/inventory regression protections.'
+  ];
+  const RELEASE_UPCOMING_VERSION='7.03.4.0';
+  const RELEASE_UPCOMING_NOTES=[
+    'Add Vault statistics for archived invoice and supplier counts.',
+    'Add year filtering for historical Vault invoices.',
+    'Strengthen Vault duplicate-invoice detection and deletion recovery feedback.',
+    'Expand Vault search across supplier, invoice number, filename and year.',
+    'Continue parser regression hardening without changing validated extraction rules.'
   ];
   function applyVersionUi(){
     try{
@@ -295,11 +297,12 @@
       const root=document.documentElement;
       if(root.dataset.avInventoryVersion!==VERSION)root.dataset.avInventoryVersion=VERSION;
       if(root.dataset.avInventoryBuild!==VERSION)root.dataset.avInventoryBuild=VERSION;
-      const cv=document.getElementById('releaseCurrentVersion'),uv=document.getElementById('releaseUpcomingVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes');
+      const cv=document.getElementById('releaseCurrentVersion'),uv=document.getElementById('releaseUpcomingVersion'),av=document.getElementById('appVersion'),notes=document.getElementById('releaseCurrentNotes'),upNotes=document.getElementById('releaseUpcomingNotes');
       if(cv&&cv.textContent!=='v'+VERSION)cv.textContent='v'+VERSION;
-      if(uv&&uv.textContent!=='v7.03.4')uv.textContent='v7.03.4';
+      if(uv&&uv.textContent!=='v'+RELEASE_UPCOMING_VERSION)uv.textContent='v'+RELEASE_UPCOMING_VERSION;
       if(av&&av.textContent!=='Version '+VERSION)av.textContent='Version '+VERSION;
       if(notes&&notes.dataset.v7033Notes!==VERSION){notes.innerHTML=RELEASE_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');notes.dataset.v7033Notes=VERSION;}
+      if(upNotes&&upNotes.dataset.v7033Upcoming!==RELEASE_UPCOMING_VERSION){upNotes.innerHTML=RELEASE_UPCOMING_NOTES.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('');upNotes.dataset.v7033Upcoming=RELEASE_UPCOMING_VERSION;}
     }catch(e){console.warn('v7.03.3.1 version sync skipped',e);}
   }
   function installUiVersionSync(){
@@ -315,5 +318,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES};
 });
