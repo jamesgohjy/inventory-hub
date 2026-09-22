@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12e';
+  const VERSION='7.03.3.12f';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -305,7 +305,7 @@
 
   const RELEASE_NOTES=[
     'Fixed Dashboard Coming Next so it always displays the same v7.03.4.0 roadmap as Patch Notes instead of stale legacy items.',
-    'Placed Add line and Subtract line side-by-side; Subtract enters checkbox selection mode and uses an in-place confirmation overlay before removing selected review rows.',
+    'Fixed Subtract line at the root cause: the feature now runs inside the real invoice-review runtime, where state.parsed and renderParsedItems are actually available; checkbox multi-select and the confirmation overlay are runtime-bound.',
     'Added conservative parser deduplication: only line items with the same normalized identity, quantity, unit price, amount and serial evidence collapse.',
     'Added SKU/model + quantity + economic cross-validation; unsupported SKU, invalid quantity, quantity/price/amount mismatch or serial-count mismatch is flagged for review.',
     'Aerospace regression fixture verified PT-VW540 quantity 1 at 804 with serial DC2210037 while preserving genuinely distinct serial-number rows.',
