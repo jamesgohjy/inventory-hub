@@ -500,6 +500,7 @@
   }
 
   const RELEASE_NOTES=[
+    'Level 3 review now highlights only the exact affected line-item card when the warning can be mapped to evidence; unrelated items remain normal.',
     'Runtime integration fix: the parser gate now executes inside the final application scope immediately before Line Items render, using the live state.parsed and OCR evidence; this prevents a correct parser result from being lost while the Review screen still shows Delivery Fee.',
     'Real scanned-PDF regression fixed using actual INV-Dmx200 OCR evidence: numbered rows tolerate OCR brackets/pipes/slashes and can reconcile across independent OCR modes instead of requiring an ideal one-line fixture.',
     'Level 1/2 verification now records deterministic equipment recovery and independent OCR agreement before deciding whether Level 3 human review is required.',
