@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12j';
+  const VERSION='7.03.3.12k';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -261,17 +261,15 @@
     return x;
   }
 
-  // V7.03.3.12j: inventory classification must outrank clean arithmetic.
-  // A delivery/service row can be mathematically perfect and still be non-inventory.
-  const V703312J_SERVICE_ROW_RE=/^(?:delivery|shipping|freight|courier|transport(?:ation)?)(?:\s+(?:fee|charge|service|cost))?\b|^(?:installation|installing|labou?r|service)(?:\s+(?:fee|charge|work|cost))?\b|\b(?:commissioning|return\s+trip)\b/i;
+  // V7.03.3.12k: scanned numbered-table recovery is based on actual OCR evidence,
+  // not on an idealized one-line fixture. Service/accessory classification always runs first.
+  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
   const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
   function v703312jIsServiceRow(row={}){return V703312J_SERVICE_ROW_RE.test(v703312jRowText(row));}
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
-    // Keep equipment only when the accessory is explicitly incidental (for example
-    // "Controller with patch cable"). A product whose main noun is Stand/Cable/Mount/etc remains excluded.
     if(V703312J_EQUIPMENT_RE.test(text)&&/\b(?:with|including|includes|incl\.?|supplied\s+with)\b[\s\S]{0,80}\b(?:cable|wire|mount|bracket|stand|cart|trolley|lock)\b/i.test(text))return false;
     return true;
   }
@@ -290,25 +288,90 @@
     if(/microphone|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
     return '';
   }
-  function v703312jRecoverNumberedEquipmentRows(raw=''){
-    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),out=[];
-    for(const original of lines){
-      const line=original.replace(/[|]+/g,' ').replace(/\s+/g,' ').trim();
-      if(!/^\d{1,3}\s+/.test(line))continue;
-      let body=line.replace(/^\d{1,3}\s+/,'').trim(),qty=null,unitPrice=null,amount=null;
-      const priced=body.match(/^(.*?)\s+(\d{1,4})\s+(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})\s+(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})\s*$/i);
-      if(priced){body=clean(priced[1]);qty=Number(priced[2]);unitPrice=v703312jMoney(priced[3]);amount=v703312jMoney(priced[4]);}
-      else{
-        const quantityOnly=body.match(/^(.*?)\s+(\d{1,4})\s*$/);
-        if(!quantityOnly)continue;body=clean(quantityOnly[1]);qty=Number(quantityOnly[2]);
+  function v703312kEvidenceTexts(raw='',evidenceSources=[]){
+    const list=[{source:'primary',text:String(raw||'')},...(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}))];
+    const out=[],seen=new Set();
+    for(const x of list){const key=x.text.replace(/\s+/g,' ').trim().slice(0,5000);if(!key||seen.has(key))continue;seen.add(key);out.push(x);}
+    return out;
+  }
+  function v703312kBuildCandidate(description='',qty=null,unitPrice=null,amount=null,meta={}){
+    const body=clean(String(description||'').replace(/^[\[\]{}()|,;:.\-]+/,'').replace(/[\[\]{}|]+/g,' ').replace(/\s+/g,' '));
+    if(!body)return null;
+    const candidate={sku:'',item_name:body,description:body,category:v703312jCategory(body),unit:'pcs',quantity:Number(qty),unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:meta.source||'',v703312kSourceLine:meta.line||''};
+    if(!(candidate.quantity>0)||v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))return null;
+    const models=modelTokens(body);if(models.length===1)candidate.sku=models[0];
+    if(unitPrice!==null&&amount!==null){
+      const p=Number(unitPrice),a=Number(amount),q=Number(candidate.quantity);
+      if(!Number.isFinite(p)||!Number.isFinite(a)||Math.abs(q*p-a)>Math.max(.02,Math.abs(a)*.001)){candidate.quantityReviewRequired=true;candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;}
+    }else{candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;}
+    if(meta.qtyDerived)candidate.v703312kQtyDerived=true;
+    return candidate;
+  }
+  function v703312kRecoverDirectLine(original='',source=''){
+    let line=clean(String(original||'').replace(/[\[\]{}|]/g,' ').replace(/\/(\s*\$)/g,' $1').replace(/\s+/g,' '));
+    if(!line||!V703312J_EQUIPMENT_RE.test(line))return null;
+    const itemNo=line.match(/^\s*(\d{1,3})\s+/);if(itemNo)line=line.slice(itemNo[0].length).trim();
+    const money=[...line.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(m=>({value:v703312jMoney(m[1]),index:m.index??0})).filter(x=>x.value!==null);
+    if(money.length<2){
+      if(!itemNo)return null;
+      const qOnly=line.match(/^(.*?)\s+(\d{1,4})\s*$/);if(!qOnly)return null;
+      return v703312kBuildCandidate(clean(qOnly[1]),Number(qOnly[2]),null,null,{source,line:original,qtyDerived:false});
+    }
+    const firstIndex=money[0].index,pre=clean(line.slice(0,firstIndex).replace(/[$/]+/g,' '));
+    let desc=pre,qty=null,qtyDerived=false;const qm=pre.match(/^(.*?)\s+(\d{1,4})\s*$/);
+    if(qm){desc=clean(qm[1]);qty=Number(qm[2]);}
+    const unitPrice=money[money.length-2].value,amount=money[money.length-1].value;
+    if(!(qty>0)&&unitPrice>0&&amount>=0){const r=amount/unitPrice,n=Math.round(r);if(n>=1&&n<=999&&Math.abs(r-n)<.001){qty=n;qtyDerived=true;}}
+    return v703312kBuildCandidate(desc,qty,unitPrice,amount,{source,line:original,qtyDerived});
+  }
+  function v703312kRecoverSparseRows(text='',source=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),out=[];
+    for(let i=0;i<lines.length;i++){
+      if(!/^\d{1,3}$/.test(lines[i]))continue;
+      let descIndex=-1,desc='';
+      for(let j=i+1;j<=Math.min(lines.length-1,i+4);j++){
+        const x=clean(lines[j].replace(/^[\[\]{}|]+/,'').replace(/[\[\]{}|]+/g,' '));
+        if(V703312J_EQUIPMENT_RE.test(x)&&!v703312jIsServiceRow({item_name:x})&&!v703312jIsAccessoryRow({item_name:x})){descIndex=j;desc=x;break;}
+        if(/^\d{1,3}$/.test(x))break;
       }
-      if(!(qty>0)||!body)continue;
-      const candidate={sku:'',item_name:body,description:body,category:v703312jCategory(body),unit:'pcs',quantity:qty,unit_price:unitPrice,amount,warranty:'',serials:'',v703312jNumberedEvidence:true,v703312jSourceLine:original};
-      if(v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))continue;
-      const models=modelTokens(body);if(models.length===1)candidate.sku=models[0];
-      if(unitPrice!==null&&amount!==null&&Math.abs(qty*unitPrice-amount)>Math.max(.02,Math.abs(amount)*.001)){candidate.quantityReviewRequired=true;candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;}
-      if(unitPrice===null||amount===null){candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;}
-      out.push(candidate);
+      if(descIndex<0)continue;
+      let qty=null;const money=[];
+      for(let j=descIndex+1;j<=Math.min(lines.length-1,descIndex+8);j++){
+        const x=lines[j];if(j>descIndex+1&&/^\d{1,3}$/.test(x)&&money.length<2)break;
+        if(qty===null&&/^\d{1,4}$/.test(x)){qty=Number(x);continue;}
+        for(const m of x.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)){const v=v703312jMoney(m[1]);if(v!==null)money.push(v);}
+        if(money.length>=2&&qty!==null)break;
+      }
+      if(money.length<2)continue;const unitPrice=money[money.length-2],amount=money[money.length-1];let qtyDerived=false;
+      if(!(qty>0)&&unitPrice>0&&amount>=0){const r=amount/unitPrice,n=Math.round(r);if(n>=1&&n<=999&&Math.abs(r-n)<.001){qty=n;qtyDerived=true;}}
+      const c=v703312kBuildCandidate(desc,qty,unitPrice,amount,{source,line:lines.slice(i,Math.min(lines.length,descIndex+9)).join(' | '),qtyDerived});if(c)out.push(c);
+    }
+    return out;
+  }
+  function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
+    const recovered=[];
+    for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
+      const lines=String(ev.text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+      for(const line of lines){const c=v703312kRecoverDirectLine(line,ev.source);if(c)recovered.push(c);}
+      recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
+    }
+    const out=[];
+    for(const row of recovered){
+      const existing=out.find(x=>v703312jSameEquipment(x,row));
+      if(!existing){row.v703312kEvidenceSources=[row.v703312kSource].filter(Boolean);out.push(row);continue;}
+      existing.v703312kEvidenceSources=uniq([...(existing.v703312kEvidenceSources||[]),row.v703312kSource].filter(Boolean));
+      const existingComplete=Number.isFinite(Number(existing.unit_price))&&Number.isFinite(Number(existing.amount));
+      const rowComplete=Number.isFinite(Number(row.unit_price))&&Number.isFinite(Number(row.amount));
+      if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
+      if(!existing.sku&&row.sku)existing.sku=row.sku;
+      if(!existing.category&&row.category)existing.category=row.category;
+      if(Number(existing.quantity)!==Number(row.quantity)||((existingComplete&&rowComplete)&&(Number(existing.unit_price)!==Number(row.unit_price)||Number(existing.amount)!==Number(row.amount)))){existing.v703312kIndependentConflict=true;existing.humanReviewRequired=true;}
+    }
+    for(const row of out){
+      const n=(row.v703312kEvidenceSources||[]).length;row.v703312kLevel1={status:'confirmed',reason:'Deterministic OCR/table evidence identifies a tracked equipment row.'};
+      row.v703312kLevel2={status:n>=2&&!row.v703312kIndependentConflict?'confirmed':'unavailable',sources:n,reason:n>=2?'Independent OCR reads agree on the same equipment identity and economics.':'A second independent OCR read did not confirm the row.'};
+      if(n>=2&&!row.v703312kIndependentConflict&&!explicitReviewFlag(row)){row.humanReviewRequired=false;row.needsReview=false;}
+      else{row.humanReviewRequired=true;row.needsReview=true;}
     }
     return dedupeParsedLineItems(out);
   }
@@ -319,27 +382,34 @@
   }
   function v703312jMergeTrackedRows(existing=[],recovered=[],raw=''){
     const kept=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
-    for(const rec of recovered||[]){if(!kept.some(x=>v703312jSameEquipment(x,rec)))kept.push(rec);}
-    return dedupeParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312jNumberedEvidence?r:fixRow(r,raw),raw)));
+    for(const rec of recovered||[]){const match=kept.find(x=>v703312jSameEquipment(x,rec));if(!match)kept.push(rec);else if((rec.v703312kEvidenceSources||[]).length){
+      match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),...rec.v703312kEvidenceSources]);
+      match.v703312kLevel1=match.v703312kLevel1?.status==='confirmed'?match.v703312kLevel1:rec.v703312kLevel1;
+      const sourceCount=match.v703312kEvidenceSources.length;
+      if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
+      else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
+    }}
+    return dedupeParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw)));
   }
-  function applyParsedFixes(parsed={},raw=''){
+  function applyParsedFixes(parsed={},raw='',evidenceSources=[]){
     if(!parsed||typeof parsed!=='object')return parsed;
     const source=String(raw||parsed.raw||parsed.rawText||'');
-    // Classify the raw parsed rows BEFORE identity correction. Otherwise a clean service row
-    // such as Delivery Fee could inherit an unrelated model from another source row.
     const incoming=[...(parsed.items||[])];
     const excludedService=incoming.filter(v703312jIsServiceRow),excludedAccessory=incoming.filter(v703312jIsAccessoryRow);
     const trackedIncoming=incoming.filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
     const fixed=trackedIncoming.map(r=>validateSkuQtyEvidence(fixRow(r,source),source));
-    const recovered=v703312jRecoverNumberedEquipmentRows(source);
+    const recovered=v703312jRecoverNumberedEquipmentRows(source,evidenceSources);
     const merged=v703312jMergeTrackedRows(fixed,recovered,source);
-    const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},source),items:merged};
+    const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},v703312kEvidenceTexts(source,evidenceSources).map(x=>x.text).join('\n')),items:merged};
     out.v703312jInventoryFilter={excludedServiceCount:excludedService.length,excludedAccessoryCount:excludedAccessory.length,recoveredEquipmentCount:recovered.filter(r=>!fixed.some(x=>v703312jSameEquipment(x,r))).length};
+    out.v703312kVerification={level1:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel1?.status||'unknown'})),level2:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel2?.status||'unknown',sources:r.v703312kLevel2?.sources||(r.v703312kEvidenceSources||[]).length||0})),level3Required:out.items.some(r=>r.v703312kLevel2?.status!=='confirmed'||r.v703312kIndependentConflict||explicitReviewFlag(r)||r.humanReviewRequired===true)};
     const v7={...(out.v7||out.parseEvidence?.v7||{})};
     if(v7.verification){
       const vr={...v7.verification};
       vr.rows=(vr.rows||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r)).map(r=>fixRow(r,source));
-      vr.humanReviewRows=dedupeReviewRows((vr.rows||[]).filter(r=>r.humanReviewRequired===true).map(r=>({rowId:r.rowId,reason:r.verification?.layers?.layer3?.reason||'',choices:r.verification?.choices||{}})));
+      if(recovered.length){for(const rec of recovered){if(!vr.rows.some(x=>v703312jSameEquipment(x,rec)))vr.rows.push({...rec,verification:{...(rec.verification||{}),layers:{layer1:{status:'confirmed',reason:rec.v703312kLevel1?.reason||''},layer2:{status:rec.v703312kLevel2?.status||'unavailable',reason:rec.v703312kLevel2?.reason||''},layer3:{status:(rec.v703312kLevel2?.status==='confirmed'&&!explicitReviewFlag(rec))?'not_required':'required',reason:(rec.v703312kLevel2?.status==='confirmed'&&!explicitReviewFlag(rec))?'Independent OCR evidence agrees; no unresolved conflict remains.':'Human verification is required because independent evidence is incomplete or conflicting.'}}}});}
+      }
+      vr.humanReviewRows=dedupeReviewRows((vr.rows||[]).filter(r=>r.humanReviewRequired===true||explicitReviewFlag(r)).map(r=>({rowId:r.rowId,reason:r.verification?.layers?.layer3?.reason||'',choices:r.verification?.choices||{}})));
       vr.humanReviewRequired=vr.humanReviewRows.length>0;v7.verification=vr;
     }
     const comp={...(v7.completenessValidation||{})};
@@ -348,17 +418,16 @@
       comp.expectedEquipmentCount=recovered.length;comp.finalEquipmentCount=out.items.length;
       comp.countMatch=out.items.length===recovered.length;comp.identityMatch=comp.countMatch;
       comp.missing=[];comp.unexpected=[];comp.recheckRequired=!comp.countMatch;comp.status=comp.countMatch?'pass':'review';
-      comp.v703312jReason='Numbered invoice rows were reclassified before economic scoring; service/accessory charges are excluded from inventory completeness.';
+      comp.v703312kReason='Actual OCR evidence was reconciled across independent OCR reads; service/accessory rows were excluded before identity correction.';
     }else if(comp.recheckRequired&&out.items.length>0&&out.items.every(r=>strongDeterministicEvidence(r,source)&&!explicitReviewFlag(r))){
-      if(Number(comp.expectedEquipmentCount)===0||Number(comp.expectedEquipmentCount)===out.items.length){
-        comp.expectedEquipmentCount=out.items.length;comp.finalEquipmentCount=out.items.length;comp.countMatch=true;comp.identityMatch=true;comp.missing=[];comp.unexpected=[];comp.recheckRequired=false;comp.status='pass';comp.v7033Reason='All final rows have strong deterministic invoice evidence.';
-      }
+      if(Number(comp.expectedEquipmentCount)===0||Number(comp.expectedEquipmentCount)===out.items.length){comp.expectedEquipmentCount=out.items.length;comp.finalEquipmentCount=out.items.length;comp.countMatch=true;comp.identityMatch=true;comp.missing=[];comp.unexpected=[];comp.recheckRequired=false;comp.status='pass';comp.v7033Reason='All final rows have strong deterministic invoice evidence.';}
     }
     if(Object.keys(comp).length)v7.completenessValidation=comp;
     const rowNeed=out.items.some(r=>r.humanReviewRequired===true||explicitReviewFlag(r));
     v7.humanReviewRequired=!!(rowNeed||v7.verification?.humanReviewRequired||comp.recheckRequired);
     v7.patchVersion=VERSION;v7.baselineVersion=BASELINE_VERSION;out.v7=v7;
     if(out.parseEvidence?.v7)out.parseEvidence={...out.parseEvidence,v7};
+    out.v703312kVerification.level3Required=v7.humanReviewRequired;
     return out;
   }
 
@@ -396,7 +465,7 @@
   function installParserPatch(){
     const p=globalThis.AVParserV7;if(!p||p.__v7033Installed)return false;
     const originalEnhance=p.enhanceParsed?.bind(p);const originalPrepare=p.prepareSave?.bind(p);
-    if(typeof originalEnhance==='function')p.enhanceParsed=function(args={}){return applyParsedFixes(originalEnhance(args),args.raw||'');};
+    if(typeof originalEnhance==='function')p.enhanceParsed=function(args={}){return applyParsedFixes(originalEnhance(args),args.raw||'',args.evidenceSources||[]);};
     if(typeof originalPrepare==='function')p.prepareSave=function(rows=[],options={}){
       const trackedRows=(rows||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
       const result=originalPrepare(trackedRows,options);
@@ -408,6 +477,8 @@
   }
 
   const RELEASE_NOTES=[
+    'Real scanned-PDF regression fixed using actual INV-Dmx200 OCR evidence: numbered rows tolerate OCR brackets/pipes/slashes and can reconcile across independent OCR modes instead of requiring an ideal one-line fixture.',
+    'Level 1/2 verification now records deterministic equipment recovery and independent OCR agreement before deciding whether Level 3 human review is required.',
     'Fixed numbered-item invoices where a mathematically clean Delivery Fee row could outrank the real equipment row; service/charge classification now runs before candidate acceptance and again after reconciliation.',
     'Added numbered-table equipment recovery for rows such as Clair Lighting DMX-200 Controller; printed model/description/quantity are recovered from invoice evidence without inventing missing prices.',
     'Accessory rows such as DMX cables and service rows such as Delivery Fee are excluded from inventory even when their quantity × unit price = amount arithmetic is valid.',
