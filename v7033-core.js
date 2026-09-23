@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12n';
+  const VERSION='7.03.3.12r';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -23,10 +23,12 @@
   function classifyInvoicePage(text=''){
     const raw=clean(text), t=raw.replace(/\r/g,'\n');
     if(!raw)return {allowed:false,type:'blank',reason:'No readable text.'};
-    const hardExclude=/\b(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+requisition|purchase\s+request|purchase\s+order|goods\s+received\s+note|service\s+report|installation\s+report)\b/i;
-    if(hardExclude.test(t))return {allowed:false,type:'non-invoice',reason:'Explicit non-invoice document marker.'};
-    const taxInvoice=/\btax\s+invoice\b/i.test(t);
+    const taxInvoice=/(?:^|\n)\s*tax\s+invoice\b/im.test(t)||/\btax\s+invoice\b/i.test(t.slice(0,1200));
     const invoiceTitle=/(?:^|\n)\s*invoice\s*(?:$|\n)/im.test(t);
+    // A genuine invoice may reference a PO/DO/quotation in its body. Never reject an explicit TAX INVOICE
+    // merely because supporting-document words occur elsewhere on the page.
+    const nonInvoiceTitle=/(?:^|\n)\s*(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+requisition|purchase\s+request|purchase\s+order|goods\s+received\s+note|service\s+report|installation\s+report)\s*(?:$|\n)/im;
+    if(!taxInvoice&&!invoiceTitle&&nonInvoiceTitle.test(t))return {allowed:false,type:'non-invoice',reason:'Explicit non-invoice document title.'};
     const invoiceNo=/\binvoice\s*(?:no\.?|number|#)\s*[:#.-]?\s*[A-Z0-9]/i.test(t);
     const itemTable=/\b(?:product\s*no\.?|item|description)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:unit\s*price|price|amount)\b/i.test(t);
     const totals=/\b(?:sub\s*total|subtotal)\b/i.test(t)&&/\b(?:gst|tax)\b/i.test(t)&&/\b(?:amount|total)\b/i.test(t);
