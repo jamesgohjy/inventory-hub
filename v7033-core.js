@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12k';
+  const VERSION='7.03.3.12l';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -130,15 +130,23 @@
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
-    const sourceName=clean(row.item_name||row.description||'').replace(/^supply(?:\s+and\s+install)?\s+/i,'').trim();
-    const sourceType=equipmentType(sourceName);
-    // Preserve a concise invoice-printed product name when it already contains the verified model
-    // and an equipment type. This keeps multi-word brands such as "Clair Lighting" intact.
-    if(sourceName&&sourceType&&compact(sourceName).includes(compact(model))&&sourceName.split(/\s+/).length<=10&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee)\b/i.test(sourceName))return sourceName;
+    const cleanName=v=>clean(v||'').replace(/^supply(?:\s+and\s+install)?\s+/i,'').trim();
+    const typeRank=t=>({'Projector Controller':90,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
+    const candidates=[{text:cleanName(row.description),source:'description',bonus:4},{text:cleanName(row.item_name),source:'item_name',bonus:2}]
+      .map(x=>({...x,type:equipmentType(x.text)}))
+      .filter(x=>x.text&&x.type&&compact(x.text).includes(compact(model))&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee)\b/i.test(x.text));
+    candidates.sort((a,b)=>(typeRank(b.type)+b.bonus)-(typeRank(a.type)+a.bonus)||a.text.length-b.text.length);
+    const best=candidates[0];
+    if(best){
+      const re=new RegExp(model.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),m=best.text.match(re);
+      let prefix=m?clean(best.text.slice(0,m.index)).replace(/^(?:supply|provide|supply\s+of)\s+/i,'').trim():'';
+      if(prefix&&prefix.split(/\s+/).length<=3&&!/\d/.test(prefix)&&!/\b(?:the|a|an|new|replacement|unit|pcs?|set)\b/i.test(prefix))return [prefix,model,best.type].join(' ');
+      return [clean(identity.brand||''),model,best.type].filter(Boolean).join(' ');
+    }
     const brand=clean(identity.brand||'');
-    const type=sourceType||equipmentType([row.item_name,row.description,identity.evidenceLine].filter(Boolean).join(' '));
+    const type=equipmentType([row.item_name,row.description,identity.evidenceLine].filter(Boolean).join(' '));
     const parts=uniq([brand,model,type].filter(Boolean),compact);
-    return parts.length>=2?parts.join(' '):sourceName||clean(row.item_name||row.description||'');
+    return parts.length>=2?parts.join(' '):cleanName(row.item_name)||cleanName(row.description);
   }
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
@@ -261,7 +269,7 @@
     return x;
   }
 
-  // V7.03.3.12k: scanned numbered-table recovery is based on actual OCR evidence,
+  // V7.03.3.12l: scanned numbered-table recovery is based on actual OCR evidence,
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
   const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
@@ -477,6 +485,7 @@
   }
 
   const RELEASE_NOTES=[
+    'Runtime integration fix: the parser gate now executes inside the final application scope immediately before Line Items render, using the live state.parsed and OCR evidence; this prevents a correct parser result from being lost while the Review screen still shows Delivery Fee.',
     'Real scanned-PDF regression fixed using actual INV-Dmx200 OCR evidence: numbered rows tolerate OCR brackets/pipes/slashes and can reconcile across independent OCR modes instead of requiring an ideal one-line fixture.',
     'Level 1/2 verification now records deterministic equipment recovery and independent OCR agreement before deciding whether Level 3 human review is required.',
     'Fixed numbered-item invoices where a mathematically clean Delivery Fee row could outrank the real equipment row; service/charge classification now runs before candidate acceptance and again after reconciliation.',
