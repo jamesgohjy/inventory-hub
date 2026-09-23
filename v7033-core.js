@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12l';
+  const VERSION='7.03.3.12n';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -184,13 +184,24 @@
     const seen=new Set();return (rows||[]).filter(x=>{const reason=clean(x.reason||'').replace(/No independent extraction matched this row\.?/ig,'').trim();const k=[reason,JSON.stringify(x.choices||{})].join('|');if(!reason||seen.has(k))return false;seen.add(k);x.reason=reason;return true;});
   }
   const INVOICE_LABEL_STOP=/^(?:AMOUNT|TOTAL|SUBTOTAL|DATE|QTY|QUANTITY|PRICE|UNIT|DESCRIPTION|TAX|GST|BALANCE|TERMS|SALESMAN|CUSTOMER|REFERENCE|REF|PO|DO|INVOICE)$/i;
+  const INVOICE_CONTEXT_STOP=/\b(?:attention|accounts?\s+payable|accounts?\s+receivable|bill\s+to|ship\s+to|sold\s+to|delivered\s+to|address|avenue|road|street|lane|centre|center|singapore|tel(?:ephone)?|fax|email|amount|subtotal|total|invoice\s+date|due\s+date|reference|gst|uen|quantity|qty|unit\s+price|description|customer|salesman|terms)\b/i;
+  const SG_POSTAL=/^\d{6}$/;
   function normalizeInvoiceNumberCandidate(value='',supplier='',raw=''){
     let v=clean(value).replace(/^[#:\s.-]+|[#:\s.-]+$/g,'');
     if(!v||INVOICE_LABEL_STOP.test(v))return '';
+    // Stop at an obvious next field/header rather than allowing PDF column text to contaminate the value.
+    const stop=v.search(INVOICE_CONTEXT_STOP);if(stop>0)v=clean(v.slice(0,stop)).replace(/[,;:#.\s-]+$/g,'');
+    if(!v||INVOICE_LABEL_STOP.test(v)||INVOICE_CONTEXT_STOP.test(v))return '';
     if(/\b(?:REF(?:ERENCE)?\.?\s*NO|DATE|P\/?O\s*NO|SALESMAN|TERMS|DESCRIPTION|QTY|QUANTITY|UNIT\s*PRICE|AMOUNT)\b.*\b(?:DATE|P\/?O\s*NO|SALESMAN|TERMS|AMOUNT)\b/i.test(v))return '';
+    if(SG_POSTAL.test(v))return '';
+    if(/^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(v)||/^\d+(?:\.\d{1,2})$/.test(v))return '';
+    // Keep at most two invoice-id tokens. This supports values such as "INV LTA-00215542"
+    // while preventing trailing prose from becoming part of the invoice number.
+    const parts=v.split(/\s+/).filter(Boolean);
+    if(parts.length>2)v=parts.slice(0,2).join(' ');
+    if(!/^[A-Z0-9][A-Z0-9._\/-]*(?:\s+[A-Z0-9][A-Z0-9._\/-]*)?$/i.test(v))return '';
+    if(v.length<3||v.length>40)return '';
     const supplierKey=norm(supplier||raw);
-    // AV Media's printed family is VIN17-######. Correct only tightly matching OCR variants
-    // when AV Media evidence is present; never apply this substitution to other suppliers.
     if(supplierKey.includes('av media')){
       const c=v.toUpperCase().replace(/\s+/g,'');
       const m=c.match(/^(?:VIN17|VINI7|VN17|YN17)[.\-:]?(\d{6})$/);
@@ -201,9 +212,13 @@
   function invoiceNumberFromLabel(raw='',supplier=''){
     const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
     for(let i=0;i<lines.length;i++){
-      if(!/\binvoice\s*(?:no|number|#)\b/i.test(lines[i]))continue;
-      const same=lines[i].match(/\binvoice\s*(?:no|number|#)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,30})/i);
-      const candidates=[same?.[1],lines[i+1]].filter(Boolean);
+      const line=lines[i];
+      const lm=line.match(/\binvoice\s*(?:no\.?|number|#)\b\s*[:#.-]?\s*(.*)$/i);
+      if(!lm)continue;
+      const candidates=[];
+      if(clean(lm[1]))candidates.push(clean(lm[1]));
+      // A PDF may put the label and value on separate lines. Only inspect the immediate next line.
+      if(lines[i+1])candidates.push(lines[i+1]);
       for(const c of candidates){const n=normalizeInvoiceNumberCandidate(c,supplier,raw);if(n)return n;}
     }
     return '';
