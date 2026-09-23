@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12r';
+  const VERSION='7.03.3.13a';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -22,29 +22,52 @@
   // Non-invoice supporting pages remain in the stored PDF but contribute zero parser evidence.
   function classifyInvoicePage(text=''){
     const raw=clean(text), t=raw.replace(/\r/g,'\n');
-    if(!raw)return {allowed:false,type:'blank',reason:'No readable text.'};
-    const taxInvoice=/(?:^|\n)\s*tax\s+invoice\b/im.test(t)||/\btax\s+invoice\b/i.test(t.slice(0,1200));
-    const invoiceTitle=/(?:^|\n)\s*invoice\s*(?:$|\n)/im.test(t);
-    // A genuine invoice may reference a PO/DO/quotation in its body. Never reject an explicit TAX INVOICE
-    // merely because supporting-document words occur elsewhere on the page.
-    const nonInvoiceTitle=/(?:^|\n)\s*(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+requisition|purchase\s+request|purchase\s+order|goods\s+received\s+note|service\s+report|installation\s+report)\s*(?:$|\n)/im;
-    if(!taxInvoice&&!invoiceTitle&&nonInvoiceTitle.test(t))return {allowed:false,type:'non-invoice',reason:'Explicit non-invoice document title.'};
+    if(!raw)return {allowed:false,type:'blank',reason:'No readable text.',reviewRequired:false,score:0};
+    const lines=t.split('\n').map(clean).filter(Boolean),head=lines.slice(0,24),earlyHead=lines.slice(0,12);
+    // PDF text extraction can place the visual title after table/totals text. Exact invoice titles therefore
+    // scan the readable page, while non-invoice titles must appear in the early heading region.
+    const exactTax=lines.slice(0,80).some(x=>/^tax\s+invoice\s*[:#.-]?$/i.test(x));
+    const exactInvoice=lines.slice(0,80).some(x=>/^invoice\s*[:#.-]?$/i.test(x));
+    // OCR-tolerant title recognition is intentionally limited to the top heading region.
+    // It never treats "Invoice No" or a body reference as the document title.
+    const fuzzyTax=head.some(x=>/^tax\s+inv[o0][i1l]ce\s*[:#.-]?$/i.test(x));
+    const fuzzyInvoice=head.some(x=>/^inv[o0][i1l]ce\s*[:#.-]?$/i.test(x));
+    const nonInvoiceRe=/^(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+requisition|purchase\s+request|purchase\s+order|goods\s+received\s+note|service\s+report|installation\s+report)\s*[:#.-]?$/i;
+    const nonInvoiceTitles=earlyHead.filter(x=>nonInvoiceRe.test(x));
     const invoiceNo=/\binvoice\s*(?:no\.?|number|#)\s*[:#.-]?\s*[A-Z0-9]/i.test(t);
+    const invoiceDate=/\binvoice\s*date\b/i.test(t);
+    const billTo=/\b(?:bill\s*to|sold\s*to|customer)\b/i.test(t);
     const itemTable=/\b(?:product\s*no\.?|item|description)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:unit\s*price|price|amount)\b/i.test(t);
     const totals=/\b(?:sub\s*total|subtotal)\b/i.test(t)&&/\b(?:gst|tax)\b/i.test(t)&&/\b(?:amount|total)\b/i.test(t);
-    if(taxInvoice)return {allowed:true,type:'tax_invoice',reason:'Explicit TAX INVOICE title.'};
-    if(invoiceTitle&&(invoiceNo||itemTable||totals))return {allowed:true,type:'invoice',reason:'Explicit INVOICE title with invoice structure.'};
-    // OCR-safe fallback: accept only a labelled invoice number plus BOTH line-item and totals structure.
-    // This does not allow generic tables, DOs, quotations or photos into the parser.
-    if(invoiceNo&&itemTable&&totals)return {allowed:true,type:'invoice',reason:'Invoice number + item table + invoice totals independently confirm invoice structure.'};
-    return {allowed:false,type:'non-invoice',reason:'Page is not positively identified as Invoice/Tax Invoice.'};
+    const score=[invoiceNo,invoiceDate,billTo,itemTable,totals].filter(Boolean).length;
+    if(exactTax)return {allowed:true,type:'tax_invoice',reason:'Explicit TAX INVOICE title.',reviewRequired:nonInvoiceTitles.length>0,score:10+score};
+    if(exactInvoice&&(invoiceNo||itemTable||totals))return {allowed:true,type:'invoice',reason:'Explicit INVOICE title with invoice structure.',reviewRequired:nonInvoiceTitles.length>0,score:8+score};
+    // A real non-invoice heading outranks body references only when no invoice heading exists.
+    if(nonInvoiceTitles.length&&!fuzzyTax&&!fuzzyInvoice)return {allowed:false,type:'non-invoice',reason:'Explicit non-invoice document title.',reviewRequired:false,score};
+    // OCR-tolerant headings need independent structural evidence and are routed for human review.
+    if((fuzzyTax||fuzzyInvoice)&&score>=2)return {allowed:true,type:'invoice_review',reason:'OCR-tolerant Invoice/Tax Invoice heading with independent invoice structure.',reviewRequired:true,score:5+score};
+    // OCR-safe fallback: labelled invoice number + BOTH item table and totals.
+    if(invoiceNo&&itemTable&&totals)return {allowed:true,type:'invoice',reason:'Invoice number + item table + invoice totals independently confirm invoice structure.',reviewRequired:false,score:6+score};
+    return {allowed:false,type:'non-invoice',reason:'Page is not positively identified as Invoice/Tax Invoice.',reviewRequired:false,score};
+  }
+  function looksLikeInvoiceContinuation(text=''){
+    const t=clean(text).replace(/\r/g,'\n');if(!t)return false;
+    const head=t.split('\n').map(clean).filter(Boolean).slice(0,18);
+    if(head.some(x=>/^(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+order|service\s+report|installation\s+report)\s*[:#.-]?$/i.test(x)))return false;
+    const table=/\b(?:description|item|product)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:amount|price)\b/i.test(t);
+    const totals=/\b(?:subtotal|sub\s*total|gst|tax|grand\s*total|amount\s+due)\b/i.test(t);
+    const paging=/\bpage\s*\d+\s*(?:of|\/)\s*\d+\b/i.test(t)||/\bcontinued\b/i.test(t);
+    const monetaryRows=(t.match(/\b\d+(?:\.\d+)?\s+\d[\d,]*\.\d{2}\s+\d[\d,]*\.\d{2}\b/g)||[]).length;
+    return !!(table||totals||(paging&&monetaryRows>0));
   }
   function filterInvoicePages(pageTexts=[],pageLayouts=[]){
     const accepted=[],layouts=[],decisions=[];
+    let invoiceContext=false;
     for(let i=0;i<(pageTexts||[]).length;i++){
-      const text=String(pageTexts[i]||''), verdict=classifyInvoicePage(text);
+      const text=String(pageTexts[i]||''), base=classifyInvoicePage(text);let verdict=base;
+      if(!base.allowed&&invoiceContext&&looksLikeInvoiceContinuation(text))verdict={allowed:true,type:'invoice_continuation',reason:'Continuation page accepted because an earlier page positively established the invoice and this page contains invoice table/total continuation evidence.',reviewRequired:false,score:4};
       decisions.push({page:i+1,...verdict});
-      if(verdict.allowed){accepted.push(text);if(pageLayouts?.[i])layouts.push(pageLayouts[i]);}
+      if(verdict.allowed){accepted.push(text);if(pageLayouts?.[i])layouts.push(pageLayouts[i]);invoiceContext=true;}
     }
     return {texts:accepted,layouts,decisions,text:accepted.join('\n')};
   }
@@ -153,6 +176,27 @@
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
   }
+  // v7.03.3.13a: field-level Level 3 evidence. This is parser metadata, not UI inference.
+  function reviewFieldsForRow(r={}){
+    const out={};
+    const add=(field,reason)=>{if(!field)return;out[field]={status:'review',reason:clean(reason||'Human verification required.')};};
+    if(r.skuReviewRequired)add('sku','SKU/model could not be verified deterministically.');
+    if(r.quantityReviewRequired)add('quantity','Quantity evidence is incomplete or conflicts with price/amount/serial evidence.');
+    if(r.priceReviewRequired||r.unit_priceReviewRequired)add('unit_price','Unit price evidence is incomplete or conflicts with quantity/amount.');
+    if(r.amountReviewRequired)add('amount','Amount evidence is incomplete or conflicts with quantity/unit price.');
+    if(r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview)add('serials','Serial-number evidence is incomplete, duplicated or conflicts with quantity.');
+    const reason=clean(r?.verification?.layers?.layer3?.reason||r?.reviewReason||'').toLowerCase();
+    if(/sku|model|product\s*(?:no|number)|identity/.test(reason))add('sku',reason);
+    if(/standard\s*item|item\s*name|name\s+conflict/.test(reason))add('item_name',reason);
+    if(/description/.test(reason))add('description',reason);
+    if(/quantity|qty/.test(reason))add('quantity',reason);
+    if(/unit[_ ]?price|price/.test(reason))add('unit_price',reason);
+    if(/amount|line\s*total/.test(reason))add('amount',reason);
+    if(/serial/.test(reason))add('serials',reason);
+    // Do not invent a field-level warning when the row is only generically marked for review.
+    // The Review UI will show a row/global warning until evidence identifies an exact field.
+    return out;
+  }
   function strongDeterministicEvidence(r={},raw=''){
     const q=Number(r.quantity);if(!(q>0))return false;
     const id=resolveInvoiceIdentity(r,raw);if(!id.model||id.score<5)return false;
@@ -183,7 +227,13 @@
     return r;
   }
   function dedupeReviewRows(rows=[]){
-    const seen=new Set();return (rows||[]).filter(x=>{const reason=clean(x.reason||'').replace(/No independent extraction matched this row\.?/ig,'').trim();const k=[reason,JSON.stringify(x.choices||{})].join('|');if(!reason||seen.has(k))return false;seen.add(k);x.reason=reason;return true;});
+    const seen=new Set();return (rows||[]).filter(x=>{
+      const fields=x.fields||{},hasFields=Object.keys(fields).length>0;
+      let reason=clean(x.reason||'').replace(/No independent extraction matched this row\.?/ig,'').trim();
+      if(!reason&&hasFields)reason='Field verification required.';
+      if(!reason&&!hasFields)return false;
+      const k=[reason,JSON.stringify(x.choices||{}),JSON.stringify(fields)].join('|');if(seen.has(k))return false;seen.add(k);x.reason=reason;return true;
+    });
   }
   const INVOICE_LABEL_STOP=/^(?:AMOUNT|TOTAL|SUBTOTAL|DATE|QTY|QUANTITY|PRICE|UNIT|DESCRIPTION|TAX|GST|BALANCE|TERMS|SALESMAN|CUSTOMER|REFERENCE|REF|PO|DO|INVOICE)$/i;
   const INVOICE_CONTEXT_STOP=/\b(?:attention|accounts?\s+payable|accounts?\s+receivable|bill\s+to|ship\s+to|sold\s+to|delivered\s+to|address|avenue|road|street|lane|centre|center|singapore|tel(?:ephone)?|fax|email|amount|subtotal|total|invoice\s+date|due\s+date|reference|gst|uen|quantity|qty|unit\s+price|description|customer|salesman|terms)\b/i;
@@ -395,7 +445,8 @@
     for(const row of out){
       const n=(row.v703312kEvidenceSources||[]).length;row.v703312kLevel1={status:'confirmed',reason:'Deterministic OCR/table evidence identifies a tracked equipment row.'};
       row.v703312kLevel2={status:n>=2&&!row.v703312kIndependentConflict?'confirmed':'unavailable',sources:n,reason:n>=2?'Independent OCR reads agree on the same equipment identity and economics.':'A second independent OCR read did not confirm the row.'};
-      if(n>=2&&!row.v703312kIndependentConflict&&!explicitReviewFlag(row)){row.humanReviewRequired=false;row.needsReview=false;}
+      const deterministicSingle=n===1&&!row.v703312kIndependentConflict&&strongDeterministicEvidence(row,raw)&&!explicitReviewFlag(row);
+      if((n>=2&&!row.v703312kIndependentConflict&&!explicitReviewFlag(row))||deterministicSingle){row.humanReviewRequired=false;row.needsReview=false;}
       else{row.humanReviewRequired=true;row.needsReview=true;}
     }
     return dedupeParsedLineItems(out);
@@ -427,14 +478,14 @@
     const merged=v703312jMergeTrackedRows(fixed,recovered,source);
     const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},v703312kEvidenceTexts(source,evidenceSources).map(x=>x.text).join('\n')),items:merged};
     out.v703312jInventoryFilter={excludedServiceCount:excludedService.length,excludedAccessoryCount:excludedAccessory.length,recoveredEquipmentCount:recovered.filter(r=>!fixed.some(x=>v703312jSameEquipment(x,r))).length};
-    out.v703312kVerification={level1:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel1?.status||'unknown'})),level2:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel2?.status||'unknown',sources:r.v703312kLevel2?.sources||(r.v703312kEvidenceSources||[]).length||0})),level3Required:out.items.some(r=>r.v703312kLevel2?.status!=='confirmed'||r.v703312kIndependentConflict||explicitReviewFlag(r)||r.humanReviewRequired===true)};
+    out.v703312kVerification={level1:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel1?.status||'unknown'})),level2:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel2?.status||'unknown',sources:r.v703312kLevel2?.sources||(r.v703312kEvidenceSources||[]).length||0})),level3Required:out.items.some(r=>r.v703312kIndependentConflict||explicitReviewFlag(r)||r.humanReviewRequired===true)};
     const v7={...(out.v7||out.parseEvidence?.v7||{})};
     if(v7.verification){
       const vr={...v7.verification};
       vr.rows=(vr.rows||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r)).map(r=>fixRow(r,source));
-      if(recovered.length){for(const rec of recovered){if(!vr.rows.some(x=>v703312jSameEquipment(x,rec)))vr.rows.push({...rec,verification:{...(rec.verification||{}),layers:{layer1:{status:'confirmed',reason:rec.v703312kLevel1?.reason||''},layer2:{status:rec.v703312kLevel2?.status||'unavailable',reason:rec.v703312kLevel2?.reason||''},layer3:{status:(rec.v703312kLevel2?.status==='confirmed'&&!explicitReviewFlag(rec))?'not_required':'required',reason:(rec.v703312kLevel2?.status==='confirmed'&&!explicitReviewFlag(rec))?'Independent OCR evidence agrees; no unresolved conflict remains.':'Human verification is required because independent evidence is incomplete or conflicting.'}}}});}
+      if(recovered.length){for(const rec of recovered){if(!vr.rows.some(x=>v703312jSameEquipment(x,rec)))vr.rows.push({...rec,verification:{...(rec.verification||{}),layers:{layer1:{status:'confirmed',reason:rec.v703312kLevel1?.reason||''},layer2:{status:rec.v703312kLevel2?.status||'unavailable',reason:rec.v703312kLevel2?.reason||''},layer3:{status:(rec.humanReviewRequired===false&&!explicitReviewFlag(rec))?'not_required':'required',reason:(rec.humanReviewRequired===false&&!explicitReviewFlag(rec))?'Deterministic invoice evidence is internally consistent; no unresolved conflict remains.':'Human verification is required because independent evidence is incomplete or conflicting.'}}}});}
       }
-      vr.humanReviewRows=dedupeReviewRows((vr.rows||[]).filter(r=>r.humanReviewRequired===true||explicitReviewFlag(r)).map(r=>({rowId:r.rowId,reason:r.verification?.layers?.layer3?.reason||'',choices:r.verification?.choices||{}})));
+      vr.humanReviewRows=dedupeReviewRows((vr.rows||[]).filter(r=>r.humanReviewRequired===true||explicitReviewFlag(r)).map(r=>({rowId:r.rowId,reason:r.verification?.layers?.layer3?.reason||'',choices:r.verification?.choices||{},fields:reviewFieldsForRow(r)})));
       vr.humanReviewRequired=vr.humanReviewRows.length>0;v7.verification=vr;
     }
     const comp={...(v7.completenessValidation||{})};
@@ -448,7 +499,14 @@
       if(Number(comp.expectedEquipmentCount)===0||Number(comp.expectedEquipmentCount)===out.items.length){comp.expectedEquipmentCount=out.items.length;comp.finalEquipmentCount=out.items.length;comp.countMatch=true;comp.identityMatch=true;comp.missing=[];comp.unexpected=[];comp.recheckRequired=false;comp.status='pass';comp.v7033Reason='All final rows have strong deterministic invoice evidence.';}
     }
     if(Object.keys(comp).length)v7.completenessValidation=comp;
-    const rowNeed=out.items.some(r=>r.humanReviewRequired===true||explicitReviewFlag(r));
+    // Attach field-level review metadata directly to final inventory rows so the Review UI can
+    // render exact affected fields without reverse-engineering free-text warnings.
+    out.items=out.items.map(item=>{
+      const row=(v7.verification?.rows||[]).find(r=>(item.rowId&&r.rowId&&String(item.rowId)===String(r.rowId))||v703312jSameEquipment(item,r));
+      const fields={...reviewFieldsForRow(row||{}),...reviewFieldsForRow(item)};
+      return {...item,v7033ReviewFields:fields};
+    });
+    const rowNeed=out.items.some(r=>r.humanReviewRequired===true||explicitReviewFlag(r)||Object.keys(r.v7033ReviewFields||{}).length>0);
     v7.humanReviewRequired=!!(rowNeed||v7.verification?.humanReviewRequired||comp.recheckRequired);
     v7.patchVersion=VERSION;v7.baselineVersion=BASELINE_VERSION;out.v7=v7;
     if(out.parseEvidence?.v7)out.parseEvidence={...out.parseEvidence,v7};
@@ -576,5 +634,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
