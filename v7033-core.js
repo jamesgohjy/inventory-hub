@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12i';
+  const VERSION='7.03.3.12j';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -130,10 +130,15 @@
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
+    const sourceName=clean(row.item_name||row.description||'').replace(/^supply(?:\s+and\s+install)?\s+/i,'').trim();
+    const sourceType=equipmentType(sourceName);
+    // Preserve a concise invoice-printed product name when it already contains the verified model
+    // and an equipment type. This keeps multi-word brands such as "Clair Lighting" intact.
+    if(sourceName&&sourceType&&compact(sourceName).includes(compact(model))&&sourceName.split(/\s+/).length<=10&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee)\b/i.test(sourceName))return sourceName;
     const brand=clean(identity.brand||'');
-    const type=equipmentType([row.item_name,row.description,identity.evidenceLine].filter(Boolean).join(' '));
+    const type=sourceType||equipmentType([row.item_name,row.description,identity.evidenceLine].filter(Boolean).join(' '));
     const parts=uniq([brand,model,type].filter(Boolean),compact);
-    return parts.length>=2?parts.join(' '):clean(row.item_name||row.description||'');
+    return parts.length>=2?parts.join(' '):sourceName||clean(row.item_name||row.description||'');
   }
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
@@ -239,31 +244,112 @@
     return out;
   }
   function validateSkuQtyEvidence(r={},raw=''){
-    const x={...r};const sku=clean(x.sku||'');const q=Number(x.quantity),p=Number(x.unit_price),a=Number(x.amount);
+    const x={...r};const sku=clean(x.sku||'');const q=Number(x.quantity);
+    const pPresent=x.unit_price!==null&&x.unit_price!==undefined&&x.unit_price!=='';
+    const aPresent=x.amount!==null&&x.amount!==undefined&&x.amount!=='';
+    const p=pPresent?Number(x.unit_price):null,a=aPresent?Number(x.amount):null;
     const skuPrinted=!!sku&&compact(raw).includes(compact(sku));
     const qtyValid=Number.isInteger(q)&&q>0&&q<=10000;
-    const economic=(Number.isFinite(p)&&Number.isFinite(a)&&p>=0&&a>=0)?Math.abs(q*p-a)<=Math.max(.02,Math.abs(a)*.001):true;
+    const economicComplete=pPresent&&aPresent&&Number.isFinite(p)&&Number.isFinite(a)&&p>=0&&a>=0;
+    const economic=economicComplete?Math.abs(q*p-a)<=Math.max(.02,Math.abs(a)*.001):true;
     const serialText=clean(x.serials||x.serial_numbers||'');const serialCount=serialText?serialText.split(/[,;\n]+/).map(clean).filter(Boolean).length:0;
     const serialQtyOk=!serialCount||serialCount<=q;
-    x.v703312LineEvidence={skuPrinted,qtyValid,economic,serialQtyOk,verified:skuPrinted&&qtyValid&&economic&&serialQtyOk};
+    x.v703312LineEvidence={skuPrinted,qtyValid,economic,economicComplete,serialQtyOk,verified:skuPrinted&&qtyValid&&economic&&economicComplete&&serialQtyOk};
     if(!qtyValid||!economic||!serialQtyOk)x.quantityReviewRequired=true;
-    if(!skuPrinted)x.skuReviewRequired=true;
+    if(!economicComplete){x.priceReviewRequired=true;x.amountReviewRequired=true;}
+    if(!skuPrinted&&sku)x.skuReviewRequired=true;
     return x;
+  }
+
+  // V7.03.3.12j: inventory classification must outrank clean arithmetic.
+  // A delivery/service row can be mathematically perfect and still be non-inventory.
+  const V703312J_SERVICE_ROW_RE=/^(?:delivery|shipping|freight|courier|transport(?:ation)?)(?:\s+(?:fee|charge|service|cost))?\b|^(?:installation|installing|labou?r|service)(?:\s+(?:fee|charge|work|cost))?\b|\b(?:commissioning|return\s+trip)\b/i;
+  const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
+  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
+  function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
+  function v703312jIsServiceRow(row={}){return V703312J_SERVICE_ROW_RE.test(v703312jRowText(row));}
+  function v703312jIsAccessoryRow(row={}){
+    const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
+    // Keep equipment only when the accessory is explicitly incidental (for example
+    // "Controller with patch cable"). A product whose main noun is Stand/Cable/Mount/etc remains excluded.
+    if(V703312J_EQUIPMENT_RE.test(text)&&/\b(?:with|including|includes|incl\.?|supplied\s+with)\b[\s\S]{0,80}\b(?:cable|wire|mount|bracket|stand|cart|trolley|lock)\b/i.test(text))return false;
+    return true;
+  }
+  function v703312jIsTrackedEquipment(row={}){
+    const text=v703312jRowText(row);
+    return !!text&&!v703312jIsServiceRow(row)&&!v703312jIsAccessoryRow(row)&&V703312J_EQUIPMENT_RE.test(text);
+  }
+  function v703312jMoney(v=''){
+    const n=Number(String(v??'').replace(/(?:SGD|S\$|\$)/gi,'').replace(/,/g,'').trim());
+    return Number.isFinite(n)?n:null;
+  }
+  function v703312jCategory(text=''){
+    const t=norm(text);
+    if(/controller|control panel|processor|switcher/.test(t))return 'AV Control';
+    if(/projector|visualizer|document camera|display|monitor/.test(t))return 'Projection / Video';
+    if(/microphone|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
+    return '';
+  }
+  function v703312jRecoverNumberedEquipmentRows(raw=''){
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),out=[];
+    for(const original of lines){
+      const line=original.replace(/[|]+/g,' ').replace(/\s+/g,' ').trim();
+      if(!/^\d{1,3}\s+/.test(line))continue;
+      let body=line.replace(/^\d{1,3}\s+/,'').trim(),qty=null,unitPrice=null,amount=null;
+      const priced=body.match(/^(.*?)\s+(\d{1,4})\s+(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})\s+(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})\s*$/i);
+      if(priced){body=clean(priced[1]);qty=Number(priced[2]);unitPrice=v703312jMoney(priced[3]);amount=v703312jMoney(priced[4]);}
+      else{
+        const quantityOnly=body.match(/^(.*?)\s+(\d{1,4})\s*$/);
+        if(!quantityOnly)continue;body=clean(quantityOnly[1]);qty=Number(quantityOnly[2]);
+      }
+      if(!(qty>0)||!body)continue;
+      const candidate={sku:'',item_name:body,description:body,category:v703312jCategory(body),unit:'pcs',quantity:qty,unit_price:unitPrice,amount,warranty:'',serials:'',v703312jNumberedEvidence:true,v703312jSourceLine:original};
+      if(v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))continue;
+      const models=modelTokens(body);if(models.length===1)candidate.sku=models[0];
+      if(unitPrice!==null&&amount!==null&&Math.abs(qty*unitPrice-amount)>Math.max(.02,Math.abs(amount)*.001)){candidate.quantityReviewRequired=true;candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;}
+      if(unitPrice===null||amount===null){candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;}
+      out.push(candidate);
+    }
+    return dedupeParsedLineItems(out);
+  }
+  function v703312jSameEquipment(a={},b={}){
+    const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb&&sa===sb)return true;
+    const na=normalizedItemIdentity(a.item_name||a.description||''),nb=normalizedItemIdentity(b.item_name||b.description||'');
+    return !!na&&!!nb&&(na===nb||na.includes(nb)||nb.includes(na));
+  }
+  function v703312jMergeTrackedRows(existing=[],recovered=[],raw=''){
+    const kept=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
+    for(const rec of recovered||[]){if(!kept.some(x=>v703312jSameEquipment(x,rec)))kept.push(rec);}
+    return dedupeParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312jNumberedEvidence?r:fixRow(r,raw),raw)));
   }
   function applyParsedFixes(parsed={},raw=''){
     if(!parsed||typeof parsed!=='object')return parsed;
     const source=String(raw||parsed.raw||parsed.rawText||'');
-    const fixed=(parsed.items||[]).map(r=>validateSkuQtyEvidence(fixRow(r,source),source));
-    const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},source),items:dedupeParsedLineItems(fixed)};
+    // Classify the raw parsed rows BEFORE identity correction. Otherwise a clean service row
+    // such as Delivery Fee could inherit an unrelated model from another source row.
+    const incoming=[...(parsed.items||[])];
+    const excludedService=incoming.filter(v703312jIsServiceRow),excludedAccessory=incoming.filter(v703312jIsAccessoryRow);
+    const trackedIncoming=incoming.filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
+    const fixed=trackedIncoming.map(r=>validateSkuQtyEvidence(fixRow(r,source),source));
+    const recovered=v703312jRecoverNumberedEquipmentRows(source);
+    const merged=v703312jMergeTrackedRows(fixed,recovered,source);
+    const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},source),items:merged};
+    out.v703312jInventoryFilter={excludedServiceCount:excludedService.length,excludedAccessoryCount:excludedAccessory.length,recoveredEquipmentCount:recovered.filter(r=>!fixed.some(x=>v703312jSameEquipment(x,r))).length};
     const v7={...(out.v7||out.parseEvidence?.v7||{})};
     if(v7.verification){
       const vr={...v7.verification};
-      vr.rows=(vr.rows||[]).map(r=>fixRow(r,source));
+      vr.rows=(vr.rows||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r)).map(r=>fixRow(r,source));
       vr.humanReviewRows=dedupeReviewRows((vr.rows||[]).filter(r=>r.humanReviewRequired===true).map(r=>({rowId:r.rowId,reason:r.verification?.layers?.layer3?.reason||'',choices:r.verification?.choices||{}})));
       vr.humanReviewRequired=vr.humanReviewRows.length>0;v7.verification=vr;
     }
     const comp={...(v7.completenessValidation||{})};
-    if(comp.recheckRequired&&out.items.length>0&&out.items.every(r=>strongDeterministicEvidence(r,source)&&!explicitReviewFlag(r))){
+    const sourceRecovered=recovered.length>0&&recovered.every(r=>out.items.some(x=>v703312jSameEquipment(x,r)));
+    if(sourceRecovered){
+      comp.expectedEquipmentCount=recovered.length;comp.finalEquipmentCount=out.items.length;
+      comp.countMatch=out.items.length===recovered.length;comp.identityMatch=comp.countMatch;
+      comp.missing=[];comp.unexpected=[];comp.recheckRequired=!comp.countMatch;comp.status=comp.countMatch?'pass':'review';
+      comp.v703312jReason='Numbered invoice rows were reclassified before economic scoring; service/accessory charges are excluded from inventory completeness.';
+    }else if(comp.recheckRequired&&out.items.length>0&&out.items.every(r=>strongDeterministicEvidence(r,source)&&!explicitReviewFlag(r))){
       if(Number(comp.expectedEquipmentCount)===0||Number(comp.expectedEquipmentCount)===out.items.length){
         comp.expectedEquipmentCount=out.items.length;comp.finalEquipmentCount=out.items.length;comp.countMatch=true;comp.identityMatch=true;comp.missing=[];comp.unexpected=[];comp.recheckRequired=false;comp.status='pass';comp.v7033Reason='All final rows have strong deterministic invoice evidence.';
       }
@@ -312,7 +398,8 @@
     const originalEnhance=p.enhanceParsed?.bind(p);const originalPrepare=p.prepareSave?.bind(p);
     if(typeof originalEnhance==='function')p.enhanceParsed=function(args={}){return applyParsedFixes(originalEnhance(args),args.raw||'');};
     if(typeof originalPrepare==='function')p.prepareSave=function(rows=[],options={}){
-      const result=originalPrepare(rows,options);
+      const trackedRows=(rows||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
+      const result=originalPrepare(trackedRows,options);
       const warnings=dedupeReviewRows((result.warnings||[]).map((w,i)=>({rowId:String(i),reason:w.message||'',choices:{},raw:w}))).map(x=>x.raw);
       const status=result.errors?.length?'block':(warnings.length&&!options.humanReviewed?'review':'pass');
       return {...result,warnings,status,ok:status==='pass',humanReviewRequired:status==='review'};
@@ -321,9 +408,12 @@
   }
 
   const RELEASE_NOTES=[
+    'Fixed numbered-item invoices where a mathematically clean Delivery Fee row could outrank the real equipment row; service/charge classification now runs before candidate acceptance and again after reconciliation.',
+    'Added numbered-table equipment recovery for rows such as Clair Lighting DMX-200 Controller; printed model/description/quantity are recovered from invoice evidence without inventing missing prices.',
+    'Accessory rows such as DMX cables and service rows such as Delivery Fee are excluded from inventory even when their quantity × unit price = amount arithmetic is valid.',
     'Coming Next roadmap now automatically removes completed roadmap items instead of continuing to show fixes that are already in the current release.',
-    'Vault filters resized so Group by Company and Sort Newest to Oldest display their full labels without covering the search field.',
-    'Maintenance outcome filter resized so All outcomes and the longer outcome choices remain readable.',
+    'Vault search box reduced by 30% so Group by Company and Sort Newest to Oldest have enough room to display their full labels.',
+    'Maintenance All outcomes filter reduced by 60% for a more compact toolbar footprint.',
     'Supplier recovery now treats a missing supplier as a deep-scan condition and accepts only company evidence actually read from the invoice header/OCR; Sold To / Delivered To customer text is not used as supplier evidence.',
     'AVS-320 identity regression fixed: projector controller is preserved as Projector Controller instead of being shortened to Projector.',
     'Level 3 user messaging is now plain-language review guidance; internal independent-extraction disagreement details remain internal and are not shown to the user.',
@@ -388,5 +478,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
