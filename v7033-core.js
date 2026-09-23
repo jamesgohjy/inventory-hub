@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.12h';
+  const VERSION='7.03.3.12i';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -321,6 +321,9 @@
   }
 
   const RELEASE_NOTES=[
+    'Coming Next roadmap now automatically removes completed roadmap items instead of continuing to show fixes that are already in the current release.',
+    'Vault filters resized so Group by Company and Sort Newest to Oldest display their full labels without covering the search field.',
+    'Maintenance outcome filter resized so All outcomes and the longer outcome choices remain readable.',
     'Supplier recovery now treats a missing supplier as a deep-scan condition and accepts only company evidence actually read from the invoice header/OCR; Sold To / Delivered To customer text is not used as supplier evidence.',
     'AVS-320 identity regression fixed: projector controller is preserved as Projector Controller instead of being shortened to Projector.',
     'Level 3 user messaging is now plain-language review guidance; internal independent-extraction disagreement details remain internal and are not shown to the user.',
@@ -339,16 +342,22 @@
     'Inventory row descriptions now explicitly display the stored Standard item name and never substitute the raw Description field.',
   ];
   const RELEASE_UPCOMING_VERSION='7.03.4.0';
-  const RELEASE_UPCOMING_NOTES=[
-    'Improve invoice-page classification so genuine Invoice/Tax Invoice pages may contain Delivery Order, Purchase Order or quotation references without being rejected.',
-    'Tighten duplicate consolidation so generic same-name items with blank or unverified SKU/model evidence cannot be auto-merged.',
-    'Restrict the duplicate-consolidation database RPC to Admin at the database level.',
-    'Improve password policy handling so accounts are not restricted to exactly eight characters while preserving a minimum security requirement.',
-    'Plan a dedicated architecture release to reduce the fragile runtime source-string patch loader without combining it with functional changes.',
-    'Move document metadata edits to one database transaction after live Supabase validation and rollback testing.',
-    'Consolidate legacy CSS overrides in a dedicated visual-regression release instead of a large one-step stylesheet rewrite.',
-    'Redesign tablet/mobile navigation in a separate responsive-UX patch after device-level regression testing.'
+  // Roadmap IDs make Coming Next deterministic: when a current patch completes an item,
+  // add its ID to COMPLETED_ROADMAP_IDS and it disappears from Upcoming automatically.
+  const RELEASE_ROADMAP=[
+    {id:'invoice-page-reference-classification',text:'Improve invoice-page classification so genuine Invoice/Tax Invoice pages may contain Delivery Order, Purchase Order or quotation references without being rejected.'},
+    {id:'duplicate-consolidation-evidence',text:'Tighten duplicate consolidation so generic same-name items with blank or unverified SKU/model evidence cannot be auto-merged.'},
+    {id:'admin-only-consolidation-rpc',text:'Restrict the duplicate-consolidation database RPC to Admin at the database level.'},
+    {id:'password-policy-flexibility',text:'Improve password policy handling so accounts are not restricted to exactly eight characters while preserving a minimum security requirement.'},
+    {id:'patch-loader-architecture',text:'Plan a dedicated architecture release to reduce the fragile runtime source-string patch loader without combining it with functional changes.'},
+    {id:'document-edit-transaction',text:'Move document metadata edits to one database transaction after live Supabase validation and rollback testing.'},
+    {id:'css-consolidation',text:'Consolidate legacy CSS overrides in a dedicated visual-regression release instead of a large one-step stylesheet rewrite.'},
+    {id:'responsive-navigation',text:'Redesign tablet/mobile navigation in a separate responsive-UX patch after device-level regression testing.'}
   ];
+  // This roadmap item is already covered by the current conservative evidence-based dedupe/match safeguards.
+  const COMPLETED_ROADMAP_IDS=new Set(['duplicate-consolidation-evidence']);
+  const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.filter(x=>!COMPLETED_ROADMAP_IDS.has(x.id)).map(x=>x.text);
+
   function applyVersionUi(){
     try{
       globalThis.__AV_INVENTORY_VERSION__=VERSION;globalThis.__AV_INVENTORY_BUILD__=VERSION;
@@ -379,5 +388,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,classifyInvoicePage,filterInvoicePages,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
