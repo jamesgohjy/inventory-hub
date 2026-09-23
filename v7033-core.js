@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.13a';
+  const VERSION='7.03.3.13b';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -18,42 +18,137 @@
   const uniq=(xs,key=x=>x)=>{const out=[],seen=new Set();for(const x of xs||[]){const k=key(x);if(!k||seen.has(k))continue;seen.add(k);out.push(x);}return out;};
 
 
-  // HARD GATE: only pages positively classified as INVOICE or TAX INVOICE may feed parsing.
-  // Non-invoice supporting pages remain in the stored PDF but contribute zero parser evidence.
+  // V7.03.3.13b DOCUMENT GATE
+  // Tri-state classification:
+  //   accept  -> strong invoice evidence;
+  //   review  -> invoice-like but OCR/layout is ambiguous, continue to Review with Level 3;
+  //   reject  -> strong evidence of a different document type.
+  //
+  // This deliberately avoids exact-title-only gating. PDF text extraction often merges a visual
+  // TAX INVOICE heading with GST/UEN/header text or changes character shapes during OCR.
+  function v703313bInvoiceWord(v=''){
+    return clean(v).toUpperCase()
+      .replace(/\bINV[O0][I1L]CE\b/g,'INVOICE')
+      .replace(/\bINVO[I1L]CE\b/g,'INVOICE')
+      .replace(/\b1NVOICE\b/g,'INVOICE');
+  }
+  function v703313bHeadingText(v=''){
+    return v703313bInvoiceWord(v).replace(/[^A-Z0-9/#&().: -]+/g,' ').replace(/\s+/g,' ').trim();
+  }
   function classifyInvoicePage(text=''){
     const raw=clean(text), t=raw.replace(/\r/g,'\n');
-    if(!raw)return {allowed:false,type:'blank',reason:'No readable text.',reviewRequired:false,score:0};
-    const lines=t.split('\n').map(clean).filter(Boolean),head=lines.slice(0,24),earlyHead=lines.slice(0,12);
-    // PDF text extraction can place the visual title after table/totals text. Exact invoice titles therefore
-    // scan the readable page, while non-invoice titles must appear in the early heading region.
-    const exactTax=lines.slice(0,80).some(x=>/^tax\s+invoice\s*[:#.-]?$/i.test(x));
-    const exactInvoice=lines.slice(0,80).some(x=>/^invoice\s*[:#.-]?$/i.test(x));
-    // OCR-tolerant title recognition is intentionally limited to the top heading region.
-    // It never treats "Invoice No" or a body reference as the document title.
-    const fuzzyTax=head.some(x=>/^tax\s+inv[o0][i1l]ce\s*[:#.-]?$/i.test(x));
-    const fuzzyInvoice=head.some(x=>/^inv[o0][i1l]ce\s*[:#.-]?$/i.test(x));
-    const nonInvoiceRe=/^(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+requisition|purchase\s+request|purchase\s+order|goods\s+received\s+note|service\s+report|installation\s+report)\s*[:#.-]?$/i;
-    const nonInvoiceTitles=earlyHead.filter(x=>nonInvoiceRe.test(x));
-    const invoiceNo=/\binvoice\s*(?:no\.?|number|#)\s*[:#.-]?\s*[A-Z0-9]/i.test(t);
-    const invoiceDate=/\binvoice\s*date\b/i.test(t);
-    const billTo=/\b(?:bill\s*to|sold\s*to|customer)\b/i.test(t);
-    const itemTable=/\b(?:product\s*no\.?|item|description)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:unit\s*price|price|amount)\b/i.test(t);
-    const totals=/\b(?:sub\s*total|subtotal)\b/i.test(t)&&/\b(?:gst|tax)\b/i.test(t)&&/\b(?:amount|total)\b/i.test(t);
-    const score=[invoiceNo,invoiceDate,billTo,itemTable,totals].filter(Boolean).length;
-    if(exactTax)return {allowed:true,type:'tax_invoice',reason:'Explicit TAX INVOICE title.',reviewRequired:nonInvoiceTitles.length>0,score:10+score};
-    if(exactInvoice&&(invoiceNo||itemTable||totals))return {allowed:true,type:'invoice',reason:'Explicit INVOICE title with invoice structure.',reviewRequired:nonInvoiceTitles.length>0,score:8+score};
-    // A real non-invoice heading outranks body references only when no invoice heading exists.
-    if(nonInvoiceTitles.length&&!fuzzyTax&&!fuzzyInvoice)return {allowed:false,type:'non-invoice',reason:'Explicit non-invoice document title.',reviewRequired:false,score};
-    // OCR-tolerant headings need independent structural evidence and are routed for human review.
-    if((fuzzyTax||fuzzyInvoice)&&score>=2)return {allowed:true,type:'invoice_review',reason:'OCR-tolerant Invoice/Tax Invoice heading with independent invoice structure.',reviewRequired:true,score:5+score};
-    // OCR-safe fallback: labelled invoice number + BOTH item table and totals.
-    if(invoiceNo&&itemTable&&totals)return {allowed:true,type:'invoice',reason:'Invoice number + item table + invoice totals independently confirm invoice structure.',reviewRequired:false,score:6+score};
-    return {allowed:false,type:'non-invoice',reason:'Page is not positively identified as Invoice/Tax Invoice.',reviewRequired:false,score};
+    if(!raw)return {allowed:false,disposition:'reject',type:'blank',reason:'No readable text.',reviewRequired:false,score:0,evidence:{}};
+
+    const lines=t.split('\n').map(clean).filter(Boolean);
+    const headingLines=lines.slice(0,140);
+    const earlyHead=lines.slice(0,60);
+    const exactHeadingText=(v='')=>clean(v).toUpperCase().replace(/[^A-Z0-9/#&().: -]+/g,' ').replace(/\s+/g,' ').trim();
+    const normalizedHeading=headingLines.map(v703313bHeadingText);
+    const exactNormalizedHeading=headingLines.map(exactHeadingText);
+    const normalizedEarly=earlyHead.map(v703313bHeadingText);
+    const adjacentPhrases=(xs,max=3)=>{const out=[];for(let i=0;i<xs.length;i++){for(let n=2;n<=max&&i+n<=xs.length;n++){const v=xs.slice(i,i+n).join(' ').replace(/\s+/g,' ').trim();if(v)out.push(v);}}return out;};
+    const headingPhrases=[...normalizedHeading,...adjacentPhrases(normalizedHeading,3)];
+    const earlyPhrases=[...normalizedEarly,...adjacentPhrases(normalizedEarly,3)];
+
+    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|INSTALLATION\s+REPORT|STATEMENT)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
+    const nonInvoiceTitles=[...new Set(earlyPhrases.filter(x=>nonInvoiceRe.test(x)))];
+
+    // A heading can be merged into surrounding header text by PDF extraction. Accept TAX INVOICE
+    // when it appears as a heading phrase on a reasonably short header line, not only as an exact line.
+    const titleLineCandidate=(line)=>{
+      const u=v703313bHeadingText(line);
+      if(!u||u.length>140)return false;
+      if(/\b(?:SUBMIT|SEND|ATTACH|PROVIDE|ISSUE|REFERENCE|REF(?:ERENCE)?|COPY\s+OF|PAYMENT\s+OF)\s+(?:A\s+)?(?:TAX\s+)?INVOICE\b/i.test(u))return false;
+      if(/\b(?:PRO\s*FORMA|PROFORMA)\s+INVOICE\b/i.test(u))return false;
+      if(/\b(?:INVOICE\s+(?:NO|NUMBER|DATE|REF|REFERENCE|TOTAL)|TAX\s+INVOICE\s+(?:NO|NUMBER|DATE|REF|REFERENCE|TOTAL))\b/i.test(u))return false;
+      return true;
+    };
+    const taxTitleLines=headingLines.filter(line=>titleLineCandidate(line)&&/\bTAX\s+INVOICE\b/i.test(exactHeadingText(line)));
+    const exactHeadingPhrases=[...exactNormalizedHeading,...adjacentPhrases(exactNormalizedHeading,3)];
+    const fragmentedTax=exactHeadingPhrases.some(x=>/^(?:TAX\s+INVOICE|GST\s+INVOICE)$/i.test(x));
+    const invoiceTitleLines=headingLines.filter((line,idx)=>{
+      const u=exactHeadingText(line),next=exactNormalizedHeading[idx+1]||'',prev=exactNormalizedHeading[idx-1]||'';
+      if(!titleLineCandidate(line)||/\bTAX\s+INVOICE\b/i.test(u))return false;
+      if(/^INVOICE$/i.test(u)&&/^(?:NO|NUMBER|DATE|TOTAL|REF|REFERENCE|ID|#)$/i.test(next))return false;
+      if(/^INVOICE$/i.test(u)&&/^(?:TAX|GST|PROFORMA|PRO\s+FORMA)$/i.test(prev))return false;
+      return /\b(?:SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE|INVOICE)\b/i.test(u);
+    });
+    const strongTax=taxTitleLines.length>0||fragmentedTax;
+    const strongInvoice=invoiceTitleLines.length>0;
+
+    // OCR-tolerant heading evidence. This is intentionally weaker and routes to Level 3.
+    const fuzzyHead=headingLines.some(line=>{
+      if(!titleLineCandidate(line))return false;
+      const u=clean(line).toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+      if(u.length>140)return false;
+      return /\b(?:TAX\s+)?INV(?:O|0)(?:I|1|L)CE\b/.test(u)||/\b(?:TAX\s+)?1NVOICE\b/.test(u);
+    });
+
+    const invoiceNo=/\binv(?:o|0)(?:i|1|l)ce\s*(?:no\.?|number|#)\s*[:#.-]?\s*[A-Z0-9]/i.test(t)
+      ||/\binv\s*(?:no\.?|number|#)\s*[:#.-]?\s*[A-Z0-9]/i.test(t);
+    const invoiceDate=/\binv(?:o|0)(?:i|1|l)ce\s*date\b/i.test(t);
+    const billTo=/\b(?:bill\s*to|sold\s*to|customer(?:\s+code)?|delivered\s+to)\b/i.test(t);
+    const itemTable=/\b(?:product\s*(?:no\.?|number|code)?|item(?:\s+code)?|description)\b/i.test(t)
+      &&/\b(?:qty|quantity|units?)\b/i.test(t)
+      &&/\b(?:unit\s*price|price|amount)\b/i.test(t);
+    const subtotal=/\b(?:sub\s*total|subtotal)\b/i.test(t);
+    const tax=/\b(?:gst|vat|tax)\b/i.test(t);
+    const finalTotal=/\b(?:amount\s+due|grand\s+total|invoice\s+total|total\s+amount|total\s+(?:sgd|usd|eur|gbp|myr|cny))\b/i.test(t);
+    const totals=[subtotal,tax,finalTotal].filter(Boolean).length>=2;
+    const gstReg=/\b(?:gst|vat)\s*(?:reg(?:istration)?\.?\s*)?(?:no\.?|number)\b/i.test(t);
+    const paymentTerms=/\b(?:payment\s+terms|terms)\b/i.test(t)&&/\b(?:days?|cash|credit|cod|net\s*\d+)\b/i.test(t);
+    const currency=/\b(?:SGD|USD|EUR|GBP|MYR|CNY|RMB)\b/.test(t.toUpperCase());
+
+    const evidence={strongTax,strongInvoice,fuzzyHead,invoiceNo,invoiceDate,billTo,itemTable,subtotal,tax,finalTotal,totals,gstReg,paymentTerms,currency,nonInvoiceTitles};
+    let structureScore=0;
+    if(invoiceNo)structureScore+=5;
+    if(invoiceDate)structureScore+=2;
+    if(billTo)structureScore+=1;
+    if(itemTable)structureScore+=3;
+    if(totals)structureScore+=3;
+    if(gstReg)structureScore+=1;
+    if(paymentTerms)structureScore+=1;
+    if(currency)structureScore+=1;
+
+    if(strongTax){
+      return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:nonInvoiceTitles.length>0,score:12+structureScore,evidence};
+    }
+    if(strongInvoice&&(invoiceNo||invoiceDate||itemTable||totals||billTo)){
+      return {allowed:true,disposition:'accept',type:'invoice',reason:'Invoice heading phrase with supporting invoice structure.',reviewRequired:nonInvoiceTitles.length>0,score:10+structureScore,evidence};
+    }
+
+    // A real non-invoice heading is a strong reject signal unless equally strong invoice evidence
+    // conflicts with it; conflicts are routed to Review, not guessed.
+    if(nonInvoiceTitles.length){
+      if((fuzzyHead||invoiceNo)&&structureScore>=8){
+        return {allowed:true,disposition:'review',type:'invoice_review',reason:'Conflicting document-title evidence; invoice structure is strong enough for Level 3 review.',reviewRequired:true,score:structureScore,evidence};
+      }
+      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title.',reviewRequired:false,score:structureScore,evidence};
+    }
+
+    if(fuzzyHead&&structureScore>=4){
+      return {allowed:true,disposition:'review',type:'invoice_review',reason:'OCR-tolerant Invoice/Tax Invoice heading with supporting invoice structure.',reviewRequired:true,score:6+structureScore,evidence};
+    }
+
+    // Strong labelled invoice structure can safely proceed even when the visual title was lost.
+    if(invoiceNo&&(itemTable||totals||invoiceDate)){
+      const strongStructure=(itemTable&&totals)||(invoiceDate&&totals)||(invoiceDate&&itemTable);
+      return {allowed:true,disposition:strongStructure?'accept':'review',type:strongStructure?'invoice':'invoice_review',reason:strongStructure?'Invoice number plus independent invoice structure.':'Invoice number found but document structure needs Level 3 confirmation.',reviewRequired:!strongStructure,score:6+structureScore,evidence};
+    }
+
+    // Last-resort financial-document path: do not hard-reject a plausible invoice only because OCR
+    // lost the word "invoice". It may proceed to Review, but never as automatically verified.
+    if(itemTable&&totals&&(billTo||gstReg||paymentTerms)&&structureScore>=7){
+      return {allowed:true,disposition:'review',type:'document_review',reason:'Invoice-like financial structure detected but the Invoice/Tax Invoice title was not reliable. Verify document type before saving.',reviewRequired:true,score:structureScore,evidence};
+    }
+
+    return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Page lacks enough invoice evidence to continue safely.',reviewRequired:false,score:structureScore,evidence};
   }
   function looksLikeInvoiceContinuation(text=''){
     const t=clean(text).replace(/\r/g,'\n');if(!t)return false;
     const head=t.split('\n').map(clean).filter(Boolean).slice(0,18);
-    if(head.some(x=>/^(?:quotation|quote|delivery\s+order|delivery\s+note|purchase\s+order|service\s+report|installation\s+report)\s*[:#.-]?$/i.test(x)))return false;
+    const normalized=head.map(v703313bHeadingText);
+    if(normalized.some(x=>/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PURCHASE\s+ORDER|SERVICE\s+REPORT|INSTALLATION\s+REPORT)\b/i.test(x)))return false;
     const table=/\b(?:description|item|product)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:amount|price)\b/i.test(t);
     const totals=/\b(?:subtotal|sub\s*total|gst|tax|grand\s*total|amount\s+due)\b/i.test(t);
     const paging=/\bpage\s*\d+\s*(?:of|\/)\s*\d+\b/i.test(t)||/\bcontinued\b/i.test(t);
@@ -62,14 +157,19 @@
   }
   function filterInvoicePages(pageTexts=[],pageLayouts=[]){
     const accepted=[],layouts=[],decisions=[];
-    let invoiceContext=false;
+    let invoiceContext=false,reviewRequired=false;
     for(let i=0;i<(pageTexts||[]).length;i++){
       const text=String(pageTexts[i]||''), base=classifyInvoicePage(text);let verdict=base;
-      if(!base.allowed&&invoiceContext&&looksLikeInvoiceContinuation(text))verdict={allowed:true,type:'invoice_continuation',reason:'Continuation page accepted because an earlier page positively established the invoice and this page contains invoice table/total continuation evidence.',reviewRequired:false,score:4};
+      if(invoiceContext&&!(base.evidence?.nonInvoiceTitles||[]).length&&looksLikeInvoiceContinuation(text)&&(!base.allowed||base.reviewRequired||base.disposition==='review'))verdict={allowed:true,disposition:'accept',type:'invoice_continuation',reason:'Continuation page accepted because an earlier page established invoice context and this page contains invoice table/total continuation evidence.',reviewRequired:false,score:Math.max(4,Number(base.score)||0),evidence:base.evidence||{}};
       decisions.push({page:i+1,...verdict});
-      if(verdict.allowed){accepted.push(text);if(pageLayouts?.[i])layouts.push(pageLayouts[i]);invoiceContext=true;}
+      if(verdict.allowed){
+        accepted.push(text);
+        if(pageLayouts?.[i])layouts.push(pageLayouts[i]);
+        invoiceContext=true;
+        if(verdict.reviewRequired||verdict.disposition==='review')reviewRequired=true;
+      }
     }
-    return {texts:accepted,layouts,decisions,text:accepted.join('\n')};
+    return {texts:accepted,layouts,decisions,text:accepted.join('\n'),reviewRequired};
   }
 
   const MODEL_STOP=/^(?:SGD|GST|UEN|QTY|QUANTITY|PRICE|AMOUNT|TOTAL|SUBTOTAL|INVOICE|DATE|REF|REFERENCE|SHIPMENT|CUSTOMER|PO|DO)$/i;
@@ -176,7 +276,7 @@
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
   }
-  // v7.03.3.13a: field-level Level 3 evidence. This is parser metadata, not UI inference.
+  // v7.03.3.13b: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
     const out={};
     const add=(field,reason)=>{if(!field)return;out[field]={status:'review',reason:clean(reason||'Human verification required.')};};
