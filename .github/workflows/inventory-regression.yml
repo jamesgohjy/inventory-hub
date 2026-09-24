@@ -7,6 +7,8 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
+      - "runtime-v7.03.3.14s.js"
+      - "modules/**"
       - "index.html"
       - "tests/**"
       - "supabase-v7-03-3-14o-parser-intelligence.sql"
@@ -16,6 +18,8 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
+      - "runtime-v7.03.3.14s.js"
+      - "modules/**"
       - "index.html"
       - "tests/**"
       - "supabase-v7-03-3-14o-parser-intelligence.sql"
@@ -32,5 +36,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run parser and release regression gates
+      - name: Syntax-check direct runtime modules
+        run: |
+          node --check app.js
+          node --check runtime-v7.03.3.14s.js
+          node --check modules/parser-table.js
+          node --check modules/grouped-company-ui.js
+      - name: Run parser, module and release regression gates
         run: node tests/run-regression.cjs
