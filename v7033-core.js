@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14h1';
+  const VERSION='7.03.3.14h2';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -760,9 +760,9 @@
   }
 
   const RELEASE_NOTES=[
-    'Fixed 14h startup failure caused by UI/workflow code loading in the wrong runtime layer.',
-    'Preserved merge concurrency, responsive toolbar and dialog regression guards.',
-    'Added explicit startup checks for both duplicate-merge and UI/workflow runtimes.'
+    'Fixed 14h startup failure by injecting duplicate-merge and UI hardening into the final application runtime.',
+    'Preserved merge concurrency, responsive toolbar and merge-dialog regression guards.',
+    'Added startup gates that verify both runtime layers actually initialise.'
   ];
   const RELEASE_UPCOMING_VERSION='7.03.3.14i';
   const RELEASE_ROADMAP=[
