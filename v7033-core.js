@@ -10,12 +10,27 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.13c';
+  const VERSION='7.03.3.14';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const compact=(v='')=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const uniq=(xs,key=x=>x)=>{const out=[],seen=new Set();for(const x of xs||[]){const k=key(x);if(!k||seen.has(k))continue;seen.add(k);out.push(x);}return out;};
+
+
+  // V7.03.3.14 — additive exception for a complete equipment trolley.
+  // A generic trolley remains excluded. Promotion requires printed SKU + consistent economics
+  // + multiple physical construction features, so older accessory behavior stays unchanged.
+  function isStructuredPhysicalAssetRow(row={}){
+    const sku=clean(row.sku||''),text=clean([row.item_name,row.description].filter(Boolean).join(' '));
+    if(!/\btrolleys?\b/i.test(text))return false;
+    if(/\b(?:mount|bracket|cable|wire|lamp\s*kit|adapter|adaptor)\b/i.test(text))return false;
+    const credibleSku=/^[A-Z0-9][A-Z0-9+._\/-]{2,27}$/i.test(sku)&&/[A-Za-z]/.test(sku)&&/\d/.test(sku);
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    const economic=Number.isFinite(q)&&q>0&&Number.isFinite(p)&&p>0&&Number.isFinite(a)&&a>=0&&Math.abs((q*p)-a)<=Math.max(.08,Math.abs(a)*.002);
+    const features=new Set((text.match(/\b(?:adjustable|metal|steel|cabinet|tray|shelf|caster|wheel|wheels|lockable|security|enclosure|keyboard|workstation|rack|drawer|door)\b/gi)||[]).map(x=>x.toLowerCase().replace(/s$/,'')));
+    return !!(credibleSku&&economic&&features.size>=3);
+  }
 
 
   // V7.03.3.13c DOCUMENT GATE
@@ -276,7 +291,7 @@
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
   }
-  // v7.03.3.13c: field-level Level 3 evidence. This is parser metadata, not UI inference.
+  // v7.03.3.14: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
     const out={};
     const add=(field,reason)=>{if(!field)return;out[field]={status:'review',reason:clean(reason||'Human verification required.')};};
@@ -369,9 +384,20 @@
       if(!lm)continue;
       const candidates=[];
       if(clean(lm[1]))candidates.push(clean(lm[1]));
-      // A PDF may put the label and value on separate lines. Only inspect the immediate next line.
       if(lines[i+1])candidates.push(lines[i+1]);
       for(const c of candidates){const n=normalizeInvoiceNumberCandidate(c,supplier,raw);if(n)return n;}
+    }
+    const heading=v=>/^(?:TAX\s+INVOICE|INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)$/i.test(clean(v).replace(/[^A-Za-z ]+/g,' ').replace(/\s+/g,' ').trim());
+    for(let i=0;i<Math.min(lines.length,80);i++){
+      if(!heading(lines[i]))continue;
+      for(let j=i+1;j<Math.min(lines.length,i+6);j++){
+        const m=lines[j].match(/^(?:NO\.?|NUMBER|#)\s*[:#.-]?\s*(.*)$/i);
+        if(!m)continue;
+        const candidates=[];
+        if(clean(m[1]))candidates.push(clean(m[1]));
+        if(!clean(m[1])&&lines[j+1])candidates.push(lines[j+1]);
+        for(const c of candidates){const n=normalizeInvoiceNumberCandidate(c,supplier,raw);if(n)return n;}
+      }
     }
     return '';
   }
@@ -394,12 +420,16 @@
   function fixDocumentHeader(doc={},raw=''){
     const d={...doc};
     d.supplier_name=supplierFromEvidence(raw,d.supplier_name||'');
+    const supplierParts=clean(d.supplier_name||'').split(/\s+/).filter(Boolean);
+    if(supplierParts.length>=3&&supplierParts[0].toLowerCase()===supplierParts[1].toLowerCase())d.supplier_name=supplierParts.slice(1).join(' ');
     const supplier=clean(d.supplier_name||'');
     const labelled=invoiceNumberFromLabel(raw,supplier);
     const current=normalizeInvoiceNumberCandidate(d.invoice_number||'',supplier,raw);
     d.invoice_number=labelled||current||'';
     if(!d.invoice_number&&clean(doc.invoice_number||''))d.invoiceNumberReviewRequired=true;
     if(d.invoice_number!==clean(doc.invoice_number||''))d.v7033InvoiceNumberCorrectedFrom=clean(doc.invoice_number||'');
+    const delivery=clean(d.delivery_order_number||'');
+    if(/^(?:D\s*\/?\s*O(?:\s*(?:NO\.?|NUMBER))?|DELIVERY\s+ORDER(?:\s*(?:NO\.?|NUMBER))?)$/i.test(delivery))d.delivery_order_number='';
     return d;
   }
   function lineEvidenceSignature(r={}){
@@ -445,6 +475,7 @@
   function v703312jIsServiceRow(row={}){return V703312J_SERVICE_ROW_RE.test(v703312jRowText(row));}
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
+    if(isStructuredPhysicalAssetRow(row))return false;
     if(V703312J_EQUIPMENT_RE.test(text)&&/\b(?:with|including|includes|incl\.?|supplied\s+with)\b[\s\S]{0,80}\b(?:cable|wire|mount|bracket|stand|cart|trolley|lock)\b/i.test(text))return false;
     return true;
   }
@@ -660,6 +691,9 @@
   }
 
   const RELEASE_NOTES=[
+    'Equipment-confirmation recovery now keeps a strongly evidenced priced equipment trolley instead of discarding it as a generic accessory.',
+    'Invoice-number recovery now supports an exact Invoice/Tax Invoice heading followed by NO:, without treating GST/company registration numbers as invoice numbers.',
+    'Header cleanup removes label-only D/O values and exact duplicated leading supplier words while preserving real delivery-order values.',
     'Level 3 review now highlights only the exact affected line-item card when the warning can be mapped to evidence; unrelated items remain normal.',
     'Runtime integration fix: the parser gate now executes inside the final application scope immediately before Line Items render, using the live state.parsed and OCR evidence; this prevents a correct parser result from being lost while the Review screen still shows Delivery Fee.',
     'Real scanned-PDF regression fixed using actual INV-Dmx200 OCR evidence: numbered rows tolerate OCR brackets/pipes/slashes and can reconcile across independent OCR modes instead of requiring an ideal one-line fixture.',
@@ -734,5 +768,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
