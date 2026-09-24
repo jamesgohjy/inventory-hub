@@ -133,7 +133,8 @@
     if(!reconciliation.subtotalOk)review.push({reason:'subtotal-mismatch',delta:reconciliation.subtotalDelta});
     if(confidence<threshold)review.push({reason:'low-confidence',confidence,threshold});
     const status=review.length?'review':'accepted';
-    return {ok:status==='accepted',status,items:reconciliation.accepted,review,ranking,reconciliation,confidence,winnerOrigin:winner.origin||'unknown'};
+    const items=status==='accepted'?reconciliation.accepted:[];
+    return {ok:status==='accepted',status,items,review,ranking,reconciliation,confidence,winnerOrigin:winner.origin||'unknown'};
   }
 
   function validateRows(rows=[]){
