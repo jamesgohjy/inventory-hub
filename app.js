@@ -18,6 +18,7 @@
       const gates=[['behavioral',v7033.runRegressionChecks()],['historical',v7033.runHistoricalRegressionChecks()],['quality',v7033.runQualityRegressionChecks14n()],['holdout',v7033.runHoldoutRegressionChecks14n()],['intelligence',v7033.runIntelligenceRegressionChecks14o()],['aerospace',v7033.runAerospaceRegressionChecks14p()],['monetary',v7033.runMonetaryConsensusRegressionChecks14q()],['header-aligned-money',v7033.runHeaderAlignedMoneyRegressionChecks14r()]];
       const failed=gates.filter(([,r])=>!r?.ok).map(([n,r])=>n+': '+(r?.failures||[]).join(', '));if(failed.length)throw new Error('Regression gate failed: '+failed.join(' | '));
       await loadScript('modules/parser-evidence-engine.js?v='+key,'InventoryHubParserEvidenceEngine');
+      await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
       await loadScript('modules/backup-verification-ui.js?v='+key,'InventoryHubBackupVerificationUI');
