@@ -1,0 +1,29 @@
+AV Inventory Hub v7.03.3.14s — Direct Repository Module Migration
+Generated: 2026-09-24T14:30:03.732Z
+==============================================================
+
+ARCHITECTURE
+PASS browser-time source replacement count: 0
+PASS Blob-generated application runtime count: 0
+PASS raw-GitHub baseline dependency: removed
+PASS baseline-as-text startup dependency: removed
+PASS direct parser module: modules/parser-table.js
+PASS direct grouped-company module: modules/grouped-company-ui.js
+PASS direct flattened runtime: runtime-v7.03.3.14s.js
+INFO v14r runtime/baseline retained only for rollback
+
+REGRESSION
+PASS core regression: 77/77
+PASS parser module Aerospace layout: AVS-320A 1 x 350.00 = 350.00
+PASS parser module Aerospace layout: 60100-SALES 1 x 90.00 = 90.00
+PASS installation row excluded
+PASS grouped-company collapsed card output
+PASS known-good v14m reference unchanged
+
+DATABASE
+No database migration required.
+
+CI
+Pull-request gate pending.
+
+OVERALL PRE-MERGE STATUS: PASS
