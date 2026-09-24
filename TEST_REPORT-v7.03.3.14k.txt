@@ -1,0 +1,65 @@
+AV Inventory Hub v7.03.3.14k — Validation Report
+Generated: 2026-09-24 (Asia/Singapore)
+=================================================
+
+PATCH FOCUS
+Parser and workflow regression hardening.
+
+ROOT CAUSES FOUND
+1. Dismantle/dismount work descriptions were not classified as service-only rows.
+2. The old service gate could also discard a real equipment row when the same row contained bundled installation/dismantling/commissioning text.
+3. Product identity correction could select an unrelated model token elsewhere on the invoice and overwrite a credible row SKU/model.
+4. Version/workflow regression checks verified symbol presence but did not enforce critical parser behavior.
+
+IMPLEMENTED
+- Added dismantle/dismount/de-mount/removal-of-existing service patterns.
+- Service-only rows remain excluded even when they mention a model, when the primary row is a work action.
+- Verified equipment rows with credible model + equipment identity survive bundled service text.
+- Product candidates now require row relevance before replacing an unsupported SKU/model.
+- A directly printed credible row model is preserved instead of being overwritten by unrelated invoice tokens.
+- Added runRegressionChecks() to v7033-core.js.
+- Loader now blocks startup if core version, upcoming-version separation, or behavioral regression suite fails.
+- Current version: v7.03.3.14k.
+- Coming Next: v7.03.3.14l.
+
+DETERMINISTIC BEHAVIORAL SUITE
+PASS 14 / 14
+PASS delivery fee is service
+PASS installation is service
+PASS dismantle-only row is service
+PASS dismount-only row is service
+PASS SKU-tagged dismantle action remains service
+PASS verified equipment survives bundled service text
+PASS HDMI cable is accessory
+PASS AVS-320 identity preserved
+PASS unsupported P80 corrected to printed P60
+PASS unrelated global model cannot hijack credible row
+PASS dedupe removes exact duplicate only
+PASS format-equivalent SKU reuses existing item
+PASS invoice remains valid with delivery-order reference
+PASS current and upcoming versions differ
+
+SOURCE-ASSISTED HISTORICAL CASES
+PASS 8 / 8
+PASS AVS-320 controller retained; installation and HDMI cable excluded.
+PASS Aerospace PT-VW540 and AVS320 identities retained; installation excluded.
+PASS Loud Technologies PGA58-LC retained; delivery service excluded.
+PASS JNY PT-TW381R bundled-equipment row retained.
+PASS JNY Standard Item Name excludes dismantle/installation/commissioning wording.
+PASS JNY Tax Invoice remains accepted with Delivery Order reference.
+PASS Seminar PT-VW540 and SPS-1100 are not hijacked by unrelated OCR model text.
+PASS Seminar projector bracket row remains excluded.
+
+NOTE
+The five historical PDFs were initially readable and used to expose the identity-hijack issue. A later Files read temporarily returned "No readable content", so the final source-assisted rerun used the already recovered invoice text excerpts rather than claiming a fresh full OCR end-to-end pass.
+
+SYNTAX / RELEASE GATES
+PASS v7033-core.js JavaScript syntax
+PASS app.js JavaScript syntax
+PASS v7033 core version matches loader
+PASS Current 14k / Upcoming 14l are different
+PASS behavioral startup regression gate
+PASS cache revision updated for 14k assets
+
+OVERALL PRE-DEPLOYMENT STATUS
+PASS
