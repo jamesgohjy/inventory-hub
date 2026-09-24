@@ -1,0 +1,52 @@
+{
+  "version": "7.03.3.14t",
+  "generated_at": "2026-09-24T14:54:17.161Z",
+  "overall_code_status": "PASS (pre-PR)",
+  "live_backup_verification_status": "NOT READY / UNVERIFIED until SQL migration and GitHub secrets are confirmed",
+  "architecture": {
+    "scheduled_verifier": ".github/workflows/backup-verification.yml",
+    "schedule": "daily 02:30 Asia/Singapore (18:30 UTC)",
+    "verifier": "scripts/verify-backups.mjs",
+    "database_migration": "supabase-v7-03-3-14t-backup-verification.sql",
+    "admin_ui": "modules/backup-verification-ui.js",
+    "direct_runtime": "runtime-v7.03.3.14t.js",
+    "production_source_replacement_count": 0,
+    "production_blob_runtime_count": 0
+  },
+  "verification_scope": {
+    "managed_database_backup_freshness": true,
+    "database_required_tables": true,
+    "database_relationship_integrity": true,
+    "invoice_storage_object_presence": true,
+    "invoice_storage_readability": true,
+    "invoice_sha256_where_available": true,
+    "verification_history": true,
+    "independent_offsite_storage_copy": false
+  },
+  "security": {
+    "admin_ui_only": true,
+    "service_snapshot_rpc_service_role_only": true,
+    "service_record_rpc_service_role_only": true,
+    "secret_values_committed": false,
+    "server_secret_names": [
+      "SUPABASE_ACCESS_TOKEN",
+      "SUPABASE_SECRET_KEY"
+    ],
+    "browser_receives_secret": false
+  },
+  "preflight": {
+    "version_alignment": "14t current / 14u upcoming",
+    "direct_runtime_architecture": "PASS",
+    "secret_pattern_scan": "PASS",
+    "sql_contract_scan": "PASS",
+    "workflow_contract_scan": "PASS",
+    "existing_core_regression_expected": "77/77; PR CI pending"
+  },
+  "required_live_setup": [
+    "Run supabase-v7-03-3-14t-backup-verification.sql in Supabase SQL Editor.",
+    "Add GitHub Actions secret SUPABASE_ACCESS_TOKEN with backups_read permission.",
+    "Add GitHub Actions secret SUPABASE_SECRET_KEY using a server-side Supabase secret key.",
+    "Run Inventory Hub Backup Verification once manually and confirm a PASS/WARN/FAIL history row appears."
+  ],
+  "limitation": "This verifies current document Storage integrity but does not create an independent off-site copy of invoice PDFs. Supabase managed database backups cover the database, not Storage object contents."
+}
