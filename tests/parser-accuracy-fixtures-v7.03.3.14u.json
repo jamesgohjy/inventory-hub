@@ -1,0 +1,429 @@
+{
+  "version": "7.03.3.14u",
+  "methodology": "Supplier-neutral structural fixtures. Cases are reconstructed from failure classes seen in historical invoices; exact private PDFs are not committed. Historical source-excerpt field accuracy is separately measured in run-regression.cjs.",
+  "cases": [
+    {
+      "id": "header-separated-equipment-service",
+      "sourceText": "TAX INVOICE",
+      "layout": [
+        {
+          "yTolerance": 3,
+          "rows": [
+            {
+              "y": 100,
+              "text": "PRODUCT DESCRIPTION QUANTITY PRICE AMOUNT",
+              "items": [
+                {
+                  "text": "PRODUCT",
+                  "x": 50,
+                  "width": 70
+                },
+                {
+                  "text": "DESCRIPTION",
+                  "x": 190,
+                  "width": 120
+                },
+                {
+                  "text": "QUANTITY",
+                  "x": 480,
+                  "width": 55
+                },
+                {
+                  "text": "PRICE",
+                  "x": 590,
+                  "width": 45
+                },
+                {
+                  "text": "AMOUNT",
+                  "x": 700,
+                  "width": 55
+                }
+              ]
+            },
+            {
+              "y": 130,
+              "text": "AVS-320 Projector controller 2 350.00 700.00",
+              "items": [
+                {
+                  "text": "AVS-320",
+                  "x": 55,
+                  "width": 75
+                },
+                {
+                  "text": "Projector controller",
+                  "x": 190,
+                  "width": 200
+                },
+                {
+                  "text": "2",
+                  "x": 492,
+                  "width": 16
+                },
+                {
+                  "text": "350.00",
+                  "x": 585,
+                  "width": 50
+                },
+                {
+                  "text": "700.00",
+                  "x": 695,
+                  "width": 50
+                }
+              ]
+            },
+            {
+              "y": 160,
+              "text": "60200-INSTALLATION Installation work 1 530.00 530.00",
+              "items": [
+                {
+                  "text": "60200-INSTALLATION",
+                  "x": 55,
+                  "width": 120
+                },
+                {
+                  "text": "Installation work",
+                  "x": 190,
+                  "width": 180
+                },
+                {
+                  "text": "1",
+                  "x": 492,
+                  "width": 16
+                },
+                {
+                  "text": "530.00",
+                  "x": 585,
+                  "width": 50
+                },
+                {
+                  "text": "530.00",
+                  "x": 695,
+                  "width": 50
+                }
+              ]
+            },
+            {
+              "y": 200,
+              "text": "SUBTOTAL 1230.00",
+              "items": [
+                {
+                  "text": "SUBTOTAL",
+                  "x": 570,
+                  "width": 70
+                },
+                {
+                  "text": "1230.00",
+                  "x": 695,
+                  "width": 55
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "sku": "AVS-320",
+          "nameIncludes": "Projector controller",
+          "quantity": 2,
+          "unit_price": 350,
+          "amount": 700
+        }
+      ]
+    },
+    {
+      "id": "merged-economics-thousands",
+      "sourceText": "TAX INVOICE",
+      "layout": [
+        {
+          "yTolerance": 3,
+          "rows": [
+            {
+              "y": 100,
+              "text": "PRODUCT DESCRIPTION QUANTITY PRICE AMOUNT",
+              "items": [
+                {
+                  "text": "PRODUCT",
+                  "x": 50,
+                  "width": 70
+                },
+                {
+                  "text": "DESCRIPTION",
+                  "x": 190,
+                  "width": 120
+                },
+                {
+                  "text": "QUANTITY",
+                  "x": 480,
+                  "width": 55
+                },
+                {
+                  "text": "PRICE",
+                  "x": 590,
+                  "width": 45
+                },
+                {
+                  "text": "AMOUNT",
+                  "x": 700,
+                  "width": 55
+                }
+              ]
+            },
+            {
+              "y": 130,
+              "text": "PT-VW540 Projector 5000 ANSI lumens 2 1,414.00 2,828.00",
+              "items": [
+                {
+                  "text": "PT-VW540",
+                  "x": 55,
+                  "width": 80
+                },
+                {
+                  "text": "Projector 5000 ANSI lumens",
+                  "x": 190,
+                  "width": 250
+                },
+                {
+                  "text": "2 1,414.00 2,828.00",
+                  "x": 450,
+                  "width": 320
+                }
+              ]
+            },
+            {
+              "y": 180,
+              "text": "SUBTOTAL 2828.00",
+              "items": [
+                {
+                  "text": "SUBTOTAL",
+                  "x": 570,
+                  "width": 70
+                },
+                {
+                  "text": "2828.00",
+                  "x": 695,
+                  "width": 55
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "sku": "PT-VW540",
+          "nameIncludes": "5000 ANSI",
+          "quantity": 2,
+          "unit_price": 1414,
+          "amount": 2828
+        }
+      ]
+    },
+    {
+      "id": "multiline-warranty-numeric-row",
+      "sourceText": "TAX INVOICE",
+      "layout": [
+        {
+          "yTolerance": 3,
+          "rows": [
+            {
+              "y": 100,
+              "text": "PRODUCT DESCRIPTION QUANTITY PRICE AMOUNT",
+              "items": [
+                {
+                  "text": "PRODUCT",
+                  "x": 50,
+                  "width": 70
+                },
+                {
+                  "text": "DESCRIPTION",
+                  "x": 190,
+                  "width": 120
+                },
+                {
+                  "text": "QUANTITY",
+                  "x": 480,
+                  "width": 55
+                },
+                {
+                  "text": "PRICE",
+                  "x": 590,
+                  "width": 45
+                },
+                {
+                  "text": "AMOUNT",
+                  "x": 700,
+                  "width": 55
+                }
+              ]
+            },
+            {
+              "y": 130,
+              "text": "U35C Wireless System",
+              "items": [
+                {
+                  "text": "U35C",
+                  "x": 55,
+                  "width": 55
+                },
+                {
+                  "text": "Wireless System for Condenser Microphones",
+                  "x": 190,
+                  "width": 260
+                }
+              ]
+            },
+            {
+              "y": 142,
+              "text": "Warranty: 1 Year",
+              "items": [
+                {
+                  "text": "Warranty: 1 Year",
+                  "x": 190,
+                  "width": 150
+                }
+              ]
+            },
+            {
+              "y": 154,
+              "text": "4 340.00 1360.00",
+              "items": [
+                {
+                  "text": "4",
+                  "x": 492,
+                  "width": 16
+                },
+                {
+                  "text": "340.00",
+                  "x": 585,
+                  "width": 50
+                },
+                {
+                  "text": "1360.00",
+                  "x": 695,
+                  "width": 55
+                }
+              ]
+            },
+            {
+              "y": 190,
+              "text": "SUBTOTAL 1360.00",
+              "items": [
+                {
+                  "text": "SUBTOTAL",
+                  "x": 570,
+                  "width": 70
+                },
+                {
+                  "text": "1360.00",
+                  "x": 695,
+                  "width": 55
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "sku": "U35C",
+          "nameIncludes": "Wireless System",
+          "quantity": 4,
+          "unit_price": 340,
+          "amount": 1360,
+          "warranty": "1 Years"
+        }
+      ]
+    },
+    {
+      "id": "invalid-economics-do-not-invent",
+      "sourceText": "TAX INVOICE",
+      "layout": [
+        {
+          "yTolerance": 3,
+          "rows": [
+            {
+              "y": 100,
+              "text": "PRODUCT DESCRIPTION QUANTITY PRICE AMOUNT",
+              "items": [
+                {
+                  "text": "PRODUCT",
+                  "x": 50,
+                  "width": 70
+                },
+                {
+                  "text": "DESCRIPTION",
+                  "x": 190,
+                  "width": 120
+                },
+                {
+                  "text": "QUANTITY",
+                  "x": 480,
+                  "width": 55
+                },
+                {
+                  "text": "PRICE",
+                  "x": 590,
+                  "width": 45
+                },
+                {
+                  "text": "AMOUNT",
+                  "x": 700,
+                  "width": 55
+                }
+              ]
+            },
+            {
+              "y": 130,
+              "text": "MX100 Audio processor 2 350.00 500.00",
+              "items": [
+                {
+                  "text": "MX100",
+                  "x": 55,
+                  "width": 55
+                },
+                {
+                  "text": "Audio processor",
+                  "x": 190,
+                  "width": 180
+                },
+                {
+                  "text": "2",
+                  "x": 492,
+                  "width": 16
+                },
+                {
+                  "text": "350.00",
+                  "x": 585,
+                  "width": 50
+                },
+                {
+                  "text": "500.00",
+                  "x": 695,
+                  "width": 50
+                }
+              ]
+            },
+            {
+              "y": 180,
+              "text": "SUBTOTAL 500.00",
+              "items": [
+                {
+                  "text": "SUBTOTAL",
+                  "x": 570,
+                  "width": 70
+                },
+                {
+                  "text": "500.00",
+                  "x": 695,
+                  "width": 55
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": []
+    }
+  ]
+}

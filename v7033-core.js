@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.14j cumulative evidence + consolidation patch
+/* AV Inventory Hub v7.03.3.14u evidence-ranked parser + accuracy regression patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14t';
+  const VERSION='7.03.3.14u';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -1205,11 +1205,11 @@
   }
 
   const RELEASE_NOTES=[
-    'Added daily Supabase managed-backup verification using the official Management API and server-side GitHub Actions secrets.',
-    'Added database relationship checks plus invoice-PDF Storage existence and SHA-256 integrity verification.',
-    'Added Admin-only backup status/history; setup stays clearly marked incomplete until the 14t SQL and secure secrets are configured.'
+    'Replaced source-specific parser winner boosts with supplier-neutral evidence ranking based on arithmetic, structure, review state and cross-candidate agreement.',
+    'Reconciled parser output is now treated as a candidate that must win on evidence instead of automatically overriding other extraction paths.',
+    'Added field-level parser accuracy fixtures, adversarial mutation checks and explicit evidence metrics so CI cannot report a vague PASS.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14u';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14v';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Add parser-quality export, retention and long-term trend controls.'},
     {id:'module-decomposition',text:'Continue low-risk module separation for audit, maintenance and data-access code.'},
