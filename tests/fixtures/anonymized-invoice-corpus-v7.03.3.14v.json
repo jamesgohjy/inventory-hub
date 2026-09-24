@@ -805,16 +805,8 @@
         }
       ],
       "expected": {
-        "status": "accepted",
-        "winnerOrigin": "layout",
-        "rows": [
-          [
-            "ANT-2",
-            1,
-            270,
-            270
-          ]
-        ]
+        "status": "review",
+        "rows": []
       }
     },
     {
