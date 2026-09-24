@@ -3074,18 +3074,16 @@ $('saveImportBtn').addEventListener('click',e=>{
   if(effective!=='equipment'){e.preventDefault();e.stopImmediatePropagation();renderImportEligibility();toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':effective==='noninventory'?'No tracked equipment found. Excluded accessory-only invoices cannot be imported.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');return;}
   state.parsed.items=v689SerialIntegrityGate(state.parsed.items||[],state.parsed.raw||state.parsed.rawText||'');
   if(!(state.parsed.items||[]).length){e.preventDefault();e.stopImmediatePropagation();toast('No verified physical inventory line item is available to save.');return;}
-  if(globalThis.AVParserV7){try{
-    const completeness=state.parsed?.v7?.completenessValidation||state.parsed?.parseEvidence?.v7?.completenessValidation||state.parsed?.parseEvidence?.completeness||null;
-    let prep=globalThis.AVParserV7.prepareSave(state.parsed.items||[],{humanReviewed:false,completeness});state.parsed.items=prep.rows;
-    if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'A confirmed validation error prevents saving.');return;}
+  try{
+    let prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:false});
+    if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'Canonical parser validation prevents saving.');return;}
     if(prep.status==='review'){
-      const documentReview=!!(state.parsed?.v7?.documentReviewRequired||state.parsed?.documentReviewRequired||state.importDocumentReviewRequired);
-      const accepted=window.confirm(documentReview?'Level 3 — Verify document type.\n\nThis file has invoice-like structure, but the Invoice / Tax Invoice document type was not fully verified automatically. Compare it with the PDF and select OK only if it is genuinely an Invoice / Tax Invoice.':'Level 3 — Please verify this item.\n\nBefore saving, confirm that the highlighted field(s) match the source invoice. Also check quantity, unit price, amount and serial number(s) where shown.\n\nSelect OK only after checking these values against the PDF.');
+      const accepted=window.confirm('Level 3 — Please verify this item.\n\nThe canonical parser requires human review. Compare the highlighted values with the original invoice evidence, including quantity, unit price, amount and serial number(s).\n\nSelect OK only after checking the source invoice.');
       if(!accepted){e.preventDefault();e.stopImmediatePropagation();toast('Save paused for human review.');v703RenderVerificationNotice();return;}
-      prep=globalThis.AVParserV7.prepareSave(state.parsed.items||[],{humanReviewed:true,completeness});state.parsed.items=prep.rows;
-      if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'A confirmed validation error prevents saving.');return;}
+      prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:true});
+      if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'Canonical parser validation prevents saving.');return;}
     }
-  }catch(v7SaveErr){console.warn('V7.03 save validation error',v7SaveErr);e.preventDefault();e.stopImmediatePropagation();toast('Parser validation could not complete. Save has been stopped for safety.');return;}}
+  }catch(canonicalSaveErr){console.warn('Canonical save validation error',canonicalSaveErr);e.preventDefault();e.stopImmediatePropagation();toast('Canonical parser validation could not complete. Save has been stopped for safety.');return;}
   return;
 },true);
 // Final evidence gate runs before the existing save handler.
