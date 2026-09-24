@@ -1,9 +1,9 @@
-// AV Inventory Hub v7.03.3.14s — direct repository module bootstrap
+// AV Inventory Hub v7.03.3.14t — automated backup verification
 (function(){
   'use strict';
-  if(window.__AV_V703314S_BOOTSTRAP_STARTED__)return;
-  window.__AV_V703314S_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14s',ASSET_REV='v703314s-direct-modules-20260924-1';
+  if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
+  window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
+  const VERSION='7.03.3.14t',ASSET_REV='v703314t-backup-verification-20260924-1';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -19,13 +19,14 @@
       const failed=gates.filter(([,r])=>!r?.ok).map(([n,r])=>n+': '+(r?.failures||[]).join(', '));if(failed.length)throw new Error('Regression gate failed: '+failed.join(' | '));
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
-      await loadScript('runtime-v7.03.3.14s.js?v='+key);
+      await loadScript('modules/backup-verification-ui.js?v='+key,'InventoryHubBackupVerificationUI');
+      await loadScript('runtime-v7.03.3.14t.js?v='+key);
       if(!window.__AV_DIRECT_RUNTIME_READY__?.then)throw new Error('Direct runtime readiness promise was not created.');
       await window.__AV_DIRECT_RUNTIME_READY__;
       if(window.__AV_DIRECT_RUNTIME_LOADED__!==VERSION)throw new Error('Direct runtime did not initialise as '+VERSION+'.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
-      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='direct repository modules v7.03.3.14s';
-      console.info('AV Inventory Hub '+VERSION+' loaded from direct repository modules.',Object.fromEntries(gates));
+      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='direct repository modules v7.03.3.14t';
+      console.info('AV Inventory Hub '+VERSION+' loaded with automated backup verification.',Object.fromEntries(gates));
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';

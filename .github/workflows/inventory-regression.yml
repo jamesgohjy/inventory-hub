@@ -7,22 +7,31 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
-      - "runtime-v7.03.3.14s.js"
+      - "runtime-v7.03.3.14t.js"
       - "modules/**"
+      - "scripts/**"
       - "index.html"
       - "tests/**"
       - "supabase-v7-03-3-14o-parser-intelligence.sql"
+      - "supabase-v7-03-3-14t-backup-verification.sql"
+      - "BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md"
       - ".github/workflows/inventory-regression.yml"
+      - ".github/workflows/backup-verification.yml"
   pull_request:
     paths:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
-      - "runtime-v7.03.3.14s.js"
+      - "runtime-v7.03.3.14t.js"
       - "modules/**"
+      - "scripts/**"
       - "index.html"
       - "tests/**"
       - "supabase-v7-03-3-14o-parser-intelligence.sql"
+      - "supabase-v7-03-3-14t-backup-verification.sql"
+      - "BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md"
+      - ".github/workflows/inventory-regression.yml"
+      - ".github/workflows/backup-verification.yml"
 
 permissions:
   contents: read
@@ -36,11 +45,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Syntax-check direct runtime modules
+      - name: Syntax-check direct runtime and backup verifier
         run: |
           node --check app.js
-          node --check runtime-v7.03.3.14s.js
+          node --check runtime-v7.03.3.14t.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
-      - name: Run parser, module and release regression gates
+          node --check modules/backup-verification-ui.js
+          node --check scripts/verify-backups.mjs
+      - name: Run parser, module, backup and release regression gates
         run: node tests/run-regression.cjs
