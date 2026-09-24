@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14f';
+  const VERSION='7.03.3.14g';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -698,11 +698,50 @@
     return {matched:true,reason:credible.length===1?'same-name-single-verified-model':'same-normalized-name',item:canonical,line:{...incoming,sku:clean(canonical.sku||incoming.sku||''),item_name:canonical.item_name||incoming.item_name,category:incoming.category||canonical.category||''}};
   }
   function prepareLinesForInventory(lines=[],items=[]){return (lines||[]).map(x=>{const resolved=resolveInventoryMatch(x,items).line;const standard=clean(resolved.item_name||'');return standard?{...resolved,description:standard}:resolved;});}
+  function analyzeDuplicatePair(a={},b={},items=[]){
+    const skuA=clean(a.sku||''),skuB=clean(b.sku||''),keyA=compact(skuA),keyB=compact(skuB);
+    if(!keyA||!keyB||keyA!==keyB)return {candidate:false,mergeEligible:false,reason:'different-sku-identity',score:0,blockers:[],warnings:[],a,b};
+    const exact=skuA.toLowerCase()===skuB.toLowerCase();
+    const catA=norm(a.category||''),catB=norm(b.category||'');
+    const blockers=[],warnings=[];
+    if(catA&&catB&&catA!==catB)blockers.push('Categories conflict: '+clean(a.category)+' vs '+clean(b.category)+'.');
+    const sameKey=(items||[]).filter(i=>compact(i.sku||'')===keyA);
+    if(sameKey.length>2)blockers.push('More than two Master Items share this SKU identity. Review the full duplicate group first.');
+    const nameA=normalizedItemIdentity(a.item_name||a.description||''),nameB=normalizedItemIdentity(b.item_name||b.description||'');
+    if(nameA&&nameB&&nameA!==nameB)warnings.push('Item names differ. Confirm both records refer to the same physical model before merging.');
+    return {
+      candidate:true,
+      mergeEligible:blockers.length===0,
+      reason:exact?'exact-sku':'format-normalized-sku',
+      confidence:exact?'exact':'high',
+      score:exact?1:0.98,
+      normalizedSku:keyA,
+      blockers,
+      warnings,
+      a,b
+    };
+  }
+
+  function duplicateCandidates(items=[]){
+    const out=[],rows=items||[];
+    for(let i=0;i<rows.length;i++)for(let j=i+1;j<rows.length;j++){
+      const candidate=analyzeDuplicatePair(rows[i],rows[j],rows);
+      if(candidate.candidate)out.push(candidate);
+    }
+    return out;
+  }
+
   function safeDuplicateGroups(items=[]){
     const groups=new Map();
-    for(const i of items||[]){const k=normalizedItemIdentity(i.item_name||i.description||'');if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);}
+    for(const i of items||[]){const k=compact(i.sku||'');if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);}
     const out=[];
-    for(const [key,rows] of groups){if(rows.length<2)continue;const skus=uniq(rows.filter(x=>credibleSku(x.sku||'')).map(x=>clean(x.sku)),compact);const cats=uniq(rows.map(x=>norm(x.category||'')).filter(Boolean));if(skus.length>1||cats.length>1)continue;const canonical=rows.find(x=>skus.length&&compact(x.sku||'')===compact(skus[0]))||rows[0];out.push({key,canonical,duplicates:rows.filter(x=>x!==canonical),verifiedSku:skus[0]||''});}
+    for(const [key,rows] of groups){
+      if(rows.length!==2)continue;
+      const analysis=analyzeDuplicatePair(rows[0],rows[1],items);
+      if(!analysis.candidate||!analysis.mergeEligible)continue;
+      const canonical=rows.slice().sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))[0]||rows[0];
+      out.push({key,canonical,duplicates:rows.filter(x=>x!==canonical),verifiedSku:clean(canonical.sku||''),analysis});
+    }
     return out;
   }
 
@@ -721,17 +760,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Fixed Inventory Hub startup and loader errors.',
-    'Corrected Master SKU merge loading.',
-    'Preserved existing parser and inventory fixes.'
+    'Added Data Health review for duplicate Master SKUs.',
+    'Added safer merge preview, conflict blocking and confirmation.',
+    'Added refreshed-data verification after Master Item merges.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14g';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14h';
   const RELEASE_ROADMAP=[
-    {id:'sku-merge-detection',text:'Improve duplicate SKU detection and merging.'},
-    {id:'merge-confirmation-errors',text:'Refine merge confirmation and error handling.'},
-    {id:'regression-protection',text:'Strengthen regression checks to prevent fixed issues returning.'}
+    {id:'health-resolution',text:'Improve Data Health issue resolution and history.'},
+    {id:'merge-audit-visibility',text:'Surface Master Item merge details in Recent Activities.'},
+    {id:'ui-regression',text:'Continue UI and workflow regression hardening.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set();
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
@@ -764,5 +803,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
