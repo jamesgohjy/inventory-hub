@@ -1,4 +1,4 @@
-// Inventory Hub parser table module — v7.03.3.14s
+// Inventory Hub parser table module — v7.03.3.14u
 (function(global){
   'use strict';
   function parseHeaderAlignedLayout({
@@ -34,11 +34,14 @@
         for(let i=0;i<uniq.length;i++){
           const p0=pos(uniq[i].row)-Math.max(4,Number(pg.yTolerance)||3),p1=i+1<uniq.length?pos(uniq[i+1].row)-Math.max(4,Number(pg.yTolerance)||3):totalPos,group=body.filter(r=>pos(r)>=p0&&pos(r)<p1),rightItems=group.flatMap(r=>r.items||[]).filter(it=>(Number(it.x)||0)+(Number(it.width)||0)>=qtyStart),econ=resolveEconomics(rightItems,{qty:xQty,price:xPrice,amount:xAmount});
           if(!econ?.ok)continue;
+          const evidenceCheck=global.InventoryHubParserEvidenceEngine?.verifyEconomics?.({quantity:econ.quantity,unit_price:econ.unit_price,amount:econ.amount});
+          if(evidenceCheck&&evidenceCheck.ok!==true)continue;
           const descParts=[];let warranty='';
           for(const r of group){const d=(r.items||[]).filter(it=>center(it)>=bCD&&center(it)<qtyStart).map(it=>String(it.text||'').trim()).filter(Boolean).join(' ').trim();if(!d)continue;if(/\bwarranty\b|\bWT\s+FOR\b/i.test(d)){const y=d.match(/\b(\d+)\s*years?\b/i);warranty=y?y[1]+' Years':warranty;continue;}if(!/^\s*(?:s\/?n|serial|shipment\s*no)\b/i.test(d))descParts.push(d);}
           const description=cleanInventoryDescription(descParts.join(' '));if(!description)continue;
           const sku=cleanVerifiedSku(uniq[i].code,sourceText||group.map(r=>r.text||'').join('\n')),line=normalizeParsedInvoiceItem({sku,item_name:description,description,category:'',unit:'pcs',quantity:econ.quantity,unit_price:econ.unit_price,amount:econ.amount,warranty,serials:''});
-          line.layoutEvidenceVerified=true;line.economicEvidenceVerified=true;line.v703314rHeaderAligned=true;line.v703314sHeaderAligned=true;line.quantityReviewRequired=false;line.priceReviewRequired=false;line.amountReviewRequired=false;
+          line.layoutEvidenceVerified=true;line.economicEvidenceVerified=true;line.v703314rHeaderAligned=true;line.v703314sHeaderAligned=true;line.v703314uEvidenceVerified=true;line.quantityReviewRequired=false;line.priceReviewRequired=false;line.amountReviewRequired=false;
+          line.parserEvidence14u=global.InventoryHubParserEvidenceEngine?.assessRow?.(line)||null;
           if(typeof isServiceLine==='function'&&isServiceLine(line))continue;
           out.push(line);
         }
@@ -47,5 +50,5 @@
     }
     return out;
   }
-  global.InventoryHubParserTable=Object.freeze({version:'7.03.3.14s',parseHeaderAlignedLayout});
+  global.InventoryHubParserTable=Object.freeze({version:'7.03.3.14u',parseHeaderAlignedLayout});
 })(window);
