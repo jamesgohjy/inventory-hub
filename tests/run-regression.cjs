@@ -200,7 +200,16 @@ for(const fx of anonymizedCorpus.cases){
   corpusPassed++;
 }
 assert(corpusPassed===anonymizedCorpus.cases.length,'Not all anonymized corpus fixtures passed');
-console.log('anonymized-pipeline-corpus: '+corpusPassed+'/'+anonymizedCorpus.cases.length+' fixtures, '+corpusFields+' accepted-row fields PASS');
+const corpusFailureClasses=new Set(anonymizedCorpus.cases.map(x=>x.failureClass||x.id));
+assert(anonymizedCorpus.cases.length>=20,'Anonymized corpus must retain at least 20 structural cases');
+assert(corpusFailureClasses.size>=15,'Anonymized corpus must cover at least 15 distinct structural failure classes');
+const forbiddenFixtureKeys=['supplier','customer','address','email','phone','invoice_number','invoiceNumber','rawText','pdf','imageBytes'];
+for(const fx of anonymizedCorpus.cases){
+  const serialized=JSON.stringify(fx).toLowerCase();
+  for(const key of forbiddenFixtureKeys)assert(!Object.prototype.hasOwnProperty.call(fx,key),'Private/raw fixture field forbidden: '+key+' in '+fx.id);
+  assert(!/\b(?:pte\.?\s*ltd|private limited|@|\+65\s*\d{4})\b/i.test(serialized),'Fixture appears to contain identifying organization/contact data: '+fx.id);
+}
+console.log('anonymized-pipeline-corpus: '+corpusPassed+'/'+anonymizedCorpus.cases.length+' fixtures, '+corpusFields+' accepted-row fields, '+corpusFailureClasses.size+' failure classes PASS');
 
 
 vm.runInContext(groupModule,mctx,{filename:'modules/grouped-company-ui.js'});

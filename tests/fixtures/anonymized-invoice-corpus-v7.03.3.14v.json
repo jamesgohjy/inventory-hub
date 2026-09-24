@@ -1,6 +1,6 @@
 {
   "version": "7.03.3.14v",
-  "description": "Synthetic/anonymized invoice evidence fixtures. No customer names, addresses, contacts, original invoice numbers, or source PDF bytes.",
+  "description": "Synthetic/anonymized structural invoice evidence corpus derived from historical failure classes. Contains no customer/supplier identities, addresses, contacts, original invoice numbers, raw invoice text, or source PDF/image bytes.",
   "cases": [
     {
       "id": "clean-columnar-a",
@@ -277,6 +277,607 @@
             900
           ]
         ]
+      }
+    },
+    {
+      "id": "multiline-description-with-warranty",
+      "failureClass": "multiline-description",
+      "subtotal": 1360,
+      "candidates": [
+        {
+          "origin": "layout",
+          "items": [
+            {
+              "sku": "RAD-35",
+              "item_name": "Dual-channel wireless receiver",
+              "quantity": 4,
+              "unit_price": 340,
+              "amount": 1360,
+              "warranty": "1 Year",
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "flattened",
+          "items": [
+            {
+              "sku": "RAD-35",
+              "item_name": "Dual-channel wireless receiver Warranty",
+              "quantity": 1,
+              "unit_price": 4,
+              "amount": 340,
+              "provenance": {
+                "source": "text"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "layout",
+        "rows": [
+          [
+            "RAD-35",
+            4,
+            340,
+            1360
+          ]
+        ]
+      }
+    },
+    {
+      "id": "brand-model-token-split",
+      "failureClass": "brand-model-ambiguity",
+      "subtotal": 1100,
+      "candidates": [
+        {
+          "origin": "structured",
+          "items": [
+            {
+              "sku": "MAS-1818",
+              "brand": "ExampleBrand",
+              "model": "MAS-1818",
+              "item_name": "Motorized AV screen",
+              "quantity": 2,
+              "unit_price": 550,
+              "amount": 1100,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "ocr",
+          "items": [
+            {
+              "sku": "EXAMPLEBRAND",
+              "item_name": "MAS-1818 Motorized AV screen",
+              "quantity": 2,
+              "unit_price": 550,
+              "amount": 1100,
+              "provenance": {
+                "source": "ocr"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "delivery-fee-only",
+      "failureClass": "service-only",
+      "subtotal": 90,
+      "candidates": [
+        {
+          "origin": "table",
+          "items": [
+            {
+              "sku": "DEL",
+              "item_name": "Delivery charge",
+              "quantity": 1,
+              "unit_price": 90,
+              "amount": 90,
+              "classification": {
+                "type": "service"
+              },
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "table"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "installation-plus-equipment",
+      "failureClass": "mixed-service-equipment",
+      "subtotal": 900,
+      "candidates": [
+        {
+          "origin": "clean-equipment",
+          "items": [
+            {
+              "sku": "AMP-200",
+              "item_name": "Power amplifier",
+              "quantity": 2,
+              "unit_price": 450,
+              "amount": 900,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "table"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "mixed",
+          "items": [
+            {
+              "sku": "AMP-200",
+              "item_name": "Power amplifier",
+              "quantity": 2,
+              "unit_price": 450,
+              "amount": 900
+            },
+            {
+              "sku": "INSTALL",
+              "item_name": "Installation labour",
+              "quantity": 1,
+              "unit_price": 300,
+              "amount": 300,
+              "classification": {
+                "type": "service"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "clean-equipment",
+        "rows": [
+          [
+            "AMP-200",
+            2,
+            450,
+            900
+          ]
+        ]
+      }
+    },
+    {
+      "id": "thousands-separator-columns",
+      "failureClass": "merged-money-columns",
+      "subtotal": 9640,
+      "candidates": [
+        {
+          "origin": "column-layout",
+          "items": [
+            {
+              "sku": "PJ-381",
+              "item_name": "Short throw projector",
+              "quantity": 2,
+              "unit_price": 4820,
+              "amount": 9640,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "flattened",
+          "items": [
+            {
+              "sku": "PJ-381",
+              "item_name": "Short throw projector",
+              "quantity": 2,
+              "unit_price": 9640,
+              "amount": 4820,
+              "provenance": {
+                "source": "text"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "column-layout",
+        "rows": [
+          [
+            "PJ-381",
+            2,
+            4820,
+            9640
+          ]
+        ]
+      }
+    },
+    {
+      "id": "description-year-not-quantity",
+      "failureClass": "description-numeric-token",
+      "subtotal": 804,
+      "candidates": [
+        {
+          "origin": "layout",
+          "items": [
+            {
+              "sku": "PJ-540",
+              "item_name": "Projector 2025 edition",
+              "quantity": 1,
+              "unit_price": 804,
+              "amount": 804,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "flat",
+          "items": [
+            {
+              "sku": "PJ-540",
+              "item_name": "Projector edition",
+              "quantity": 2025,
+              "unit_price": 1,
+              "amount": 804,
+              "provenance": {
+                "source": "text"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "layout",
+        "rows": [
+          [
+            "PJ-540",
+            1,
+            804,
+            804
+          ]
+        ]
+      }
+    },
+    {
+      "id": "duplicate-identical-lines",
+      "failureClass": "duplicate-lines",
+      "subtotal": 646.9,
+      "candidates": [
+        {
+          "origin": "dedupe",
+          "items": [
+            {
+              "sku": "MIC-58",
+              "item_name": "Dynamic microphone",
+              "quantity": 10,
+              "unit_price": 64.69,
+              "amount": 646.9,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "ocr-repeat",
+          "items": [
+            {
+              "sku": "MIC-58",
+              "item_name": "Dynamic microphone",
+              "quantity": 10,
+              "unit_price": 64.69,
+              "amount": 646.9
+            },
+            {
+              "sku": "MIC-58",
+              "item_name": "Dynamic microphone",
+              "quantity": 10,
+              "unit_price": 64.69,
+              "amount": 646.9
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "dedupe",
+        "rows": [
+          [
+            "MIC-58",
+            10,
+            64.69,
+            646.9
+          ]
+        ]
+      }
+    },
+    {
+      "id": "serial-block-does-not-create-item",
+      "failureClass": "serial-block",
+      "subtotal": 480,
+      "candidates": [
+        {
+          "origin": "layout",
+          "items": [
+            {
+              "sku": "TX-2",
+              "item_name": "Wireless transmitter",
+              "quantity": 1,
+              "unit_price": 480,
+              "amount": 480,
+              "serials": [
+                "ANON-SERIAL-A"
+              ],
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "serial-as-row",
+          "items": [
+            {
+              "sku": "TX-2",
+              "item_name": "Wireless transmitter",
+              "quantity": 1,
+              "unit_price": 480,
+              "amount": 480
+            },
+            {
+              "sku": "ANON-SERIAL-A",
+              "item_name": "Serial number",
+              "quantity": 1,
+              "unit_price": 0,
+              "amount": 0
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "layout",
+        "rows": [
+          [
+            "TX-2",
+            1,
+            480,
+            480
+          ]
+        ]
+      }
+    },
+    {
+      "id": "accessory-only-cable",
+      "failureClass": "noninventory-accessory",
+      "subtotal": 120,
+      "candidates": [
+        {
+          "origin": "table",
+          "items": [
+            {
+              "sku": "CBL-10",
+              "item_name": "HDMI cable",
+              "quantity": 10,
+              "unit_price": 12,
+              "amount": 120,
+              "classification": {
+                "type": "accessory"
+              },
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "table"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "zero-price-valid-equipment-review",
+      "failureClass": "zero-price-ambiguity",
+      "subtotal": 0,
+      "candidates": [
+        {
+          "origin": "table",
+          "items": [
+            {
+              "sku": "SPK-Z",
+              "item_name": "Powered speaker",
+              "quantity": 1,
+              "unit_price": 0,
+              "amount": 0,
+              "layoutEvidenceVerified": true,
+              "provenance": {
+                "source": "table"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "subtotal-mismatch",
+      "failureClass": "subtotal-reconciliation",
+      "subtotal": 1000,
+      "candidates": [
+        {
+          "origin": "table",
+          "items": [
+            {
+              "sku": "CTRL-9",
+              "item_name": "Control processor",
+              "quantity": 2,
+              "unit_price": 450,
+              "amount": 900,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "table"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "two-valid-candidates-cross-agreement",
+      "failureClass": "cross-candidate-agreement",
+      "subtotal": 270,
+      "candidates": [
+        {
+          "origin": "layout",
+          "items": [
+            {
+              "sku": "ANT-2",
+              "item_name": "Antenna distributor",
+              "quantity": 1,
+              "unit_price": 270,
+              "amount": 270,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "native-text",
+          "items": [
+            {
+              "sku": "ANT-2",
+              "item_name": "Antenna distributor",
+              "quantity": 1,
+              "unit_price": 270,
+              "amount": 270,
+              "provenance": {
+                "source": "native"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "missing-sku-valid-economics",
+      "failureClass": "missing-optional-sku",
+      "subtotal": 180,
+      "candidates": [
+        {
+          "origin": "layout",
+          "items": [
+            {
+              "sku": "",
+              "item_name": "Powered speaker stand system",
+              "quantity": 2,
+              "unit_price": 90,
+              "amount": 180,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "conflicting-quantity-candidates",
+      "failureClass": "candidate-conflict",
+      "subtotal": 700,
+      "candidates": [
+        {
+          "origin": "layout-a",
+          "items": [
+            {
+              "sku": "CTRL-700",
+              "item_name": "AV controller",
+              "quantity": 2,
+              "unit_price": 350,
+              "amount": 700,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "ocr-b",
+          "items": [
+            {
+              "sku": "CTRL-700",
+              "item_name": "AV controller",
+              "quantity": 7,
+              "unit_price": 100,
+              "amount": 700,
+              "provenance": {
+                "source": "ocr"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
       }
     }
   ]
