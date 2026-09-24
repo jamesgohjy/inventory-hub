@@ -1,0 +1,66 @@
+{
+  "version": "7.03.3.14q",
+  "generated_at": "2026-09-24T13:28:59.201Z",
+  "overall_status": "PASS",
+  "patch_focus": [
+    "general Unit Price/Amount monetary recovery",
+    "cross-OCR/layout consensus",
+    "arithmetic validation",
+    "Documents company groups collapsed by default",
+    "Inventory company groups collapsed by default"
+  ],
+  "suites": {
+    "behavioral": {
+      "pass": 14,
+      "total": 14,
+      "failures": []
+    },
+    "golden": {
+      "pass": 7,
+      "total": 7,
+      "failures": []
+    },
+    "quality14n": {
+      "pass": 12,
+      "total": 12,
+      "failures": []
+    },
+    "holdout14n": {
+      "pass": 6,
+      "total": 6,
+      "failures": []
+    },
+    "intelligence14o": {
+      "pass": 9,
+      "total": 9,
+      "failures": []
+    },
+    "aerospace14p": {
+      "pass": 12,
+      "total": 12,
+      "failures": []
+    },
+    "monetary14q": {
+      "pass": 10,
+      "total": 10,
+      "failures": []
+    }
+  },
+  "total_regression": "70/70",
+  "ui_behavior": {
+    "status": "PASS",
+    "documents_default": "collapsed",
+    "inventory_default": "collapsed",
+    "inventory_expand": "PASS",
+    "keyboard_access": "PASS"
+  },
+  "safeguards": [
+    "Multiple parsers over one OCR source are not counted as independent evidence.",
+    "Conflicting strong monetary candidates remain Level 3.",
+    "Rows with conflicting printed SKUs cannot be repaired from description similarity.",
+    "No-SKU rows require rich description identity evidence.",
+    "Correct existing Qty/Unit Price/Amount values remain unchanged.",
+    "Grouping changes are presentation-only and do not alter stored data."
+  ],
+  "limitation": "Actual browser OCR against the original Aerospace PDF was not executable offline because its raw PDF bytes were unavailable; the monetary consensus logic was tested with the observed bad values and verified 350/350 and 90/90 evidence patterns."
+}

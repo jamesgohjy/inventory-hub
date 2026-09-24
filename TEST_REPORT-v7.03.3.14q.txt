@@ -1,0 +1,41 @@
+AV Inventory Hub v7.03.3.14q — Monetary + Grouping Hardening
+Generated: 2026-09-24T13:28:59.201Z
+=========================================================
+
+PATCH FOCUS
+- General Unit Price / Amount repair using cross-OCR/layout evidence.
+- Qty × Unit Price = Amount validation before accepting monetary values.
+- Documents grouped-by-company collapsed by default.
+- Inventory grouped-by-company collapsed by default.
+
+REGRESSION
+PASS behavioral: 14/14
+PASS golden: 7/7
+PASS quality14n: 12/12
+PASS holdout14n: 6/6
+PASS intelligence14o: 9/9
+PASS aerospace14p: 12/12
+PASS monetary14q: 10/10
+PASS TOTAL: 70/70
+
+TARGETED MONETARY CASES
+- AVS320: 1.35 / 0 -> 350.00 / 350.00 when independent verified row evidence agrees.
+- 60100-SALES: 1.90 / 0.90 -> 90.00 / 90.00 when independent verified row evidence agrees.
+- No-SKU equipment can be repaired only with rich description identity evidence.
+- Conflicting strong candidates -> Level 3, no auto-correction.
+- Conflicting printed SKUs -> no cross-row repair.
+
+GROUPING
+- Documents company groups: collapsed initially, click to expand.
+- Inventory company groups: collapsed initially, click/Enter/Space to expand.
+- Stored documents/inventory records are untouched.
+
+SYNTAX / LOADER
+PASS core syntax
+PASS app outer-loader syntax
+PASS 14q inner runtime syntax
+PASS generated inner-patch syntax
+PASS regression runner syntax
+
+OVERALL PRE-DEPLOYMENT STATUS
+PASS

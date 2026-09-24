@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14p';
+  const VERSION='7.03.3.14q';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -1099,12 +1099,89 @@
     return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
 
+
+  function v703314qEconomicValues(row={}){
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    const finite=Number.isInteger(q)&&q>0&&q<=999&&Number.isFinite(p)&&p>=0&&Number.isFinite(a)&&a>=0;
+    const tolerance=Math.max(.03,Math.abs(a)*.002),ok=finite&&Math.abs(q*p-a)<=tolerance;
+    return {q,p,a,finite,ok,tolerance};
+  }
+  function v703314qDescriptionTokens(v=''){
+    const stop=new Set(['with','from','this','that','unit','units','each','pair','set','the','and','for','hdmi','audio','video']);
+    return new Set(norm(v).split(' ').filter(x=>x.length>=4&&!stop.has(x)));
+  }
+  function v703314qIdentityScore(target={},candidate={}){
+    const tSku=compact(target.sku||''),cSku=compact(candidate.sku||'');let skuScore=0;
+    if(tSku&&cSku){
+      if(tSku===cSku)skuScore=80;
+      else if(Math.min(tSku.length,cSku.length)>=5&&Math.abs(tSku.length-cSku.length)<=1&&(tSku.startsWith(cSku)||cSku.startsWith(tSku)))skuScore=62;
+      else if(tSku.length>=5&&cSku.length>=5&&(tSku.includes(cSku)||cSku.includes(tSku)))skuScore=48;
+    }
+    const a=v703314qDescriptionTokens([target.item_name,target.description].filter(Boolean).join(' ')),b=v703314qDescriptionTokens([candidate.item_name,candidate.description].filter(Boolean).join(' '));
+    let overlap=0;for(const x of a)if(b.has(x))overlap++;
+    const descScore=overlap>=4?64:overlap===3?54:overlap===2?36:overlap===1?12:0,skuConflict=!!(tSku&&cSku&&!skuScore);
+    return {score:skuConflict?Math.min(30,descScore):Math.max(skuScore,skuScore+Math.min(24,descScore),descScore),skuScore,descriptionOverlap:overlap,skuConflict};
+  }
+  function v703314qMoneySignature(row={}){
+    const e=v703314qEconomicValues(row);return e.ok?e.q+'|'+e.p.toFixed(2)+'|'+e.a.toFixed(2):'';
+  }
+  function v703314qChooseMoneyCandidate(target={},candidates=[]){
+    const current=v703314qEconomicValues(target),currentSig=v703314qMoneySignature(target),usable=[];
+    for(const raw of candidates||[]){
+      const row={...raw},econ=v703314qEconomicValues(row);if(!econ.ok)continue;
+      const id=v703314qIdentityScore(target,row);if(id.score<48)continue;
+      const source=clean(row.v703314qSource||row.source||'candidate'),sourceBase=clean(source.split('|')[0]||source),strict=!!(row.layoutEvidenceVerified||row.v703314qStrictLayout||/table.*hi|strict-layout/i.test(source));
+      const observed=Number(row.v703314qObservedFields||3),sourceWeight=/table.*hi/i.test(source)?28:/recovery|ocr/i.test(source)?16:8,score=100+id.score+(strict?28:0)+Math.min(18,Math.max(0,observed)*6)+sourceWeight;
+      usable.push({row,econ,id,source,sourceBase,strict,score,signature:v703314qMoneySignature(row)});
+    }
+    if(!usable.length)return {changed:false,review:!current.ok,reason:'No economically consistent OCR/layout candidate matched this item.',current};
+    const groups=new Map();
+    for(const x of usable){let g=groups.get(x.signature);if(!g){g={signature:x.signature,rows:[],sources:new Set(),bestScore:0,strict:false};groups.set(x.signature,g);}g.rows.push(x);g.sources.add(x.sourceBase);g.bestScore=Math.max(g.bestScore,x.score);g.strict=g.strict||x.strict;}
+    const ranked=[...groups.values()].sort((a,b)=>(b.sources.size-a.sources.size)||(Number(b.strict)-Number(a.strict))||(b.bestScore-a.bestScore)),best=ranked[0],second=ranked[1]||null,representative=best.rows.sort((a,b)=>b.score-a.score)[0];
+    const targetFlagged=!!(target.quantityReviewRequired||target.priceReviewRequired||target.unit_priceReviewRequired||target.amountReviewRequired||!current.ok),independentAgreement=best.sources.size>=2,strongIdentity=representative.id.skuScore>=62||(!representative.id.skuConflict&&representative.id.descriptionOverlap>=4),strongSingle=best.strict&&strongIdentity&&targetFlagged;
+    const conflict=!!(second&&best.strict&&second.strict&&second.sources.size>=best.sources.size&&second.bestScore>=best.bestScore-30);
+    if(conflict)return {changed:false,review:true,reason:'Strong OCR/layout candidates disagree on the monetary values.',current};
+    if(best.signature===currentSig)return {changed:false,review:false,reason:'Current monetary values agree with the strongest OCR/layout evidence.',current,evidence:{signature:best.signature,sources:[...best.sources]}};
+    if(!(independentAgreement||strongSingle))return {changed:false,review:true,reason:'A different economic value was found, but evidence is not strong enough to auto-correct it.',current,evidence:{signature:best.signature,sources:[...best.sources],strict:best.strict}};
+    const rr=representative.row;
+    return {changed:true,review:false,reason:independentAgreement?'Independent OCR/layout candidates agree on the corrected monetary values.':'Strict row-layout evidence resolves the currently flagged monetary values.',values:{quantity:Number(rr.quantity),unit_price:Number(rr.unit_price),amount:Number(rr.amount)},evidence:{signature:best.signature,sources:[...best.sources],strict:best.strict,identity:representative.id}};
+  }
+  function runMonetaryConsensusRegressionChecks14q(){
+    const cases=[],check=(name,pass,actual,expected)=>cases.push({name,pass:!!pass,actual,expected});
+    const avs={sku:'AVS320',item_name:'Abtus AVS320 Control Panel',quantity:1,unit_price:1.35,amount:0,priceReviewRequired:true,amountReviewRequired:true};
+    const avsPick=v703314qChooseMoneyCandidate(avs,[{sku:'AVS-320A',item_name:'Abtus AVS-320A HDMI Control panel',quantity:1,unit_price:350,amount:350,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'},{sku:'AVS320',item_name:'Abtus AVS320 HDMI Control panel',quantity:1,unit_price:350,amount:350,v703314qStrictLayout:true,v703314qSource:'recovery-block|product-layout'}]);
+    check('Aerospace AVS320 wrong decimals are corrected',avsPick.changed&&avsPick.values?.unit_price===350&&avsPick.values?.amount===350,avsPick,'350 / 350');
+    const spk={sku:'60100-SALES',item_name:'Abtus Active Speaker in pair',quantity:1,unit_price:1.9,amount:.9,priceReviewRequired:true,amountReviewRequired:true};
+    const spkPick=v703314qChooseMoneyCandidate(spk,[{sku:'60100-SALES',item_name:'Abtus Active Speaker in pair',quantity:1,unit_price:90,amount:90,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'},{sku:'60100-SALES',item_name:'Abtus Active Speaker in pair',quantity:1,unit_price:90,amount:90,v703314qSource:'recovery-auto|product-layout'}]);
+    check('Aerospace speaker wrong decimals are corrected',spkPick.changed&&spkPick.values?.unit_price===90&&spkPick.values?.amount===90,spkPick,'90 / 90');
+    const noSku={sku:'',item_name:'Wireless handheld microphone receiver',quantity:2,unit_price:3.5,amount:7,priceReviewRequired:true,amountReviewRequired:true};
+    const noSkuPick=v703314qChooseMoneyCandidate(noSku,[{sku:'',item_name:'Wireless handheld microphone receiver system',quantity:2,unit_price:350,amount:700,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'}]);
+    check('future invoice without SKU can use strong description evidence',noSkuPick.changed&&noSkuPick.values?.unit_price===350&&noSkuPick.values?.amount===700,noSkuPick,'350 / 700');
+    const generic={sku:'',item_name:'Projector',quantity:1,unit_price:1,amount:0,priceReviewRequired:true};
+    const genericPick=v703314qChooseMoneyCandidate(generic,[{sku:'',item_name:'Projector',quantity:1,unit_price:800,amount:800,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'}]);
+    check('generic one-word description is not enough identity evidence',genericPick.changed===false,genericPick,'unchanged');
+    const skuConflict=v703314qChooseMoneyCandidate({sku:'MODEL-A1',item_name:'Wireless microphone receiver',quantity:1,unit_price:1,amount:0,priceReviewRequired:true},[{sku:'MODEL-B2',item_name:'Wireless microphone receiver',quantity:1,unit_price:500,amount:500,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'}]);
+    check('conflicting printed SKUs cannot be overridden by similar descriptions',skuConflict.changed===false,skuConflict,'unchanged');
+    const good={sku:'TEST-1',item_name:'Test projector',quantity:2,unit_price:350,amount:700};
+    const same=v703314qChooseMoneyCandidate(good,[{...good,layoutEvidenceVerified:true,v703314qSource:'strict-layout'}]);
+    check('correct current economics are preserved',same.changed===false&&same.review===false,same,'unchanged');
+    const conflict=v703314qChooseMoneyCandidate({...good,priceReviewRequired:true},[{...good,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'},{...good,unit_price:360,amount:720,layoutEvidenceVerified:true,v703314qSource:'recovery-block|strict-layout'}]);
+    check('conflicting strong candidates do not auto-correct',conflict.changed===false&&conflict.review===true,conflict,'review');
+    const weak=v703314qChooseMoneyCandidate({...good,unit_price:3.5,amount:7,priceReviewRequired:true},[{...good,v703314qSource:'weak-text|text-physical'}]);
+    check('one weak candidate cannot silently replace values',weak.changed===false&&weak.review===true,weak,'review');
+    const unrelated=v703314qChooseMoneyCandidate(avs,[{sku:'OTHER-99',item_name:'Network switch',quantity:1,unit_price:350,amount:350,layoutEvidenceVerified:true,v703314qSource:'recovery-table-hi|strict-layout'}]);
+    check('unrelated row cannot repair money',unrelated.changed===false,unrelated,'unchanged');
+    const zeroAmount=v703314qEconomicValues({quantity:1,unit_price:350,amount:0});
+    check('price with zero mismatched amount is not economically valid',zeroAmount.ok===false,zeroAmount,false);
+    return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+
   const RELEASE_NOTES=[
-    'Strong equipment invoices no longer ask Equipment/Service when equipment evidence is already clear.',
-    'Labelled invoice-date and invoice-number recovery now fails closed: corrupted OCR IDs are cleared instead of guessed.',
-    'Deep recovery now adds high-resolution header/table OCR and repopulates only verified physical equipment rows.'
+    'Monetary line-item recovery now uses cross-OCR/layout consensus plus Qty × Unit Price = Amount validation.',
+    'Weak decimal fragments cannot overwrite stronger verified Unit Price/Amount evidence; unresolved conflicts stay Level 3.',
+    'Documents and Inventory company groups now render collapsed by default and expand only when selected.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14q';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14r';
   const RELEASE_ROADMAP=[
     {id:'architecture-stability',text:'Move the verified baseline into the repository and gradually retire runtime string patching.'},
     {id:'operational-backups',text:'Add automated Supabase/database and document backup verification.'},
@@ -1143,5 +1220,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
