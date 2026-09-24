@@ -322,8 +322,9 @@ window.v7033ConsolidateExistingSafeDuplicates=v7033ConsolidateExistingSafeDuplic
       try{new Function(src);}catch(e){throw new Error('Generated runtime syntax preflight failed: '+(e?.message||e));}
       const blob=new Blob([src],{type:'text/javascript'}),url=URL.createObjectURL(blob);
       try{await import(url);}finally{setTimeout(()=>URL.revokeObjectURL(url),1500);}
-      if(!window.__AV_MASTER_MERGE_14G_DIAGNOSTICS__?.installed)console.warn('V7.03.3.14h3 duplicate-merge enhancement is unavailable; core Inventory Hub remains active.',window.__AV_MASTER_MERGE_14G_DIAGNOSTICS__||null);
-      if(!window.__AV_UI_WORKFLOW_14H__?.installed)console.warn('V7.03.3.14h3 UI/workflow hardening is unavailable; core Inventory Hub remains active.',window.__AV_UI_WORKFLOW_14H__||null);
+      if(!window.__AV_MASTER_MERGE_14G_DIAGNOSTICS__?.installed)console.warn('V7.03.3.14i duplicate-merge enhancement is unavailable; core Inventory Hub remains active.',window.__AV_MASTER_MERGE_14G_DIAGNOSTICS__||null);
+      if(!window.__AV_UI_WORKFLOW_14H__?.installed)console.warn('V7.03.3.14i UI/workflow hardening is unavailable; core Inventory Hub remains active.',window.__AV_UI_WORKFLOW_14H__||null);
+      if(!window.__AV_14I_DIAGNOSTICS__?.installed)console.warn('V7.03.3.14i Data Health / merge-history enhancement is unavailable; core Inventory Hub remains active.',window.__AV_14I_DIAGNOSTICS__||null);
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
       window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='7.03.2 cumulative on '+BASELINE_VERSION+'@'+BASELINE_SHA;
       console.info('AV Inventory Hub v'+VERSION+' loaded with Data Health resolution history and Master Item merge activity details.');
