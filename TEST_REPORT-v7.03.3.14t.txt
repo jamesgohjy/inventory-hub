@@ -1,0 +1,30 @@
+AV Inventory Hub v7.03.3.14t — Automated Backup Verification
+Generated: 2026-09-24T14:54:17.161Z
+================================================================
+
+CODE STATUS
+PASS direct-runtime architecture preserved
+PASS Admin-only backup status/history UI
+PASS service-role-only snapshot/record RPC contracts
+PASS daily GitHub Actions verifier staged for 02:30 Singapore time
+PASS Supabase Management API managed-backup check staged
+PASS database table/relationship integrity checks staged
+PASS invoice Storage download verification staged
+PASS SHA-256 comparison for hashed invoice PDFs staged
+PASS committed-secret pattern scan
+
+LIVE STATUS
+NOT READY / UNVERIFIED until the 14t SQL migration and both GitHub Actions secrets are confirmed.
+Secret names cannot be inspected through the connected GitHub tool, so their existence was not assumed.
+
+REQUIRED ONE-TIME SETUP
+1. Run supabase-v7-03-3-14t-backup-verification.sql in Supabase SQL Editor.
+2. Add SUPABASE_ACCESS_TOKEN with backups_read permission to GitHub Actions secrets.
+3. Add SUPABASE_SECRET_KEY to GitHub Actions secrets.
+4. Manually run Inventory Hub Backup Verification once and inspect the Admin dashboard result.
+
+RECOVERY SCOPE
+The verifier confirms current invoice-PDF Storage integrity. It does not create an independent off-site PDF copy.
+
+OVERALL PRE-PR CODE STATUS: PASS
+LIVE AUTOMATION STATUS: NOT READY / UNVERIFIED
