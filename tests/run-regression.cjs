@@ -94,8 +94,8 @@ assert(/id="documentGroup"[\s\S]{0,160}<option value="none">No Grouping<\/option
 assert(index.includes('#documentsView #documentGroup{flex:0 0 210px;width:210px;min-width:210px;max-width:210px;'),'Documents Group by Company dropdown width guard missing');
 assert(runtime.includes("group=$('documentGroup')?.value||'none'"),'Documents renderer fallback must default to No Grouping');
 assert(runtime.includes("\\$('inventoryGroup')?.addEventListener('change',renderInventory)")||runtime.includes("\\$('inventoryGroup').onchange=renderInventory")||runtime.includes("inventoryGroup')?.addEventListener('change',renderInventory"),'Inventory Group by Company event path must remain wired');
-assert(runtime.includes("if($('documentGroup'))$('documentGroup').onchange=renderDocuments"),'Documents Group by Company event path must remain wired');
-assert(runtime.includes("InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head,escapeHtml:esc})"),'Documents Group by Company render path must remain wired');
+assert(runtime.includes("$('documentGroup')?.addEventListener('change',renderDocuments)"),'Documents Group by Company must use the same change-listener pattern as Inventory');
+assert(runtime.includes("function v703314sRenderDocumentGroups(groups,head)")&&runtime.includes("host:$('documentsTable'),groups,head,escapeHtml:esc"),'Documents Group by Company must use a dedicated wrapper matching Inventory grouping behavior');
 console.log('protected-company-grouping: Inventory + Documents controls/event/render paths PASS');
 assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.14s.js')&&fs.existsSync('runtime-v7.03.3.14r.js')&&fs.existsSync('baseline-v6.55-d452.js'),'Rollback references must remain available');
 
