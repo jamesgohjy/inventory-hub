@@ -458,7 +458,7 @@ function documentSortTime(d){
   return Number.isFinite(t)?t:0;
 }
 function renderDocuments(){
-  const q=norm($('documentSearch').value),editable=canEdit(),sort=$('documentSort')?.value||'newest';
+  const q=norm($('documentSearch').value),editable=canEdit(),sort=$('documentSort')?.value||'newest',group=$('documentGroup')?.value||'company';
   const docs=state.data.documents
     .filter(d=>!(d.is_vault===true||String(d.is_vault)==='true'))
     .filter(d=>!q||norm([d.file_name,d.supplier_name,d.invoice_number,documentInvoiceDate(d),...linkedItemsForDocument(d.id).map(i=>i.sku+' '+i.item_name)].join(' ')).includes(q))
@@ -468,11 +468,19 @@ function renderDocuments(){
       if(at===bt)return String(a.file_name||'').localeCompare(String(b.file_name||''));
       return sort==='oldest'?at-bt:bt-at;
     });
-  const rows=docs.map(d=>{
-    const linked=linkedItemsForDocument(d.id),invoiceDate=documentInvoiceDate(d);
-    const displayFile=displayDocumentFilename(d,invoiceDate);return `<tr><td>${esc(displayFile)}</td><td>${esc(d.supplier_name||'—')}</td><td>${esc(d.invoice_number||'—')}</td><td>${invoiceDate?fmtDate(invoiceDate):'—'}</td><td><span class="linked-count" title="${esc(linked.map(i=>i.sku+' · '+i.item_name).join(' | '))}">${linked.length} item${linked.length===1?'':'s'}</span></td><td>${fmtDT(d.uploaded_at)}</td><td class="actions"><button data-doc-view="${d.id}">View</button>${editable?`<button data-doc-edit="${d.id}">Edit</button>`:''}<button data-doc-download="${d.id}">Download</button>${editable?`<button class="danger-outline" data-doc-delete="${d.id}">Delete</button>`:''}</td></tr>`
-  }).join('');
-  $('documentsTable').innerHTML=rows?`<table><thead><tr><th>File</th><th>Supplier</th><th>Invoice</th><th>Invoice date</th><th>Linked equipment</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No documents found.</div>';
+  const head='<thead><tr><th>File</th><th>Supplier</th><th>Invoice</th><th>Invoice date</th><th>Linked equipment</th><th>Uploaded</th><th>Actions</th></tr></thead>';
+  const rendered=docs.map(d=>{
+    const linked=linkedItemsForDocument(d.id),invoiceDate=documentInvoiceDate(d),company=canonicalSupplier(d.supplier_name||'Unknown Company')||'Unknown Company';
+    const displayFile=displayDocumentFilename(d,invoiceDate);
+    const html=`<tr><td>${esc(displayFile)}</td><td>${esc(d.supplier_name||'—')}</td><td>${esc(d.invoice_number||'—')}</td><td>${invoiceDate?fmtDate(invoiceDate):'—'}</td><td><span class="linked-count" title="${esc(linked.map(i=>i.sku+' · '+i.item_name).join(' | '))}">${linked.length} item${linked.length===1?'':'s'}</span></td><td>${fmtDT(d.uploaded_at)}</td><td class="actions"><button data-doc-view="${d.id}">View</button>${editable?`<button data-doc-edit="${d.id}">Edit</button>`:''}<button data-doc-download="${d.id}">Download</button>${editable?`<button class="danger-outline" data-doc-delete="${d.id}">Delete</button>`:''}</td></tr>`;
+    return {company,html};
+  });
+  const host=$('documentsTable');
+  if(!rendered.length){host.innerHTML='<div class="empty">No documents found.</div>';return;}
+  if(group!=='company'){host.innerHTML=`<table>${head}<tbody>${rendered.map(x=>x.html).join('')}</tbody></table>`;return;}
+  const groups=new Map();
+  for(const x of rendered){if(!groups.has(x.company))groups.set(x.company,[]);groups.get(x.company).push(x);}
+  if(!window.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head,escapeHtml:esc}))throw new Error('Documents Group by Company renderer failed.');
 }
 function maintenanceItem(id){return state.data.items.find(i=>i.id===id);}
 function renderMaintenance(){const q=norm($('maintenanceSearch')?.value||''),out=$('maintenanceOutcome')?.value||'',editable=canEdit();const rows=(state.data.maintenance||[]).filter(r=>{const i=maintenanceItem(r.master_item_id)||{};return(!q||norm([i.sku,i.item_name,r.serial_number,r.issue,r.action_taken,r.outcome,r.notes].join(' ')).includes(q))&&(!out||r.outcome===out)}).map(r=>{const i=maintenanceItem(r.master_item_id)||{};return `<tr><td>${fmtDate(r.maintenance_date)}</td><td><strong>${esc(i.sku||'—')}</strong><br><span class="muted">${esc(i.item_name||'Unknown item')}</span></td><td>${esc(r.serial_number||'—')}</td><td>${esc(r.issue)}</td><td>${esc(r.action_taken)}</td><td><span class="badge maintenance-badge">${esc(r.outcome)}</span></td><td>${esc(r.notes||'—')}</td><td>${editable?`<div class="maintenance-actions"><button class="icon-btn" title="Edit" data-maint-edit="${r.id}"><i data-lucide="pencil"></i></button><button class="icon-btn danger-icon" title="Delete" data-maint-delete="${r.id}"><i data-lucide="trash-2"></i></button></div>`:'<span class="muted">Read only</span>'}</td></tr>`}).join('');$('maintenanceTable').innerHTML=rows?`<table><thead><tr><th>Date</th><th>Equipment / SKU</th><th>Serial Number</th><th>Issue / Problem</th><th>Action Taken</th><th>Outcome</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No maintenance records yet.</div>';window.lucide?.createIcons();}
@@ -3022,7 +3030,7 @@ $('cancelAdjustBtn')?.addEventListener('click',discardAdjustment);$('adjustQty')
 $('adjustDialog')?.addEventListener('cancel',e=>{e.preventDefault();discardAdjustment();});
 
 $('adjustForm').addEventListener('submit',async e=>{e.preventDefault();if(!requireEdit())return;const submit=e.submitter||$('adjustForm').querySelector('[type="submit"]');if(submit?.disabled)return;const id=$('adjustItemId').value,item=state.data.items.find(x=>x.id===id),before=summary(item),q=Number($('adjustQty').value);if(!Number.isFinite(q)||q<=0){toast('Enter a valid quantity to subtract.');return;}if(q>before.current){toast(`Cannot subtract ${q}. Only ${before.current} currently in inventory.`);return;}const payload={master_item_id:id,adjustment_type:$('adjustType').value,quantity:q,reason:$('adjustReason').value.trim(),adjustment_date:$('adjustDate').value};const optimistic={id:'optimistic-'+Date.now(),...payload,created_at:nowIso(),created_by:state.session?.user?.id||'optimistic'};state.data.adjustments.push(optimistic);renderInventory();renderDashboard();document.querySelector(`[data-detail="${id}"]`)?.closest('tr')?.classList.add('optimistic-flash');$('adjustDialog').close();toast('Saving inventory adjustment…');try{setBusy(submit,true);await withRetry(()=>state.db.adjust(payload),{label:'Inventory update'});state.data.adjustments=state.data.adjustments.filter(x=>x.id!==optimistic.id);await reload();toast('✓ Inventory updated.');}catch(err){state.data.adjustments=state.data.adjustments.filter(x=>x.id!==optimistic.id);renderInventory();renderDashboard();toast('❌ Unable to save — inventory restored.');console.error(err);}finally{setBusy(submit,false);}});
-$('inventorySearch').oninput=renderInventory;$('categoryFilter').onchange=renderInventory;$('documentSearch').oninput=renderDocuments;if($('documentSort'))$('documentSort').onchange=renderDocuments;$('auditSearch').oninput=renderAudit;if($('auditUser'))$('auditUser').onchange=renderAudit;if($('auditAction'))$('auditAction').onchange=renderAudit;if($('auditDate'))$('auditDate').onchange=renderAudit;
+$('inventorySearch').oninput=renderInventory;$('categoryFilter').onchange=renderInventory;$('documentSearch').oninput=renderDocuments;if($('documentGroup'))$('documentGroup').onchange=renderDocuments;if($('documentSort'))$('documentSort').onchange=renderDocuments;$('auditSearch').oninput=renderAudit;if($('auditUser'))$('auditUser').onchange=renderAudit;if($('auditAction'))$('auditAction').onchange=renderAudit;if($('auditDate'))$('auditDate').onchange=renderAudit;
 function closeActionMenus(except=null){document.querySelectorAll('.action-menu[open]').forEach(m=>{if(m!==except)m.removeAttribute('open');});}
 $('inventoryTable').addEventListener('toggle',e=>{const menu=e.target.closest?.('.action-menu');if(menu?.open){closeActionMenus(menu);requestAnimationFrame(()=>{const box=menu.querySelector(':scope > div');if(!box)return;menu.classList.remove('open-up');const tableBox=$('inventoryTable')?.getBoundingClientRect();const r=box.getBoundingClientRect();if(tableBox && r.bottom>tableBox.bottom-8)menu.classList.add('open-up');});}},true);
 document.addEventListener('click',e=>{if(!e.target.closest('.action-menu'))closeActionMenus();});
