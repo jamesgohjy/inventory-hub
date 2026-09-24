@@ -6,7 +6,7 @@
   window.__AV_V7033_LOADER_STARTED__=true;
 
   const VERSION='7.03.3.14j';
-  const ASSET_REV='v703314j-health-activity-management-20260924-1';
+  const ASSET_REV='v703314j-health-activity-management-20260924-2';
   const BASELINE_VERSION='7.03.1';
   const BASELINE_SHA='f088a9602929d24165fd1ab98fc6744cbada1cb3';
   const BASELINE_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/'+BASELINE_SHA+'/app.js';
