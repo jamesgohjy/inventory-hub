@@ -6,6 +6,7 @@
   window.__AV_V7033_LOADER_STARTED__=true;
 
   const VERSION='7.03.3.14f';
+  const ASSET_REV='notes-short-20260924-1';
   const BASELINE_VERSION='7.03.1';
   const BASELINE_SHA='f088a9602929d24165fd1ab98fc6744cbada1cb3';
   const BASELINE_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/'+BASELINE_SHA+'/app.js';
@@ -16,9 +17,10 @@
     if(!window[globalName])throw new Error(globalName+' did not initialise.');return window[globalName];
   }
   async function loadPatchModules(){
-    const v7032=await loadScriptOnce('v7032-core.js?v='+encodeURIComponent(VERSION),'V7032Patch');
-    await loadScriptOnce('v7032-web-verify.js?v='+encodeURIComponent(VERSION),'V7032WebVerify');
-    const v7033=await loadScriptOnce('v7033-core.js?v='+encodeURIComponent(VERSION),'V7033Patch');
+    const cacheKey=encodeURIComponent(VERSION+'-'+ASSET_REV);
+    const v7032=await loadScriptOnce('v7032-core.js?v='+cacheKey,'V7032Patch');
+    await loadScriptOnce('v7032-web-verify.js?v='+cacheKey,'V7032WebVerify');
+    const v7033=await loadScriptOnce('v7033-core.js?v='+cacheKey,'V7033Patch');
     return {v7032,v7033};
   }
 
