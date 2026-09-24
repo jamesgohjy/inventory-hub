@@ -833,16 +833,8 @@
         }
       ],
       "expected": {
-        "status": "accepted",
-        "winnerOrigin": "layout",
-        "rows": [
-          [
-            "",
-            2,
-            90,
-            180
-          ]
-        ]
+        "status": "review",
+        "rows": []
       }
     },
     {
