@@ -105,6 +105,37 @@
     return {ok:!!best,best:best?.candidate||null,ranked,confidence:Math.round(confidence*1000)/1000,margin:round2(margin)};
   }
 
+
+  function reconcileCandidate(candidate={},options={}){
+    const rows=Array.isArray(candidate.items)?candidate.items:[];
+    const assessments=rows.map(assessRow);
+    const accepted=[],review=[];
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i],a=assessments[i];
+      if(a.economics.complete&&!a.economics.ok){review.push({index:i,row,reason:'economic-mismatch',assessment:a});continue;}
+      if(a.reviewRequired||!a.economics.complete){review.push({index:i,row,reason:a.reviewRequired?'structural-review':'incomplete-economics',assessment:a});continue;}
+      accepted.push(row);
+    }
+    const subtotal=finite(options.subtotal)?Number(options.subtotal):null;
+    const amountSum=round2(accepted.reduce((n,r)=>n+(finite(r.amount)?Number(r.amount):0),0));
+    const subtotalDelta=subtotal===null?null:round2(Math.abs(amountSum-subtotal));
+    const subtotalOk=subtotal===null||subtotalDelta<=Math.max(.06,Math.abs(subtotal)*.002);
+    return {accepted,review,subtotal,amountSum,subtotalDelta,subtotalOk,assessments};
+  }
+
+  function runPipeline(candidates=[],options={}){
+    const ranking=rankCandidateSets(candidates,options),winner=ranking.best;
+    if(!winner)return {ok:false,status:'review',items:[],review:[{reason:'no-candidate'}],ranking,confidence:0};
+    const reconciliation=reconcileCandidate(winner,options);
+    const confidence=ranking.confidence;
+    const threshold=finite(options.confidenceThreshold)?Number(options.confidenceThreshold):.72;
+    const review=[...reconciliation.review];
+    if(!reconciliation.subtotalOk)review.push({reason:'subtotal-mismatch',delta:reconciliation.subtotalDelta});
+    if(confidence<threshold)review.push({reason:'low-confidence',confidence,threshold});
+    const status=review.length?'review':'accepted';
+    return {ok:status==='accepted',status,items:reconciliation.accepted,review,ranking,reconciliation,confidence,winnerOrigin:winner.origin||'unknown'};
+  }
+
   function validateRows(rows=[]){
     const results=(rows||[]).map((row,index)=>({index,row,assessment:assessRow(row)}));
     const failures=[];
@@ -117,11 +148,13 @@
   }
 
   global.InventoryHubParserEvidenceEngine=Object.freeze({
-    version:'7.03.3.14u',
+    version:'7.03.3.14v',
     verifyEconomics,
     assessRow,
     assessCandidate,
     rankCandidateSets,
+    reconcileCandidate,
+    runPipeline,
     validateRows,
     identityKey
   });
