@@ -1,0 +1,330 @@
+{
+  "version": "7.03.3.14n",
+  "generated_at": "2026-09-24T11:49:47.050Z",
+  "overall_status": "PASS",
+  "patch_focus": [
+    "Golden Invoice regression",
+    "evidence tracing",
+    "arithmetic validation",
+    "per-field confidence",
+    "OCR preprocessing",
+    "holdout testing"
+  ],
+  "suites": {
+    "legacy": {
+      "pass": 14,
+      "total": 14,
+      "failures": []
+    },
+    "golden": {
+      "pass": 7,
+      "total": 7,
+      "represented_file_variants": 13,
+      "failures": [],
+      "quality_guard_unexpected_reviews": []
+    },
+    "quality": {
+      "pass": 12,
+      "total": 12,
+      "failures": [],
+      "cases": [
+        {
+          "name": "row arithmetic accepts valid economics",
+          "pass": true,
+          "actual": {
+            "status": "pass",
+            "quantity": 2,
+            "unit_price": 350,
+            "amount": 700,
+            "expected_amount": 700,
+            "difference": 0,
+            "tolerance": 0.35,
+            "reason": "Qty × Unit Price agrees with Amount."
+          },
+          "expected": "pass"
+        },
+        {
+          "name": "row arithmetic catches mismatched quantity",
+          "pass": true,
+          "actual": {
+            "status": "review",
+            "quantity": 8,
+            "unit_price": 350,
+            "amount": 700,
+            "expected_amount": 2800,
+            "difference": 2100,
+            "tolerance": 1.4,
+            "reason": "Qty × Unit Price does not agree with Amount."
+          },
+          "expected": "review"
+        },
+        {
+          "name": "document arithmetic accepts subtotal plus GST",
+          "pass": true,
+          "actual": {
+            "status": "pass",
+            "subtotal": 700,
+            "gst": 63,
+            "total": 763,
+            "expected_total": 763,
+            "difference": 0,
+            "tolerance": 0.08,
+            "reason": "Subtotal + GST agrees with Total."
+          },
+          "expected": "pass"
+        },
+        {
+          "name": "document arithmetic catches total mismatch",
+          "pass": true,
+          "actual": {
+            "status": "review",
+            "subtotal": 700,
+            "gst": 63,
+            "total": 900,
+            "expected_total": 763,
+            "difference": 137,
+            "tolerance": 0.09,
+            "reason": "Subtotal + GST does not agree with Total."
+          },
+          "expected": "review"
+        },
+        {
+          "name": "evidence trace finds printed SKU",
+          "pass": true,
+          "actual": {
+            "found": true,
+            "source": "primary",
+            "page": null,
+            "line": 2,
+            "text": "TEST-100 Test projector 2 350.00 700.00",
+            "method": "source-line"
+          },
+          "expected": "found"
+        },
+        {
+          "name": "arithmetic plus evidence raises economics confidence",
+          "pass": true,
+          "actual": {
+            "score": 0.97,
+            "label": "high",
+            "reason": "Value is traceable to invoice evidence. Row arithmetic also agrees.",
+            "evidence": {
+              "found": true,
+              "source": "primary",
+              "page": null,
+              "line": 2,
+              "text": "TEST-100 Test projector 2 350.00 700.00",
+              "method": "row-local-source-line"
+            }
+          },
+          "expected": ">=0.95"
+        },
+        {
+          "name": "optional blank serial is not treated as an error",
+          "pass": true,
+          "actual": {
+            "score": null,
+            "label": "optional",
+            "reason": "Serial number is optional and blank.",
+            "evidence": {
+              "found": false,
+              "source": "",
+              "page": null,
+              "line": null,
+              "text": "",
+              "method": "blank"
+            }
+          },
+          "expected": "optional/null"
+        },
+        {
+          "name": "missing SKU remains optional",
+          "pass": true,
+          "actual": [],
+          "expected": "no sku review solely because blank"
+        },
+        {
+          "name": "arithmetic alone cannot create high confidence",
+          "pass": true,
+          "actual": {
+            "score": 0.7,
+            "label": "low",
+            "reason": "Value is not directly traceable to a retained source line. Row arithmetic agrees, but direct source evidence is still weak.",
+            "evidence": {
+              "found": false,
+              "source": "",
+              "page": null,
+              "line": null,
+              "text": "",
+              "method": "not-found"
+            }
+          },
+          "expected": "<0.95"
+        },
+        {
+          "name": "arithmetic mismatch forces review flags",
+          "pass": true,
+          "actual": {
+            "quantity": true,
+            "unit_price": true,
+            "amount": true
+          },
+          "expected": "quantity/unit_price/amount review"
+        },
+        {
+          "name": "mismatch never silently changes values",
+          "pass": true,
+          "actual": {
+            "quantity": 8,
+            "unit_price": 350,
+            "amount": 700
+          },
+          "expected": {
+            "sku": "TEST-100",
+            "item_name": "Test projector",
+            "quantity": 8,
+            "unit_price": 350,
+            "amount": 700
+          }
+        },
+        {
+          "name": "line-sum mismatch is advisory only",
+          "pass": true,
+          "actual": {
+            "status": "review",
+            "advisory": true,
+            "line_amount_sum": 700,
+            "subtotal": 800,
+            "difference": 100,
+            "tolerance": 0.4,
+            "reason": "Parsed line amounts do not fully reconcile with Subtotal. This is advisory because intentionally excluded service/accessory rows may contribute to Subtotal."
+          },
+          "expected": "review/advisory"
+        }
+      ]
+    },
+    "holdout": {
+      "pass": 6,
+      "total": 6,
+      "failures": [],
+      "cases": [
+        {
+          "name": "holdout multi-line invoice totals reconcile",
+          "pass": true,
+          "actual": {
+            "subtotal_gst_total": {
+              "status": "pass",
+              "subtotal": 3600,
+              "gst": 324,
+              "total": 3924,
+              "expected_total": 3924,
+              "difference": 0,
+              "tolerance": 0.39,
+              "reason": "Subtotal + GST agrees with Total."
+            },
+            "line_sum_subtotal": {
+              "status": "pass",
+              "advisory": true,
+              "line_amount_sum": 3600,
+              "subtotal": 3600,
+              "difference": 0,
+              "tolerance": 1.8,
+              "reason": "Parsed line amounts agree with Subtotal."
+            }
+          },
+          "expected": "pass/pass"
+        },
+        {
+          "name": "holdout delivery row remains service",
+          "pass": true,
+          "actual": true,
+          "expected": true
+        },
+        {
+          "name": "holdout bundled equipment remains inventory candidate",
+          "pass": true,
+          "actual": false,
+          "expected": false
+        },
+        {
+          "name": "holdout no-SKU equipment is not rejected for missing SKU",
+          "pass": true,
+          "actual": [],
+          "expected": "no sku low-required"
+        },
+        {
+          "name": "holdout specification-as-quantity is caught economically",
+          "pass": true,
+          "actual": {
+            "status": "review",
+            "quantity": 5000,
+            "unit_price": 700,
+            "amount": 700,
+            "expected_amount": 3500000,
+            "difference": 3499300,
+            "tolerance": 1750,
+            "reason": "Qty × Unit Price does not agree with Amount."
+          },
+          "expected": "review"
+        },
+        {
+          "name": "holdout blank serial stays optional",
+          "pass": true,
+          "actual": {
+            "score": null,
+            "label": "optional",
+            "reason": "Serial number is optional and blank.",
+            "evidence": {
+              "found": false,
+              "source": "",
+              "page": null,
+              "line": null,
+              "text": "",
+              "method": "blank"
+            }
+          },
+          "expected": "optional"
+        }
+      ],
+      "external_scan_holdout": [
+        {
+          "name": "INV-artspace.pdf",
+          "status": "NOT EXECUTED",
+          "reason": "Files index reports no readable text and raw bytes could not be materialized in this session. It was not counted as PASS."
+        }
+      ]
+    }
+  },
+  "ocr_preprocessing": {
+    "original_modes_preserved": [
+      "recovery-auto",
+      "recovery-block",
+      "recovery-column",
+      "recovery-sparse"
+    ],
+    "added_modes": [
+      "recovery-prep-auto",
+      "recovery-prep-block"
+    ],
+    "selection": "Existing candidate scoring still chooses the strongest OCR text/layout candidate.",
+    "fallback": "Original canvas/modes remain available. Preprocessing never overwrites the source image."
+  },
+  "safety_rules": [
+    "No field is invented by the new quality layer.",
+    "Arithmetic mismatch flags Review; it does not rewrite Qty/Price/Amount.",
+    "Blank SKU remains optional.",
+    "Blank serial remains optional.",
+    "Line-sum vs subtotal is advisory only.",
+    "Subtotal + GST vs Total mismatch requests review.",
+    "High economics confidence requires direct source evidence plus arithmetic agreement."
+  ],
+  "syntax": {
+    "core": true,
+    "app_outer": true,
+    "generated_baseline": true
+  },
+  "versions": {
+    "current": "7.03.3.14n",
+    "upcoming": "7.03.3.14o"
+  }
+}

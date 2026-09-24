@@ -1,0 +1,38 @@
+AV Inventory Hub v7.03.3.14n — Deep Validation Report
+Generated: 2026-09-24T11:49:47.050Z
+=================================================
+
+PATCH FOCUS
+Golden invoices + evidence tracing + arithmetic validation + field confidence + OCR preprocessing + holdout testing.
+
+IMPLEMENTED
+- Permanent Golden Invoice manifest; full private PDFs are not committed.
+- Field provenance/evidence source metadata and evidence-based confidence per parsed field.
+- Fail-closed row arithmetic: Qty × Unit Price vs Amount.
+- Document arithmetic: Subtotal + GST vs Total; line-sum vs Subtotal is advisory only.
+- Missing SKU and serial remain optional.
+- OCR recovery now adds PREP_AUTO and PREP_BLOCK candidates after grayscale/background normalization; original OCR modes remain.
+- Separate adversarial holdout suite executed only after the candidate was frozen.
+
+TEST RESULTS
+PASS Legacy behavioral: 14/14
+PASS Golden logical cases: 7/7 (13 historical file variants represented)
+PASS New parser-quality cases: 12/12
+PASS Adversarial holdout cases: 6/6
+PASS Golden quality-guard regression: no unexpected new arithmetic/low-confidence reviews in the 7 Golden cases
+PASS v7033-core.js syntax
+PASS app.js outer-loader syntax
+PASS generated pinned-baseline runtime syntax after OCR patch
+PASS four original OCR recovery modes preserved
+PASS two additive preprocessed OCR modes present
+
+HOLDOUT LIMITATION
+NOT EXECUTED: INV-artspace.pdf. The file is scan-only in the current index and its raw bytes could not be materialized. It is explicitly excluded from PASS counts.
+
+UPCOMING (DEFERRED AS REQUESTED)
+- Architecture stability: local verified baseline, gradual runtime patch removal, automated regression CI.
+- Parser learning: Admin-approved correction memory, supplier profiles, Admin parser-quality dashboard.
+- Operational safeguards: automated backups, PDF fingerprint duplicate detection.
+
+OVERALL PRE-DEPLOYMENT STATUS
+PASS

@@ -1,0 +1,109 @@
+{
+  "version": "7.03.3.14n",
+  "generated_at": "2026-09-24T11:49:47.050Z",
+  "privacy": "Manifest/expectations only. Full private invoice PDFs and personal/banking details are not committed.",
+  "purpose": "Permanent Golden Invoice regression manifest. Executable fixtures remain in V7033Patch.runHistoricalRegressionChecks().",
+  "represented_file_variants": 13,
+  "logical_cases": [
+    {
+      "id": "avs-320-vin17-049472",
+      "source_files": [
+        "VIN17-049472(signed).pdf",
+        "VIN17-049472(signed)(1).pdf"
+      ],
+      "expected": {
+        "final_skus": [
+          "AVS-320"
+        ],
+        "service_excluded": 1,
+        "accessory_excluded": 1
+      },
+      "pass_reason": "AVS-320 equipment is retained while installation and HDMI cable rows are excluded."
+    },
+    {
+      "id": "aerospace-2022",
+      "source_files": [
+        "INV-Aerospace.pdf",
+        "INV-Aerospace(1).pdf",
+        "12-08-2022-AV-Media-Pte-Ltd.pdf"
+      ],
+      "expected": {
+        "must_include": [
+          "PT-VW540",
+          "AVS320"
+        ],
+        "must_exclude": "installation work"
+      },
+      "pass_reason": "Credible PT-VW540 and AVS320 identities survive noisy OCR while installation work is excluded."
+    },
+    {
+      "id": "loud-pga58-00215542",
+      "source_files": [
+        "Invoice INV LTA-00215542_Signed.pdf",
+        "Invoice INV LTA-00215542_Signed(1).pdf",
+        "Invoice INV LTA-00215542_Signed(2).pdf"
+      ],
+      "expected": {
+        "final_skus": [
+          "PGA58-LC"
+        ],
+        "delivery_excluded": true
+      },
+      "pass_reason": "PGA58-LC remains inventory and delivery service is excluded."
+    },
+    {
+      "id": "loud-mixed-00215840",
+      "source_files": [
+        "Invoice INV LTA-00215840_Signed.pdf"
+      ],
+      "expected": {
+        "retain": [
+          "U35C",
+          "SLXD2+",
+          "AT-2",
+          "U3"
+        ],
+        "delivery_excluded": true
+      },
+      "pass_reason": "Four equipment identities remain while the delivery line is removed."
+    },
+    {
+      "id": "jny-rds-2021",
+      "source_files": [
+        "INV-RDSMar21.pdf"
+      ],
+      "expected": {
+        "sku": "PT-TW381R",
+        "clean_name": true,
+        "invoice_allowed": true
+      },
+      "pass_reason": "Bundled projector remains tracked, work verbs stay out of Standard Item Name, and D/O reference does not reject the Tax Invoice."
+    },
+    {
+      "id": "seminar-room-2021",
+      "source_files": [
+        "INV-SeminarRoom123.pdf",
+        "INV-SeminarRoom123(1).pdf"
+      ],
+      "expected": {
+        "must_include": [
+          "PT-VW540",
+          "SPS-1100"
+        ],
+        "no_bracket": true,
+        "no_unrelated_model_hijack": true
+      },
+      "pass_reason": "Projector and speaker identities survive; bracket is excluded and unrelated OCR tokens do not hijack SKU/model."
+    },
+    {
+      "id": "hawko-av-cart-2021",
+      "source_files": [
+        "INV-AVcart.pdf"
+      ],
+      "expected": {
+        "structured_asset_recovered": true
+      },
+      "pass_reason": "Strongly evidenced priced trolley is recovered as a structured physical asset despite generic cart/trolley exclusions."
+    }
+  ]
+}

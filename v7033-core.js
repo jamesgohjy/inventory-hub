@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14m';
+  const VERSION='7.03.3.14n';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -644,6 +644,119 @@
     }}
     return dedupeParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw)));
   }
+
+  const v703314nRound2=n=>Number.isFinite(Number(n))?Math.round(Number(n)*100)/100:null;
+  const v703314nFinite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
+  function v703314nTolerance(value,min=.02,rate=.0005){return Math.max(min,Math.abs(Number(value)||0)*rate);}
+  function v703314nLineArithmetic(row={}){
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    if(!(q>0)||!Number.isFinite(p)||!Number.isFinite(a))return {status:'unavailable',reason:'Qty, unit price and amount are not all available.',quantity:v703314nFinite(row.quantity)?q:null,unit_price:v703314nFinite(row.unit_price)?p:null,amount:v703314nFinite(row.amount)?a:null};
+    const expected=v703314nRound2(q*p),difference=v703314nRound2(Math.abs(a-expected)),tolerance=v703314nTolerance(expected,.02,.0005),pass=difference<=tolerance;
+    return {status:pass?'pass':'review',quantity:q,unit_price:p,amount:a,expected_amount:expected,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Qty × Unit Price agrees with Amount.':'Qty × Unit Price does not agree with Amount.'};
+  }
+  function v703314nDocumentArithmetic(doc={},rows=[]){
+    const subtotal=v703314nFinite(doc.subtotal)?Number(doc.subtotal):null,gst=v703314nFinite(doc.gst)?Number(doc.gst):null,total=v703314nFinite(doc.total_amount??doc.total)?Number(doc.total_amount??doc.total):null;
+    const out={subtotal_gst_total:{status:'unavailable',reason:'Subtotal, GST and Total are not all available.'},line_sum_subtotal:{status:'unavailable',advisory:true,reason:'A complete numeric line amount set is not available.'}};
+    if(subtotal!==null&&gst!==null&&total!==null){
+      const expected=v703314nRound2(subtotal+gst),difference=v703314nRound2(Math.abs(total-expected)),tolerance=v703314nTolerance(total,.05,.0001),pass=difference<=tolerance;
+      out.subtotal_gst_total={status:pass?'pass':'review',subtotal,gst,total,expected_total:expected,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Subtotal + GST agrees with Total.':'Subtotal + GST does not agree with Total.'};
+    }
+    const numeric=(rows||[]).filter(r=>v703314nFinite(r.amount)),eligible=(rows||[]).length>0&&numeric.length===(rows||[]).length;
+    if(eligible&&subtotal!==null){
+      const sum=v703314nRound2(numeric.reduce((n,r)=>n+Number(r.amount),0)),difference=v703314nRound2(Math.abs(sum-subtotal)),tolerance=v703314nTolerance(subtotal,.05,.0005),pass=difference<=tolerance;
+      out.line_sum_subtotal={status:pass?'pass':'review',advisory:true,line_amount_sum:sum,subtotal,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Parsed line amounts agree with Subtotal.':'Parsed line amounts do not fully reconcile with Subtotal. This is advisory because intentionally excluded service/accessory rows may contribute to Subtotal.'};
+    }
+    return out;
+  }
+  function v703314nEvidenceMatch(value,field,row={},raw='',evidenceSources=[]){
+    if(value===null||value===undefined||value==='')return {found:false,source:'',page:null,line:null,text:'',method:'blank'};
+    const prov=row?.v7Provenance?.[field]||row?.provenance?.[field]||{};
+    if(clean(prov.sourceText||''))return {found:true,source:clean(prov.source||row.source||'provenance'),page:prov.page??row.page??null,line:prov.rowId||row.rowId||null,text:clean(prov.sourceText),method:'provenance'};
+    const sources=v703312kEvidenceTexts(raw,evidenceSources);
+    const direct=field==='sku'||field==='serials',target=direct?compact(value):norm(String(value));
+    const numericField=['quantity','unit_price','amount'].includes(field);
+    for(const ev of sources){
+      const lines=String(ev.text||'').replace(/\r/g,'').split('\n');
+      let candidateIndexes=lines.map((_,i)=>i);
+      if(numericField){
+        const skuKey=compact(row.sku||''),nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4).slice(0,4),anchors=[];
+        for(let i=0;i<lines.length;i++){const c=compact(lines[i]),n=norm(lines[i]);if((skuKey&&c.includes(skuKey))||(!skuKey&&nameWords.length>=2&&nameWords.filter(w=>n.includes(w)).length>=2))anchors.push(i);}
+        if(anchors.length){const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);candidateIndexes=[...set].sort((a,b)=>a-b);}
+      }
+      for(const i of candidateIndexes){
+        const line=clean(lines[i]);if(!line)continue;const hay=direct?compact(line):norm(line);
+        let matched=!!target&&hay.includes(target);
+        if(!matched&&['quantity','unit_price','amount','subtotal','gst','total_amount'].includes(field)&&Number.isFinite(Number(value))){
+          const n=Number(value),forms=[String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})].map(x=>norm(x));matched=forms.some(x=>x&&hay.includes(x));
+        }
+        if(matched)return {found:true,source:ev.source||'evidence',page:ev.page??null,line:i+1,text:line.slice(0,320),method:numericField?'row-local-source-line':'source-line'};
+      }
+    }
+    return {found:false,source:'',page:null,line:null,text:'',method:'not-found'};
+  }
+  function v703314nConfidence(score,reason,evidence={}){
+    const s=score===null?null:Math.max(0,Math.min(.99,Number(score)||0));return {score:s,label:s===null?'optional':s>=.95?'high':s>=.75?'medium':'low',reason,evidence};
+  }
+  function v703314nFieldQuality(row={},raw='',evidenceSources=[]){
+    const arithmetic=v703314nLineArithmetic(row),layer2=row.v703312kLevel2?.status||row.verification?.layers?.layer2?.status||'unavailable',out={};
+    const review=(field)=>field==='unit_price'?row.priceReviewRequired:field==='amount'?row.amountReviewRequired:field==='quantity'?row.quantityReviewRequired:field==='sku'?row.skuReviewRequired:field==='serials'?row.serialReviewRequired:false;
+    for(const field of ['sku','item_name','quantity','unit_price','amount','serials']){
+      const value=row[field],ev=v703314nEvidenceMatch(value,field,row,raw,evidenceSources);
+      if((value===null||value===undefined||value==='')&&(field==='serials'||field==='sku'||field==='unit_price'||field==='amount')){out[field]=v703314nConfidence(null,field==='serials'?'Serial number is optional and blank.':field==='sku'?'SKU/model is optional when not printed on the invoice.':'Optional economic field is blank.',ev);continue;}
+      if(value===null||value===undefined||value===''){out[field]=v703314nConfidence(0,'Required field is blank.',ev);continue;}
+      let score=ev.found?.90:.58,reason=ev.found?'Value is traceable to invoice evidence.':'Value is not directly traceable to a retained source line.';
+      if(field==='sku'&&credibleSku(value,v703312jRowText(row))&&ev.found){score=.98;reason='Credible SKU/model is directly supported by invoice evidence.';}
+      if(field==='item_name'&&ev.found)score=.94;
+      if(field==='item_name'&&!ev.found&&credibleSku(row.sku||'',v703312jRowText(row))){score=Math.max(score,.78);reason='Standard Item Name is normalized from a row with verified SKU/model evidence.';}
+      if(['quantity','unit_price','amount'].includes(field)&&arithmetic.status==='pass'){if(ev.found){score=Math.max(score,.97);reason+=' Row arithmetic also agrees.';}else{score=Math.max(score,.70);reason+=' Row arithmetic agrees, but direct source evidence is still weak.';}}
+      if(['quantity','unit_price','amount'].includes(field)&&arithmetic.status==='review'){score=Math.min(score,.35);reason='Row arithmetic conflicts; human verification is required.';}
+      if(field==='serials'&&ev.found){const count=String(value).split(/[,;\n]+/).map(clean).filter(Boolean).length,q=Number(row.quantity);score=Number.isInteger(q)&&q>0&&count<=q?.96:.84;reason=count&&Number.isInteger(q)&&count<=q?'Serial evidence is printed and serial count does not exceed Qty.':'Serial evidence is printed but count/ownership needs review.';}
+      if(layer2==='confirmed')score=Math.min(.99,score+.02);
+      if(review(field)||row.v703312kIndependentConflict){score=Math.min(score,.45);reason+=' Existing verification flags require review.';}
+      out[field]=v703314nConfidence(score,reason,ev);
+    }
+    return {fields:out,arithmetic};
+  }
+  function v703314nDocumentQuality(doc={},raw='',evidenceSources=[],incoming=[]){
+    const fields={};for(const field of ['supplier_name','invoice_number','invoice_date','subtotal','gst','total_amount']){
+      const value=field==='total_amount'?(doc.total_amount??doc.total):doc[field],ev=v703314nEvidenceMatch(value,field,doc,raw,evidenceSources);
+      if(value===null||value===undefined||value===''){fields[field]=v703314nConfidence(null,'Document field is unavailable; no value was invented.',ev);continue;}
+      let score=ev.found?.94:.62,reason=ev.found?'Document field is traceable to invoice evidence.':'Document field lacks direct retained-line evidence.';
+      if(field==='invoice_number'&&ev.found&&!doc.invoiceNumberReviewRequired){score=.99;reason='Invoice number is directly supported by invoice evidence.';}if(field==='supplier_name'&&ev.found)score=.97;if(['subtotal','gst','total_amount'].includes(field)&&ev.found)score=.97;fields[field]=v703314nConfidence(score,reason,ev);
+    }return {fields,arithmetic:v703314nDocumentArithmetic(doc,incoming)};
+  }
+  function v703314nApplyQualityGuards(parsed={},raw='',context={}){
+    const evidenceSources=context.evidenceSources||[],incoming=context.incoming||[],rows=(parsed.items||[]).map(r=>({...r})),reviews=[];
+    const items=rows.map((row,i)=>{const q=v703314nFieldQuality(row,raw,evidenceSources),r={...row,v703314nFieldConfidence:q.fields,v703314nArithmetic:q.arithmetic};if(q.arithmetic.status==='review'){r.quantityReviewRequired=true;r.priceReviewRequired=true;r.amountReviewRequired=true;r.humanReviewRequired=true;r.needsReview=true;r.v7033ReviewFields={...(r.v7033ReviewFields||{}),quantity:true,unit_price:true,amount:true};reviews.push({rowId:r.rowId||r.v7RowId||String(i+1),reason:'Qty × Unit Price does not agree with Amount.',fields:{quantity:true,unit_price:true,amount:true}});}return r;});
+    const document=v703314nDocumentQuality(parsed.doc||{},raw,evidenceSources,incoming);
+    if(document.arithmetic.subtotal_gst_total.status==='review')reviews.push({rowId:'invoice',reason:'Subtotal + GST does not agree with Total.',fields:{subtotal:true,gst:true,total_amount:true}});
+    const lowRequired=[];for(const [i,r] of items.entries()){for(const field of ['item_name','quantity']){const c=r.v703314nFieldConfidence?.[field];if(c&&c.score!==null&&c.score<.75)lowRequired.push({rowId:r.rowId||r.v7RowId||String(i+1),field,score:c.score});}const skuC=r.v703314nFieldConfidence?.sku;if(clean(r.sku||'')&&skuC&&skuC.score!==null&&skuC.score<.75)lowRequired.push({rowId:r.rowId||r.v7RowId||String(i+1),field:'sku',score:skuC.score});}
+    return {items,document,reviewRows:reviews,lowRequired,humanReviewRequired:reviews.length>0||lowRequired.length>0,summary:{version:VERSION,generated_at:new Date().toISOString(),document,rows:items.map(r=>({rowId:r.rowId||r.v7RowId||'',sku:r.sku,item_name:r.item_name,confidence:r.v703314nFieldConfidence,arithmetic:r.v703314nArithmetic})),reviewRows:reviews,lowRequired}};
+  }
+  function runQualityRegressionChecks14n(){
+    const cases=[];const check=(name,pass,actual,expected)=>cases.push({name,pass:!!pass,actual,expected});
+    const good={sku:'TEST-100',item_name:'Test projector',quantity:2,unit_price:350,amount:700},bad={sku:'TEST-100',item_name:'Test projector',quantity:8,unit_price:350,amount:700};
+    const goodA=v703314nLineArithmetic(good),badA=v703314nLineArithmetic(bad);check('row arithmetic accepts valid economics',goodA.status==='pass',goodA,'pass');check('row arithmetic catches mismatched quantity',badA.status==='review',badA,'review');
+    const docGood=v703314nDocumentArithmetic({subtotal:700,gst:63,total_amount:763},[{amount:700}]),docBad=v703314nDocumentArithmetic({subtotal:700,gst:63,total_amount:900},[{amount:700}]);check('document arithmetic accepts subtotal plus GST',docGood.subtotal_gst_total.status==='pass',docGood.subtotal_gst_total,'pass');check('document arithmetic catches total mismatch',docBad.subtotal_gst_total.status==='review',docBad.subtotal_gst_total,'review');
+    const raw='TAX INVOICE\nTEST-100 Test projector 2 350.00 700.00\nSubtotal 700.00\nGST 63.00\nTotal 763.00',applied=v703314nApplyQualityGuards({doc:{subtotal:700,gst:63,total_amount:763},items:[good]},raw,{incoming:[good],evidenceSources:[{source:'fixture',text:raw}]});
+    check('evidence trace finds printed SKU',applied.items[0].v703314nFieldConfidence.sku.evidence.found===true,applied.items[0].v703314nFieldConfidence.sku.evidence,'found');check('arithmetic plus evidence raises economics confidence',applied.items[0].v703314nFieldConfidence.quantity.score>=.95,applied.items[0].v703314nFieldConfidence.quantity,'>=0.95');check('optional blank serial is not treated as an error',applied.items[0].v703314nFieldConfidence.serials.score===null,applied.items[0].v703314nFieldConfidence.serials,'optional/null');
+    const noSku=v703314nApplyQualityGuards({doc:{},items:[{sku:'',item_name:'Projector controller',quantity:1}]},'Projector controller 1',{incoming:[{sku:'',item_name:'Projector controller',quantity:1}],evidenceSources:[]});check('missing SKU remains optional',noSku.lowRequired.every(x=>x.field!=='sku'),noSku.lowRequired,'no sku review solely because blank');
+    const weak=v703314nApplyQualityGuards({doc:{},items:[{sku:'TEST-200',item_name:'Test mixer',quantity:2,unit_price:50,amount:100}]},'Unrelated invoice text',{incoming:[],evidenceSources:[]});check('arithmetic alone cannot create high confidence',weak.items[0].v703314nFieldConfidence.quantity.score<.95,weak.items[0].v703314nFieldConfidence.quantity,'<0.95');
+    const guarded=v703314nApplyQualityGuards({doc:{},items:[bad]},'TEST-100 Test projector 8 350.00 700.00',{incoming:[bad],evidenceSources:[]});check('arithmetic mismatch forces review flags',guarded.items[0].quantityReviewRequired&&guarded.items[0].priceReviewRequired&&guarded.items[0].amountReviewRequired,guarded.items[0].v7033ReviewFields,'quantity/unit_price/amount review');check('mismatch never silently changes values',guarded.items[0].quantity===8&&guarded.items[0].unit_price===350&&guarded.items[0].amount===700,{quantity:guarded.items[0].quantity,unit_price:guarded.items[0].unit_price,amount:guarded.items[0].amount},bad);
+    const subtotalAdvisory=v703314nDocumentArithmetic({subtotal:800,gst:72,total_amount:872},[{amount:700}]);check('line-sum mismatch is advisory only',subtotalAdvisory.line_sum_subtotal.status==='review'&&subtotalAdvisory.line_sum_subtotal.advisory===true,subtotalAdvisory.line_sum_subtotal,'review/advisory');
+    return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+  function runHoldoutRegressionChecks14n(){
+    const cases=[];const check=(name,pass,actual,expected)=>cases.push({name,pass:!!pass,actual,expected});
+    const loudDoc=v703314nDocumentArithmetic({subtotal:3600,gst:324,total_amount:3924},[{amount:1360},{amount:480},{amount:340},{amount:270},{amount:1100},{amount:50}]);check('holdout multi-line invoice totals reconcile',loudDoc.subtotal_gst_total.status==='pass'&&loudDoc.line_sum_subtotal.status==='pass',loudDoc,'pass/pass');
+    const service=v703312jIsServiceRow({sku:'DEL',item_name:'Delivery Services with return Trip for Signed Delivery Order',quantity:1,unit_price:50,amount:50});check('holdout delivery row remains service',service===true,service,true);
+    const bundle=v703312jIsServiceRow({sku:'PT-TW381R',item_name:'Panasonic PT-TW381R Short Throw Projector',description:'Professional Services including dismantle, installation, testing and commissioning',quantity:1,unit_price:4820,amount:4820});check('holdout bundled equipment remains inventory candidate',bundle===false,bundle,false);
+    const noSku=v703314nApplyQualityGuards({doc:{},items:[{sku:'',item_name:'Lighting controller',quantity:1,unit_price:100,amount:100}]},'Lighting controller 1 100.00 100.00',{incoming:[{item_name:'Lighting controller',quantity:1,unit_price:100,amount:100}],evidenceSources:[]});check('holdout no-SKU equipment is not rejected for missing SKU',noSku.lowRequired.every(x=>x.field!=='sku'),noSku.lowRequired,'no sku low-required');
+    const spec=v703314nLineArithmetic({sku:'P-5000',item_name:'5000 lumens projector',quantity:5000,unit_price:700,amount:700});check('holdout specification-as-quantity is caught economically',spec.status==='review',spec,'review');
+    const serialOptional=v703314nFieldQuality({sku:'MIC-1',item_name:'Microphone',quantity:1,unit_price:100,amount:100,serials:''},'MIC-1 Microphone 1 100.00 100.00',[]);check('holdout blank serial stays optional',serialOptional.fields.serials.score===null,serialOptional.fields.serials,'optional');
+    return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+
   function applyParsedFixes(parsed={},raw='',evidenceSources=[]){
     if(!parsed||typeof parsed!=='object')return parsed;
     const source=String(raw||parsed.raw||parsed.rawText||'');
@@ -683,7 +796,10 @@
       const fields={...reviewFieldsForRow(row||{}),...reviewFieldsForRow(item)};
       return {...item,v7033ReviewFields:fields};
     });
-    const rowNeed=out.items.some(r=>r.humanReviewRequired===true||explicitReviewFlag(r)||Object.keys(r.v7033ReviewFields||{}).length>0);
+    const quality14n=v703314nApplyQualityGuards(out,source,{incoming,excludedService,excludedAccessory,recovered,evidenceSources});
+    out.items=quality14n.items;out.v703314nQuality=quality14n.summary;
+    if(quality14n.reviewRows.length){const vr={...(v7.verification||{})};vr.humanReviewRows=dedupeReviewRows([...(vr.humanReviewRows||[]),...quality14n.reviewRows]);vr.humanReviewRequired=true;v7.verification=vr;}
+    const rowNeed=out.items.some(r=>r.humanReviewRequired===true||explicitReviewFlag(r)||Object.keys(r.v7033ReviewFields||{}).length>0)||quality14n.humanReviewRequired;
     v7.humanReviewRequired=!!(rowNeed||v7.verification?.humanReviewRequired||comp.recheckRequired);
     v7.patchVersion=VERSION;v7.baselineVersion=BASELINE_VERSION;out.v7=v7;
     if(out.parseEvidence?.v7)out.parseEvidence={...out.parseEvidence,v7};
@@ -801,7 +917,7 @@
     const source=String(raw||parsed?.raw||parsed?.rawText||''),incoming=[...(context.incoming||[])],items=[...(parsed?.items||[])];
     const classification=classifyInvoicePage(source),doc=parsed?.doc||{},v7=parsed?.v7||parsed?.parseEvidence?.v7||{},comp=v7.completenessValidation||{},verify=parsed?.v703312kVerification||{};
     const decisionRows=incoming.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,...v703314lRowDecision(r)}));
-    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||Object.keys(r.v7033ReviewFields||{}).length)}));
+    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||Object.keys(r.v7033ReviewFields||{}).length)}));
     const excludedService=[...(context.excludedService||[])],excludedAccessory=[...(context.excludedAccessory||[])],recovered=[...(context.recovered||[])];
     const level3=!!(verify.level3Required||v7.humanReviewRequired||comp.recheckRequired||finalItems.some(x=>x.human_review_required));
     const status=!classification.allowed?'BLOCK':(!items.length?'BLOCK':(level3?'REVIEW':'PASS'));
@@ -813,7 +929,7 @@
     if(recovered.length)reasons.push(recovered.length+' equipment row(s) recovered from OCR/table evidence.');
     if(level3)reasons.push('Level 3 review is still required for unresolved evidence.');
     if(!reasons.length)reasons.push('Parser evidence is internally consistent.');
-    return {version:VERSION,generated_at:new Date().toISOString(),overall_status:status,patch_focus:'Historical invoice regression evidence + parser diagnostics',source:{character_count:source.length,line_count:source?source.split(/\r?\n/).length:0,evidence_source_count:(context.evidenceSources||[]).length,evidence_sources:(context.evidenceSources||[]).map((x,i)=>String(x?.source||('evidence-'+(i+1))))},document:{classification:{allowed:classification.allowed,disposition:classification.disposition,type:classification.type,reason:classification.reason,review_required:classification.reviewRequired,score:classification.score,evidence:classification.evidence},header:{supplier_name:doc.supplier_name||'',invoice_number:doc.invoice_number||'',invoice_date:doc.invoice_date||'',delivery_order_number:doc.delivery_order_number||'',reference:doc.reference||doc.reference_number||'',currency:doc.currency||'',subtotal:doc.subtotal??null,gst:doc.gst??null,total_amount:doc.total_amount??doc.total??null},corrections:{invoice_number_corrected_from:doc.v7033InvoiceNumberCorrectedFrom||'',invoice_number_review_required:!!doc.invoiceNumberReviewRequired}},filtering:{incoming_count:incoming.length,tracked_count:items.length,excluded_service_count:excludedService.length,excluded_accessory_count:excludedAccessory.length,recovered_equipment_count:recovered.length,incoming_rows:decisionRows},final_items:finalItems,verification:{level3_required:level3,completeness:comp,level1:verify.level1||[],level2:verify.level2||[]},decision_reasons:reasons};
+    return {version:VERSION,generated_at:new Date().toISOString(),overall_status:status,patch_focus:'Golden invoices + evidence tracing + arithmetic validation + field confidence + OCR preprocessing + holdout testing',quality14n:parsed.v703314nQuality||null,source:{character_count:source.length,line_count:source?source.split(/\r?\n/).length:0,evidence_source_count:(context.evidenceSources||[]).length,evidence_sources:(context.evidenceSources||[]).map((x,i)=>String(x?.source||('evidence-'+(i+1))))},document:{classification:{allowed:classification.allowed,disposition:classification.disposition,type:classification.type,reason:classification.reason,review_required:classification.reviewRequired,score:classification.score,evidence:classification.evidence},header:{supplier_name:doc.supplier_name||'',invoice_number:doc.invoice_number||'',invoice_date:doc.invoice_date||'',delivery_order_number:doc.delivery_order_number||'',reference:doc.reference||doc.reference_number||'',currency:doc.currency||'',subtotal:doc.subtotal??null,gst:doc.gst??null,total_amount:doc.total_amount??doc.total??null},corrections:{invoice_number_corrected_from:doc.v7033InvoiceNumberCorrectedFrom||'',invoice_number_review_required:!!doc.invoiceNumberReviewRequired}},filtering:{incoming_count:incoming.length,tracked_count:items.length,excluded_service_count:excludedService.length,excluded_accessory_count:excludedAccessory.length,recovered_equipment_count:recovered.length,incoming_rows:decisionRows},final_items:finalItems,verification:{level3_required:level3,completeness:comp,level1:verify.level1||[],level2:verify.level2||[]},decision_reasons:reasons};
   }
   function runHistoricalRegressionChecks(){
     const cases=[];const add=cfg=>{const actual=cfg.run(),pass=!!cfg.pass(actual);cases.push({id:cfg.id,source_files:cfg.source_files,source_kind:'historical-source-excerpt',expected:cfg.expected,actual,evidence:cfg.evidence(actual),pass,reason:pass?cfg.pass_reason:(cfg.fail_reason(actual)||'Actual parser result did not match the historical expectation.')});};
@@ -842,17 +958,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Parser diagnostics in invoice Review are now visible to Admin accounts only.',
-    'Editor and Viewer accounts no longer receive the diagnostics panel or detailed browser diagnostic cache.',
-    'Parser behavioral and historical regression checks continue running internally for all roles.'
+    'Added Golden Invoice regression coverage with separate holdout validation.',
+    'Added field evidence tracing, per-field confidence and fail-closed arithmetic validation.',
+    'Added OCR recovery preprocessing candidates while preserving the original OCR path.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14n';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14o';
   const RELEASE_ROADMAP=[
-    {id:'audit-health-export',text:'Add audit/Data Health export and retention controls.'},
-    {id:'saved-review-filters',text:'Improve saved review/filter workflows.'},
-    {id:'diagnostic-issue-package',text:'Add one-click Admin diagnostic package export for parser issue reports.'}
+    {id:'architecture-stability',text:'Local verified baseline, gradual runtime patch removal and automated regression CI.'},
+    {id:'parser-learning-observability',text:'Admin-approved correction memory, supplier layout profiles and an Admin parser-quality dashboard.'},
+    {id:'operational-safeguards',text:'Automated backups and PDF fingerprint duplicate detection.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
@@ -885,5 +1001,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });

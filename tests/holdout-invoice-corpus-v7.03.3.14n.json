@@ -1,0 +1,38 @@
+{
+  "version": "7.03.3.14n",
+  "generated_at": "2026-09-24T11:49:47.050Z",
+  "methodology": "Holdout cases are evaluated after the candidate is frozen and are not used to tune the Golden expectations.",
+  "executed_adversarial_cases": [
+    {
+      "name": "holdout multi-line invoice totals reconcile",
+      "expected": "pass/pass"
+    },
+    {
+      "name": "holdout delivery row remains service",
+      "expected": true
+    },
+    {
+      "name": "holdout bundled equipment remains inventory candidate",
+      "expected": false
+    },
+    {
+      "name": "holdout no-SKU equipment is not rejected for missing SKU",
+      "expected": "no sku low-required"
+    },
+    {
+      "name": "holdout specification-as-quantity is caught economically",
+      "expected": "review"
+    },
+    {
+      "name": "holdout blank serial stays optional",
+      "expected": "optional"
+    }
+  ],
+  "external_holdout": [
+    {
+      "name": "INV-artspace.pdf",
+      "status": "NOT EXECUTED",
+      "reason": "Files index reports no readable text and raw bytes could not be materialized in this session. It was not counted as PASS."
+    }
+  ]
+}
