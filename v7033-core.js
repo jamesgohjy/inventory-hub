@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14';
+  const VERSION='7.03.3.14a';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -18,7 +18,7 @@
   const uniq=(xs,key=x=>x)=>{const out=[],seen=new Set();for(const x of xs||[]){const k=key(x);if(!k||seen.has(k))continue;seen.add(k);out.push(x);}return out;};
 
 
-  // V7.03.3.14 — additive exception for a complete equipment trolley.
+  // V7.03.3.14a — additive exception for a complete equipment trolley.
   // A generic trolley remains excluded. Promotion requires printed SKU + consistent economics
   // + multiple physical construction features, so older accessory behavior stays unchanged.
   function isStructuredPhysicalAssetRow(row={}){
@@ -291,7 +291,7 @@
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
   }
-  // v7.03.3.14: field-level Level 3 evidence. This is parser metadata, not UI inference.
+  // v7.03.3.14a: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
     const out={};
     const add=(field,reason)=>{if(!field)return;out[field]={status:'review',reason:clean(reason||'Human verification required.')};};
@@ -387,11 +387,11 @@
       if(lines[i+1])candidates.push(lines[i+1]);
       for(const c of candidates){const n=normalizeInvoiceNumberCandidate(c,supplier,raw);if(n)return n;}
     }
-    const heading=v=>/^(?:TAX\s+INVOICE|INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)$/i.test(clean(v).replace(/[^A-Za-z ]+/g,' ').replace(/\s+/g,' ').trim());
+    const heading=v=>{const h=clean(v).replace(/[^A-Za-z ]+/g,' ').replace(/\s+/g,' ').trim();if(!h||h.length>120||h.split(/\s+/).length>6||/\b(?:PRO\s*FORMA|PROFORMA|COPY\s+OF|REFERENCE|PAYMENT)\b/i.test(h))return false;return /(?:^|\s)(?:TAX\s+INVOICE|INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)$/i.test(h);};
     for(let i=0;i<Math.min(lines.length,80);i++){
       if(!heading(lines[i]))continue;
       for(let j=i+1;j<Math.min(lines.length,i+6);j++){
-        const m=lines[j].match(/^(?:NO\.?|NUMBER|#)\s*[:#.-]?\s*(.*)$/i);
+        const m=lines[j].match(/^(?:N[O0]\.?|NUMBER|#|O)\s*[:#.-]?\s*(.*)$/i);
         if(!m)continue;
         const candidates=[];
         if(clean(m[1]))candidates.push(clean(m[1]));
@@ -494,6 +494,35 @@
     if(/microphone|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
     return '';
   }
+
+  // V7.03.3.14aa — recover a complete physical trolley from a priced OCR row plus its continuation lines.
+  // This does not relax generic trolley/accessory exclusions: the row must have a directly printed
+  // mixed alphanumeric SKU, internally consistent quantity/price/amount, and >=3 construction features.
+  function v703314aRecoverStructuredPricedAssetRows(text='',source=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),out=[];
+    const rowRe=/^([A-Z0-9][A-Z0-9+._\/-]{2,27})\s+(.+?)\s+(\d{1,4})\s+(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})\s+(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})\s*$/i;
+    const stopRe=/^(?:SUB\s*TOTAL|SUBTOTAL|GST\b|TOTAL\b|GRAND\s+TOTAL|AMOUNT\s+DUE|D\/?O\s+NO\b|PURCHASE\s+ORDER\b|ORDERED\s+BY\b|SALES\s+REP\b|TERMS\b|CUSTOMER'?S?\s+STAMP|AUTHORI[ZS]ED\s+SIGNATURE|ALL\s+PAYMENTS|GOODS\s+SOLD|PAGE\s+\d)/i;
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(rowRe);if(!m)continue;
+      const sku=clean(m[1]);if(!credibleSku(sku,lines[i]))continue;
+      const quantity=Number(m[3]),unitPrice=v703312jMoney(m[4]),amount=v703312jMoney(m[5]);
+      if(!(quantity>0)||!Number.isFinite(unitPrice)||!Number.isFinite(amount)||unitPrice<=0||Math.abs(quantity*unitPrice-amount)>Math.max(.08,Math.abs(amount)*.002))continue;
+      const descParts=[clean(m[2])];let itemName=descParts[0];
+      for(let j=i+1;j<=Math.min(lines.length-1,i+10);j++){
+        const next=clean(lines[j]);if(!next)continue;
+        rowRe.lastIndex=0;if(rowRe.test(next)||stopRe.test(next)||/(?:SGD\s*|S?\$\s*)?\d[\d,]*\.\d{2}[\s|/]+(?:SGD\s*|S?\$\s*)?\d[\d,]*\.\d{2}\s*$/i.test(next))break;
+        if(/^(?:S\s*\/?\s*N|S\.?N\.?|SERIAL(?:\s+(?:NO|NUMBER))?)\b/i.test(next))continue;
+        if(next.length>220)break;
+        descParts.push(next);
+        if(j===i+1&&next.length<=24&&next.split(/\s+/).length<=4)itemName=clean(itemName+' '+next);
+      }
+      const description=clean(descParts.join(' '));
+      const candidate={sku,item_name:itemName,description,category:v703312jCategory(description)||'AV Accessories',unit:'pcs',quantity,unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:lines[i],v703314aStructuredPricedAsset:true};
+      if(v703312jIsServiceRow(candidate)||!isStructuredPhysicalAssetRow(candidate))continue;
+      out.push(candidate);
+    }
+    return out;
+  }
   function v703312kEvidenceTexts(raw='',evidenceSources=[]){
     const list=[{source:'primary',text:String(raw||'')},...(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}))];
     const out=[],seen=new Set();
@@ -559,6 +588,7 @@
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
       const lines=String(ev.text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
       for(const line of lines){const c=v703312kRecoverDirectLine(line,ev.source);if(c)recovered.push(c);}
+      recovered.push(...v703314aRecoverStructuredPricedAssetRows(ev.text,ev.source));
       recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
     }
     const out=[];
@@ -691,6 +721,10 @@
   }
 
   const RELEASE_NOTES=[
+    'Restored the Equipment invoice / Service invoice choice whenever equipment is detected but the invoice number or physical line-item extraction is still incomplete.',
+    'Level 3 now waits for the invoice-type decision and recovery scan instead of appearing immediately on an incomplete equipment parse.',
+    'Directly printed mixed alphanumeric SKU/model codes up to 28 characters are preserved through parser cleanup, review inputs and save; the existing 13-character fallback rule is unchanged.',
+    'Missing invoice numbers continue through the targeted header OCR recovery before save, while label-only D/O values are cleared.',
     'Equipment-confirmation recovery now keeps a strongly evidenced priced equipment trolley instead of discarding it as a generic accessory.',
     'Invoice-number recovery now supports an exact Invoice/Tax Invoice heading followed by NO:, without treating GST/company registration numbers as invoice numbers.',
     'Header cleanup removes label-only D/O values and exact duplicated leading supplier words while preserving real delivery-order values.',
@@ -768,5 +802,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
