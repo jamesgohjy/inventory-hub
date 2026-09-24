@@ -87,6 +87,13 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/backup-verification-ui.js')&&app.includes('runtime-v7.03.3.14u.js'),'14u bootstrap direct module references missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14u bootstrap still references an older runtime/baseline');
+assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
+assert(/id="inventoryGroup"[\\s\\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
+assert(/id="documentGroup"[\\s\\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
+assert(runtime.includes("\\$('inventoryGroup')?.addEventListener('change',renderInventory)")||runtime.includes("\\$('inventoryGroup').onchange=renderInventory")||runtime.includes("inventoryGroup')?.addEventListener('change',renderInventory"),'Inventory Group by Company event path must remain wired');
+assert(runtime.includes("if($('documentGroup'))$('documentGroup').onchange=renderDocuments"),'Documents Group by Company event path must remain wired');
+assert(runtime.includes("InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head,escapeHtml:esc})"),'Documents Group by Company render path must remain wired');
+console.log('protected-company-grouping: Inventory + Documents controls/event/render paths PASS');
 assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.14s.js')&&fs.existsSync('runtime-v7.03.3.14r.js')&&fs.existsSync('baseline-v6.55-d452.js'),'Rollback references must remain available');
 
 const mctx={console,Number,String,Array,Object,Set,Map,RegExp,Math};mctx.globalThis=mctx;mctx.window=mctx;vm.createContext(mctx);vm.runInContext(evidenceEngine,mctx,{filename:'modules/parser-evidence-engine.js'});vm.runInContext(parserModule,mctx,{filename:'modules/parser-table.js'});
