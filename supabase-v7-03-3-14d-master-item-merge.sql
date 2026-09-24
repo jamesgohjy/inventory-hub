@@ -380,7 +380,10 @@ begin
 end;
 $$;
 
-revoke all on function public.merge_master_items_v703314d(uuid,uuid,jsonb) from public;
+-- Supabase exposes new functions broadly by default on many projects.
+-- Revoke EXECUTE from both PUBLIC and anon, then explicitly grant only authenticated clients.
+revoke execute on function public.merge_master_items_v703314d(uuid,uuid,jsonb) from public;
+revoke execute on function public.merge_master_items_v703314d(uuid,uuid,jsonb) from anon;
 grant execute on function public.merge_master_items_v703314d(uuid,uuid,jsonb) to authenticated;
 
 comment on function public.merge_master_items_v703314d(uuid,uuid,jsonb)
