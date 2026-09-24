@@ -1,0 +1,69 @@
+{
+  "version": "7.03.3.14p",
+  "generated_at": "2026-09-24T13:05:06.053Z",
+  "overall_status": "PASS",
+  "patch_focus": [
+    "equipment classification prompt",
+    "invoice date recovery",
+    "invoice-number fail-closed validation",
+    "equipment line-item reprocessing"
+  ],
+  "suites": {
+    "behavioral": {
+      "pass": 14,
+      "total": 14,
+      "failures": []
+    },
+    "golden": {
+      "pass": 7,
+      "total": 7,
+      "failures": []
+    },
+    "quality14n": {
+      "pass": 12,
+      "total": 12,
+      "failures": []
+    },
+    "holdout14n": {
+      "pass": 6,
+      "total": 6,
+      "failures": []
+    },
+    "intelligence14o": {
+      "pass": 9,
+      "total": 9,
+      "failures": []
+    },
+    "aerospace14p": {
+      "pass": 12,
+      "total": 12,
+      "failures": []
+    }
+  },
+  "actual_aerospace_indexed_ocr": {
+    "date_recovered": "2022-08-12",
+    "corrupted_invoice_number_rejected": true,
+    "invoice_number_review_required": true,
+    "strong_equipment_document": true,
+    "equipment_types": [
+      "projector",
+      "control-panel",
+      "speaker"
+    ]
+  },
+  "targeted_header_simulation": {
+    "invoice_number": "VIN17-032365",
+    "invoice_date": "2022-08-12"
+  },
+  "browser_ocr": {
+    "status": "NOT EXECUTED OFFLINE",
+    "reason": "The original Aerospace PDF bytes could not be materialized in this session. High-resolution browser OCR runtime syntax/flow is validated and must be confirmed by re-importing the PDF in Inventory Hub."
+  },
+  "safety": [
+    "No corrupted invoice number is heuristically rewritten.",
+    "Date repair is restricted to a labelled DATE/Invoice Date neighborhood.",
+    "Service/installation rows remain excluded.",
+    "No equipment row is invented without OCR/layout evidence.",
+    "Existing OCR modes remain; targeted high-resolution OCR is additive."
+  ]
+}

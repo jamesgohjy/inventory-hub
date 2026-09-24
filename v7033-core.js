@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14o';
+  const VERSION='7.03.3.14p';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -764,9 +764,12 @@
     const excludedService=incoming.filter(v703312jIsServiceRow),excludedAccessory=incoming.filter(v703312jIsAccessoryRow);
     const trackedIncoming=incoming.filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
     const fixed=trackedIncoming.map(r=>validateSkuQtyEvidence(fixRow(r,source),source));
-    const recovered=v703312jRecoverNumberedEquipmentRows(source,evidenceSources);
+    const evidence14p=v703312kEvidenceTexts(source,evidenceSources);
+    let recovered=v703312jRecoverNumberedEquipmentRows(source,evidenceSources);
+    if(!fixed.length&&!recovered.length){const extra=[];for(const ev of evidence14p)extra.push(...v703314pRecoverEquipmentRows(ev.text,ev.source));recovered=dedupeParsedLineItems(extra);}
     const merged=v703312jMergeTrackedRows(fixed,recovered,source);
-    const out={...parsed,doc:fixDocumentHeader(parsed.doc||{},v703312kEvidenceTexts(source,evidenceSources).map(x=>x.text).join('\n')),items:merged};
+    let doc14p=fixDocumentHeader(parsed.doc||{},evidence14p.map(x=>x.text).join('\n'));doc14p=v703314pReconcileHeader(doc14p,evidence14p);
+    const out={...parsed,doc:doc14p,items:merged};
     out.v703312jInventoryFilter={excludedServiceCount:excludedService.length,excludedAccessoryCount:excludedAccessory.length,recoveredEquipmentCount:recovered.filter(r=>!fixed.some(x=>v703312jSameEquipment(x,r))).length};
     out.v703312kVerification={level1:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel1?.status||'unknown'})),level2:out.items.map(r=>({sku:r.sku,item_name:r.item_name,status:r.v703312kLevel2?.status||'unknown',sources:r.v703312kLevel2?.sources||(r.v703312kEvidenceSources||[]).length||0})),level3Required:out.items.some(r=>r.v703312kIndependentConflict||explicitReviewFlag(r)||r.humanReviewRequired===true)};
     const v7={...(out.v7||out.parseEvidence?.v7||{})};
@@ -986,12 +989,122 @@
     return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
 
+
+  function v703314pIsoDate(day,month,year){
+    let d=Number(day),m=Number(month),y=Number(year);
+    if(!Number.isInteger(d)||!Number.isInteger(m)||!Number.isInteger(y))return '';
+    if(y<100)y+=(y<=69?2000:1900);
+    if(y<1990||y>2100||m<1||m>12||d<1||d>31)return '';
+    const dt=new Date(Date.UTC(y,m-1,d));
+    if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d)return '';
+    return String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  }
+  function v703314pDateFromLabel(raw=''){
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+    const parseWindow=(value='')=>{
+      const t=clean(value);
+      let m=t.match(/(?:^|[^0-9])([0-3]?\d)\s*[\/.-]\s*([01]?\d)\s*[\/.-]\s*(\d{2,4})(?:[^0-9]|$)/);
+      if(m){const x=v703314pIsoDate(m[1],m[2],m[3]);if(x)return x;}
+      m=t.match(/(?:^|[^0-9])([0-3]?\d)\s*[\/.-]\s*([01]?\d)\s*[1Il|]\s*(\d{2})(?:[^0-9]|$)/);
+      if(m){const x=v703314pIsoDate(m[1],m[2],m[3]);if(x)return x;}
+      m=t.match(/(?:^|[^0-9])([0-3]?\d)\s*[1Il|]\s*([01]?\d)\s*[\/.-]\s*(\d{2})(?:[^0-9]|$)/);
+      if(m){const x=v703314pIsoDate(m[1],m[2],m[3]);if(x)return x;}
+      return '';
+    };
+    for(let i=0;i<Math.min(lines.length,140);i++){
+      if(!/^(?:invoice\s+)?date\b/i.test(lines[i])&&!/^date\s*[:#.-]?$/i.test(lines[i]))continue;
+      for(let j=i;j<=Math.min(lines.length-1,i+3);j++){const hit=parseWindow(lines[j]);if(hit)return hit;}
+    }
+    return '';
+  }
+  function v703314pInvoiceCandidate(raw='',supplier=''){
+    const value=invoiceNumberFromLabel(raw,supplier);if(!value)return {value:'',strong:false,suspicious:false};
+    const v=clean(value),basic=/^[A-Z0-9][A-Z0-9._\/-]*(?:\s+[A-Z0-9][A-Z0-9._\/-]*)?$/i.test(v)&&/\d/.test(v)&&v.length>=3&&v.length<=40;
+    const mixedCase=/[A-Z]/.test(v)&&/[a-z]/.test(v),numeric=/^\d{4,20}$/.test(v),upper=/^[A-Z0-9][A-Z0-9._\/-]*(?:\s+[A-Z0-9][A-Z0-9._\/-]*)?$/.test(v);
+    const supplierKey=norm(supplier||raw),compactValue=v.toUpperCase().replace(/\s+/g,''),avMediaLike=supplierKey.includes('av media')&&/^VIN17/.test(compactValue),avMediaCanonical=/^VIN17-\d{6}$/.test(compactValue);
+    const suspicious=!basic||mixedCase||(avMediaLike&&!avMediaCanonical);
+    return {value:v,strong:basic&&(numeric||upper)&&!suspicious,suspicious};
+  }
+  function v703314pReconcileHeader(doc={},sources=[]){
+    const list=(sources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')})).filter(x=>x.text.trim());
+    const out={...doc},all=list.map(x=>x.text).join('\n'),supplier=supplierFromEvidence(all,out.supplier_name||'');
+    if(supplier)out.supplier_name=supplier;
+    const candidates=[];
+    for(const src of list){const c=v703314pInvoiceCandidate(src.text,out.supplier_name||'');if(c.value)candidates.push({...c,source:src.source});}
+    const current=clean(out.invoice_number||'');
+    if(current){const meta=v703314pInvoiceCandidate('Invoice No: '+current,out.supplier_name||'');if(meta.value)candidates.push({...meta,source:'current'});}
+    const groups=new Map();
+    for(const c of candidates){if(!c.strong)continue;const key=compact(c.value);if(!key)continue;let g=groups.get(key);if(!g){g={key,value:c.value,count:0,targeted:0,sources:[]};groups.set(key,g);}g.count++;if(/header|target/i.test(c.source))g.targeted++;g.sources.push(c.source);}
+    const ranked=[...groups.values()].sort((a,b)=>(b.count-a.count)||(b.targeted-a.targeted));
+    let chosen='';
+    if(ranked[0]){
+      if(ranked[0].count>=2)chosen=ranked[0].value;
+      else if(ranked[0].targeted>=1&&!(ranked[1]?.targeted>=1))chosen=ranked[0].value;
+      else if(candidates.some(c=>c.source==='current'&&c.strong&&compact(c.value)===ranked[0].key))chosen=ranked[0].value;
+    }
+    const suspicious=candidates.some(c=>c.suspicious);
+    if(chosen){out.invoice_number=chosen;out.invoiceNumberReviewRequired=false;}
+    else if(suspicious||current){out.invoice_number='';out.invoiceNumberReviewRequired=true;}
+    if(!clean(out.invoice_date||'')){
+      const dates=[];for(const src of list){const d=v703314pDateFromLabel(src.text);if(d)dates.push({value:d,source:src.source});}
+      if(dates.length){const counts=new Map();for(const d of dates)counts.set(d.value,(counts.get(d.value)||0)+1);const best=[...counts.entries()].sort((a,b)=>b[1]-a[1])[0];if(best){out.invoice_date=best[0];out.dateReviewRequired=false;out.v703314pDateEvidence=dates.filter(x=>x.value===best[0]);}}
+    }
+    out.v703314pHeaderEvidence={invoice_candidates:candidates.map(c=>({value:c.value,strong:c.strong,suspicious:c.suspicious,source:c.source})),selected_invoice_number:out.invoice_number||'',date:out.invoice_date||''};
+    return out;
+  }
+  function v703314pStrongEquipmentInvoice(raw=''){
+    const text=String(raw||''),invoice=classifyInvoicePage(text);
+    if(!invoice.allowed||invoice.disposition!=='accept')return {strong:false,count:0,types:[],reason:'Document is not a strongly accepted Invoice/Tax Invoice.'};
+    const lines=text.replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),types=new Set(),evidence=[];
+    const patterns=[
+      [/\bprojectors?\b/i,'projector'],[/\b(?:control|confiol)\s+panels?\b/i,'control-panel'],[/\bcontrollers?\b/i,'controller'],[/\bmicrophones?\b/i,'microphone'],
+      [/\bspeak(?:er|a)s?\b/i,'speaker'],[/\bmixers?\b/i,'mixer'],[/\bcameras?\b/i,'camera'],[/\bdisplays?\b/i,'display'],[/\bmonitors?\b/i,'monitor'],
+      [/\breceivers?\b/i,'receiver'],[/\btransmitters?\b/i,'transmitter'],[/\bamplifiers?\b/i,'amplifier'],[/\bprocessors?\b/i,'processor'],
+      [/\bswitchers?\b/i,'switcher'],[/\bvisuali[sz]ers?\b/i,'visualizer'],[/\bmedia\s+players?\b/i,'player']
+    ];
+    const service=/\b(?:installation|install(?:ing|ed)?|labou?r|professional\s+services?|service\s+work|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|commission(?:ing)?|testing\s+and\s+commission|relocat(?:e|ion)|remov(?:e|al|ing))\b/i;
+    for(const line of lines){if(service.test(line))continue;for(const [re,type] of patterns){if(re.test(line)){types.add(type);evidence.push(line.slice(0,240));break;}}}
+    return {strong:types.size>=2,count:types.size,types:[...types],evidence:evidence.slice(0,8),reason:types.size>=2?'Multiple non-service physical equipment descriptions are printed in a strongly accepted invoice.':'Not enough independent physical-equipment description evidence.'};
+  }
+  function v703314pRecoverEquipmentRows(text='',source=''){
+    const out=[];
+    for(const original of String(text||'').replace(/\r/g,'\n').split(/\n+/)){
+      const row=v703312kRecoverDirectLine(original,source);if(!row)continue;
+      if(v703312jIsServiceRow(row)||v703312jIsAccessoryRow(row)||!v703312jIsTrackedEquipment(row))continue;
+      out.push(validateSkuQtyEvidence(row,text));
+    }
+    return dedupeParsedLineItems(out);
+  }
+  function runAerospaceRegressionChecks14p(){
+    const cases=[],check=(name,actual,expected)=>{const pass=typeof expected==='function'?!!expected(actual):actual===expected;cases.push({name,pass,actual,expected:typeof expected==='function'?'predicate':expected});};
+    const corrupted='AV MEDIA PTE LTD\nGST Reg. No. M2-01 10202-2 TAX INVOICE\nInvoice No: VIN 17-A3n65\nRef. No.\nVS017-021642/V17-035189/V\nDATE\n7- 12/08122\nPT-VW540\nAVS320\nPanasonic PT-VW540 projector\nAbtus AVS320 HDMI Confiol panel\nAbtus Active Speaka in pair\nInstallation work including supply and install bracket for projector\nGST 7% SGD 124.18\nAMOUNT DUE SGD 1,898.18';
+    check('Aerospace OCR date repair',v703314pDateFromLabel(corrupted),'2022-08-12');
+    const bad=v703314pReconcileHeader({supplier_name:'AV Media Pte Ltd',invoice_number:'VIN 17-A3n65',invoice_date:''},[{source:'primary',text:corrupted}]);
+    check('corrupted invoice number is cleared',bad.invoice_number,'');
+    check('corrupted invoice number requires review',bad.invoiceNumberReviewRequired,true);
+    check('date is recovered independently of invoice number',bad.invoice_date,'2022-08-12');
+    const good=v703314pReconcileHeader({supplier_name:'AV Media Pte Ltd',invoice_number:'VIN 17-A3n65',invoice_date:''},[{source:'primary',text:corrupted},{source:'recovery-header-hi',text:'TAX INVOICE\nInvoice No: VIN17-032365\nDATE\n12/08/22'}]);
+    check('verified targeted header OCR recovers printed invoice number',good.invoice_number,'VIN17-032365');
+    const loud=v703314pReconcileHeader({supplier_name:'Loud Technologies Asia Pte Ltd',invoice_number:'INV LTA-00215542'},[{source:'primary',text:'TAX INVOICE\nInvoice Number INV LTA-00215542'}]);
+    check('valid spaced invoice IDs remain valid',loud.invoice_number,'INV LTA-00215542');
+    const numeric=v703314pReconcileHeader({supplier_name:'Example Pte Ltd',invoice_number:'88260492'},[{source:'primary',text:'TAX INVOICE\nInvoice No: 88260492'}]);
+    check('valid numeric invoice IDs remain valid',numeric.invoice_number,'88260492');
+    check('strong mixed equipment invoice does not need type confirmation',v703314pStrongEquipmentInvoice(corrupted).strong,true);
+    check('service-only invoice is not promoted to equipment',v703314pStrongEquipmentInvoice('TAX INVOICE\nProfessional Services including dismantle of existing projector, installation, testing and commissioning\nSubtotal 530.00\nGST 47.70\nAmount Due 577.70').strong,false);
+    const table='PT-VW540 Panasonic PT-VW540 projector 1 804.00 804.00\nAVS-320A Abtus AVS-320A HDMI Control panel 1 350.00 350.00\n60100-SALES Abtus Active Speaker in pair 1 90.00 90.00\n60200-INSTALLATION Installation work including projector bracket 1 530.00 530.00';
+    const rows=v703314pRecoverEquipmentRows(table,'recovery-table-hi');
+    check('targeted table OCR recovers three physical rows',rows.length,3);
+    check('targeted table OCR excludes installation',rows.some(x=>/installation/i.test(v703312jRowText(x))),false);
+    check('recovered rows preserve economic evidence',rows.every(x=>x.v703312LineEvidence?.economic===true),true);
+    return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+
   const RELEASE_NOTES=[
-    'Frozen v7.03.3.14m as the known-good recovery baseline and added automatic regression CI.',
-    'Added Admin-approved Correction Memory, Supplier Layout Profiles and exact PDF fingerprint duplicate protection.',
-    'Added an Admin-only Parser Quality Dashboard with regression, memory/profile and duplicate metrics.'
+    'Strong equipment invoices no longer ask Equipment/Service when equipment evidence is already clear.',
+    'Labelled invoice-date and invoice-number recovery now fails closed: corrupted OCR IDs are cleared instead of guessed.',
+    'Deep recovery now adds high-resolution header/table OCR and repopulates only verified physical equipment rows.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14p';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14q';
   const RELEASE_ROADMAP=[
     {id:'architecture-stability',text:'Move the verified baseline into the repository and gradually retire runtime string patching.'},
     {id:'operational-backups',text:'Add automated Supabase/database and document backup verification.'},
@@ -1030,5 +1143,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
