@@ -230,9 +230,213 @@ begin
       from storage.objects
      where bucket_id='inventory-documents'
        and (
-         coalesce(metadata->>'size','') !~ '^[0-9]+$'
-         or coalesce((metadata->>'size')::bigint,0) <= 0
-       );
+         case
+           when coalesce(metadata->>'size','') ~ '^[0-9]+
+
+    if to_regclass('public.documents') is not null then
+      select count(*)
+        into v_missing_storage_objects
+        from public.documents d
+        left join storage.objects o
+          on o.bucket_id='inventory-documents'
+         and o.name=d.storage_path
+       where nullif(trim(d.storage_path),'') is null
+          or o.id is null;
+
+      select count(*)
+        into v_orphan_storage_objects
+        from storage.objects o
+        left join public.documents d
+          on d.storage_path=o.name
+       where o.bucket_id='inventory-documents'
+         and d.id is null;
+    end if;
+  else
+    v_missing_storage_objects := v_document_rows;
+  end if;
+
+  select exists(
+    select 1 from storage.buckets where id='feedback-attachments'
+  ) into v_feedback_bucket_exists;
+
+  if v_feedback_bucket_exists then
+    select count(*) into v_feedback_storage_objects
+      from storage.objects where bucket_id='feedback-attachments';
+  end if;
+
+  v_integrity := jsonb_build_object(
+    'missing_required_tables',to_jsonb(v_missing_required),
+    'missing_optional_tables',to_jsonb(v_missing_optional),
+    'purchase_items_without_purchase',v_pi_without_purchase,
+    'purchase_items_without_master_item',v_pi_without_item,
+    'serials_without_purchase_item',v_serial_without_pi,
+    'serials_without_master_item',v_serial_without_item,
+    'adjustments_without_master_item',v_adjust_without_item,
+    'maintenance_without_master_item',v_maintenance_without_item,
+    'duplicate_serial_groups',v_duplicate_serial_groups
+  );
+
+  v_storage := jsonb_build_object(
+    'bucket','inventory-documents',
+    'bucket_exists',v_bucket_exists,
+    'document_rows',v_document_rows,
+    'storage_objects',v_storage_objects,
+    'storage_total_bytes',v_storage_total_bytes,
+    'missing_storage_objects',v_missing_storage_objects,
+    'orphan_storage_objects',v_orphan_storage_objects,
+    'zero_byte_storage_objects',v_zero_byte_storage_objects,
+    'documents_without_sha256',v_documents_without_hash,
+    'feedback_bucket_exists',v_feedback_bucket_exists,
+    'feedback_storage_objects',v_feedback_storage_objects
+  );
+
+  if cardinality(v_missing_required) > 0
+     or v_pi_without_purchase > 0
+     or v_pi_without_item > 0
+     or v_serial_without_pi > 0
+     or v_serial_without_item > 0
+     or v_adjust_without_item > 0
+     or v_maintenance_without_item > 0
+     or v_duplicate_serial_groups > 0 then
+    v_database_status := 'FAIL';
+  end if;
+
+  if not v_bucket_exists
+     or v_missing_storage_objects > 0
+     or v_zero_byte_storage_objects > 0 then
+    v_document_status := 'FAIL';
+  elsif v_orphan_storage_objects > 0
+        or v_documents_without_hash > 0 then
+    v_document_status := 'WARN';
+  end if;
+
+  return jsonb_build_object(
+    'database_status',v_database_status,
+    'document_status',v_document_status,
+    'table_counts',v_table_counts,
+    'integrity',v_integrity,
+    'storage',v_storage,
+    'checked_at',now()
+  );
+end;
+$$;
+
+create or replace function public.service_record_backup_verification_v703314t(
+  p_payload jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text := upper(coalesce(p_payload->>'overall_status','FAIL'));
+  v_managed text := upper(coalesce(p_payload->>'managed_backup_status','UNKNOWN'));
+  v_database text := upper(coalesce(p_payload->>'database_status','UNKNOWN'));
+  v_document text := upper(coalesce(p_payload->>'document_status','UNKNOWN'));
+  v_row public.backup_verification_runs%rowtype;
+begin
+  if v_status not in ('PASS','WARN','FAIL') then v_status := 'FAIL'; end if;
+  if v_managed not in ('PASS','WARN','FAIL','UNKNOWN') then v_managed := 'UNKNOWN'; end if;
+  if v_database not in ('PASS','WARN','FAIL','UNKNOWN') then v_database := 'UNKNOWN'; end if;
+  if v_document not in ('PASS','WARN','FAIL','UNKNOWN') then v_document := 'UNKNOWN'; end if;
+
+  insert into public.backup_verification_runs(
+    run_source,overall_status,managed_backup_status,database_status,document_status,
+    latest_backup_at,latest_backup_age_hours,backup_type,pitr_enabled,walg_enabled,
+    table_counts,integrity_summary,document_summary,management_summary,error_text,
+    external_run_id,verified_at,created_by
+  )
+  values (
+    left(coalesce(nullif(trim(p_payload->>'run_source'),''),'github-actions'),80),
+    v_status,v_managed,v_database,v_document,
+    nullif(p_payload->>'latest_backup_at','')::timestamptz,
+    nullif(p_payload->>'latest_backup_age_hours','')::numeric,
+    left(coalesce(p_payload->>'backup_type',''),80),
+    case when p_payload ? 'pitr_enabled' then (p_payload->>'pitr_enabled')::boolean else null end,
+    case when p_payload ? 'walg_enabled' then (p_payload->>'walg_enabled')::boolean else null end,
+    coalesce(p_payload->'table_counts','{}'::jsonb),
+    coalesce(p_payload->'integrity_summary','{}'::jsonb),
+    coalesce(p_payload->'document_summary','{}'::jsonb),
+    coalesce(p_payload->'management_summary','{}'::jsonb),
+    left(coalesce(p_payload->>'error_text',''),2000),
+    left(coalesce(p_payload->>'external_run_id',''),160),
+    coalesce(nullif(p_payload->>'verified_at','')::timestamptz,now()),
+    null
+  )
+  returning * into v_row;
+
+  return to_jsonb(v_row);
+end;
+$$;
+
+create or replace function public.admin_backup_verification_history_v703314t(
+  p_limit integer default 20
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_role text := public.backup_actor_role_v703314t();
+  v_limit integer := greatest(1,least(coalesce(p_limit,20),100));
+  v_latest jsonb;
+  v_runs jsonb;
+begin
+  if v_role <> 'admin' then
+    raise exception using errcode='42501',message='Admin access required.';
+  end if;
+
+  select to_jsonb(x) into v_latest
+    from (
+      select *
+        from public.backup_verification_runs
+       order by verified_at desc
+       limit 1
+    ) x;
+
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.verified_at desc),'[]'::jsonb)
+    into v_runs
+    from (
+      select *
+        from public.backup_verification_runs
+       order by verified_at desc
+       limit v_limit
+    ) x;
+
+  return jsonb_build_object(
+    'latest',v_latest,
+    'runs',v_runs,
+    'schedule','Daily at 02:30 Singapore time via GitHub Actions',
+    'storage_note','Supabase database backups do not contain Storage object contents.'
+  );
+end;
+$$;
+
+revoke execute on function public.backup_actor_role_v703314t() from public, anon;
+revoke execute on function public.service_backup_integrity_snapshot_v703314t() from public, anon, authenticated;
+revoke execute on function public.service_record_backup_verification_v703314t(jsonb) from public, anon, authenticated;
+revoke execute on function public.admin_backup_verification_history_v703314t(integer) from public, anon;
+
+grant execute on function public.backup_actor_role_v703314t() to authenticated;
+grant execute on function public.service_backup_integrity_snapshot_v703314t() to service_role;
+grant execute on function public.service_record_backup_verification_v703314t(jsonb) to service_role;
+grant execute on function public.admin_backup_verification_history_v703314t(integer) to authenticated;
+
+comment on table public.backup_verification_runs is
+'Admin-visible history of automated managed-backup, database-integrity and document-storage verification runs.';
+
+comment on function public.service_backup_integrity_snapshot_v703314t() is
+'Service-role-only inventory database and Storage metadata integrity snapshot used by the automated backup verifier.';
+
+comment on function public.admin_backup_verification_history_v703314t(integer) is
+'Admin-only backup verification history for Inventory Hub.';
+
+           then (metadata->>'size')::bigint
+           else 0
+         end
+       ) <= 0;
 
     if to_regclass('public.documents') is not null then
       select count(*)
