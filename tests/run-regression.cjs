@@ -90,6 +90,9 @@ assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.1
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
+assert(/id="documentGroup"[\s\S]{0,160}<option value="none">No Grouping<\/option>[\s\S]{0,160}<option value="company">Group by Company<\/option>/.test(index),'Documents grouping must default to No Grouping so selecting Group by Company causes a visible state change');
+assert(index.includes('#documentsView #documentGroup{flex:0 0 210px;width:210px;min-width:210px;max-width:210px;'),'Documents Group by Company dropdown width guard missing');
+assert(runtime.includes("group=$('documentGroup')?.value||'none'"),'Documents renderer fallback must default to No Grouping');
 assert(runtime.includes("\\$('inventoryGroup')?.addEventListener('change',renderInventory)")||runtime.includes("\\$('inventoryGroup').onchange=renderInventory")||runtime.includes("inventoryGroup')?.addEventListener('change',renderInventory"),'Inventory Group by Company event path must remain wired');
 assert(runtime.includes("if($('documentGroup'))$('documentGroup').onchange=renderDocuments"),'Documents Group by Company event path must remain wired');
 assert(runtime.includes("InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head,escapeHtml:esc})"),'Documents Group by Company render path must remain wired');
