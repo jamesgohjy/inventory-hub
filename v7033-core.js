@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3 cumulative evidence + consolidation patch
+/* AV Inventory Hub v7.03.3.14j cumulative evidence + consolidation patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14i';
+  const VERSION='7.03.3.14j';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -760,17 +760,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Data Health reviews now stay visible until the underlying issue is actually corrected.',
-    'Added Data Health review history with Resolved and Still detected status.',
-    'Master Item merges now appear as readable Merged activities with expandable details.'
+    'Added Data Health history search plus status, check, reviewer and date filters.',
+    'Added safe bulk management to reopen active reviews or delete selected history.',
+    'Recent Activities now gives clearer item, adjustment, invoice-line, serial, maintenance and Data Health summaries.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14j';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14k';
   const RELEASE_ROADMAP=[
-    {id:'import-review-hardening',text:'Continue regression hardening for import and review workflows.'},
-    {id:'health-history-controls',text:'Add richer Data Health history filtering and management.'},
-    {id:'activity-detail-expansion',text:'Extend detailed Recent Activities summaries to more inventory actions.'}
+    {id:'parser-workflow-hardening',text:'Continue parser and workflow regression hardening.'},
+    {id:'audit-health-export',text:'Add audit/Data Health export and retention controls.'},
+    {id:'saved-review-filters',text:'Improve saved review/filter workflows.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
