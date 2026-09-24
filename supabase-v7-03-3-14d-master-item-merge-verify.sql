@@ -40,12 +40,19 @@ select
   exists(
     select 1 from information_schema.columns
     where table_schema='public' and table_name='profiles' and column_name='role'
-  ) as profiles_role_exists;
+  ) as profiles_role_exists,
+  exists(
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='profiles' and column_name='app_confirmed'
+  ) as profiles_app_confirmed_exists;
 
 -- 4) Current role values. Expected application roles are admin/editor/viewer.
-do $$
+-- Also reports how many profiles are app-confirmed.
+do $
 declare
   v_roles text;
+  v_confirmed bigint;
+  v_unconfirmed bigint;
 begin
   if to_regclass('public.profiles') is null then
     raise notice 'profiles table: MISSING';
@@ -62,7 +69,14 @@ begin
             group by 1
          ) x'
       into v_roles;
+    execute
+      'select count(*) filter (where coalesce(app_confirmed,false)),
+              count(*) filter (where not coalesce(app_confirmed,false))
+         from public.profiles'
+      into v_confirmed,v_unconfirmed;
+
     raise notice 'profiles roles: %',coalesce(v_roles,'none');
+    raise notice 'profiles confirmation: confirmed=%, unconfirmed=%',v_confirmed,v_unconfirmed;
   exception
     when undefined_column then
       raise notice 'profiles.role column: MISSING';
@@ -177,6 +191,8 @@ select
 select
   position('Editor or Admin access required.' in pg_get_functiondef(p.oid))>0
     as has_server_side_role_guard,
+  position('Confirmed Inventory Hub account required.' in pg_get_functiondef(p.oid))>0
+    as has_confirmation_guard,
   position('Merge integrity check failed: purchased quantity changed unexpectedly.' in pg_get_functiondef(p.oid))>0
     as has_purchase_integrity_guard,
   position('maintenance_records' in pg_get_functiondef(p.oid))>0
