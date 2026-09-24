@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14l';
+  const VERSION='7.03.3.14m';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -842,17 +842,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Review now includes structured parser diagnostics with document, header, filtering, item-evidence and Level 1/2/3 traces.',
-    'Historical regression evidence now records per-case expected results, actual results, evidence and PASS/FAIL reasons.',
-    'Added a machine-readable historical regression suite representing 13 retrievable invoice files across 7 logical cases.'
+    'Parser diagnostics in invoice Review are now visible to Admin accounts only.',
+    'Editor and Viewer accounts no longer receive the diagnostics panel or detailed browser diagnostic cache.',
+    'Parser behavioral and historical regression checks continue running internally for all roles.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14m';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14n';
   const RELEASE_ROADMAP=[
     {id:'audit-health-export',text:'Add audit/Data Health export and retention controls.'},
     {id:'saved-review-filters',text:'Improve saved review/filter workflows.'},
-    {id:'diagnostic-issue-package',text:'Add one-click diagnostic package export for parser issue reports.'}
+    {id:'diagnostic-issue-package',text:'Add one-click Admin diagnostic package export for parser issue reports.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){

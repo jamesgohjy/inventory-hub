@@ -1,0 +1,33 @@
+AV Inventory Hub v7.03.3.14m — Validation Report
+Generated: 2026-09-24 (Asia/Singapore)
+=================================================
+
+PATCH FOCUS
+Restrict Parser diagnostics visibility to Admin role only.
+
+EXPECTED ROLE BEHAVIOR
+Admin  -> Parser diagnostics visible in invoice Review.
+Editor -> Parser diagnostics hidden; detailed browser diagnostic cache cleared.
+Viewer -> Parser diagnostics hidden; detailed browser diagnostic cache cleared.
+All roles -> Behavioral and historical parser regression checks continue internally.
+
+ROLE GATE TESTS
+PASS Admin-only condition uses currentRole()==='admin'
+PASS Non-admin existing diagnostics panel is removed
+PASS Non-admin detailed diagnostics cache is cleared
+PASS Non-admin diagnostics state is hidden-for-role
+PASS Parser regression suites still execute internally
+
+PARSER REGRESSION
+PASS 14/14 behavioral checks
+PASS 7/7 historical logical cases (13 represented file variants)
+
+SYNTAX / RELEASE GATES
+PASS v7033-core.js syntax
+PASS app.js syntax
+PASS diagnostics runtime syntax
+PASS Current v7.03.3.14m / Upcoming v7.03.3.14n
+PASS asset cache revision v7.03.3.14m-r1
+
+OVERALL PRE-DEPLOYMENT STATUS
+PASS
