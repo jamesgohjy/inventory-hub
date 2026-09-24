@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14g';
+  const VERSION='7.03.3.14h';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -760,17 +760,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Added Data Health review for duplicate Master SKUs.',
-    'Added safer merge preview, conflict blocking and confirmation.',
-    'Added refreshed-data verification after Master Item merges.'
+    'Hardened merge workflow against repeated confirmation and duplicate execution.',
+    'Added responsive Inventory toolbar and merge-dialog layout guards.',
+    'Added runtime UI/version regression diagnostics before continued use.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14h';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14i';
   const RELEASE_ROADMAP=[
     {id:'health-resolution',text:'Improve Data Health issue resolution and history.'},
     {id:'merge-audit-visibility',text:'Surface Master Item merge details in Recent Activities.'},
-    {id:'ui-regression',text:'Continue UI and workflow regression hardening.'}
+    {id:'import-review-hardening',text:'Continue regression hardening for import and review workflows.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
