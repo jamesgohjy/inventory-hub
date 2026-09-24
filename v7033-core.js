@@ -721,65 +721,18 @@
   }
 
   const RELEASE_NOTES=[
-    'Loader scope fix: Master SKU merge injection now runs inside the v7.03.1 inner loader against the actual final d452 runtime instead of searching the outer loader source.',
-    'Loader hotfix: the Master SKU merge injector now uses a guarded native string replacement and no longer depends on an undefined replaceOnce helper.',
-    'Editing a Master SKU to an existing exact or formatting-equivalent SKU now opens a controlled generic merge workflow instead of exposing a database unique-key error.',
-    'The merge keeps the existing canonical target SKU and transfers linked history transactionally through merge_master_items_v703314d; invoice import continues to use the same compact SKU identity resolver.',
-    'v7.03.3.14f removes the duplicate loader-scoped stacked-row helper that could become undefined at runtime; the existing exported core recovery is now the single source of truth.',
-    'A cumulative runtime regression contract now blocks deployment if previously fixed import/review controls or required parser symbols disappear.',
-    'Automatic deep recovery now adds a targeted first-page invoice-header OCR crop before Review when the invoice number is still missing.',
-    'Scanned priced rows whose physical-equipment specifications wrap below the main row can now be reconstructed supplier-neutrally from verified SKU, quantity and amount evidence.',
-    'HAWKO-class trolley rows retain wrapped cabinet/shelf/caster/steel evidence before accessory classification, while generic trolley/accessory exclusions remain unchanged.',
-    'Restored the Equipment invoice / Service invoice choice whenever equipment is detected but the invoice number or physical line-item extraction is still incomplete.',
-    'Level 3 now waits for the invoice-type decision and recovery scan instead of appearing immediately on an incomplete equipment parse.',
-    'Directly printed mixed alphanumeric SKU/model codes up to 28 characters are preserved through parser cleanup, review inputs and save; the existing 13-character fallback rule is unchanged.',
-    'Missing invoice numbers continue through the targeted header OCR recovery before save, while label-only D/O values are cleared.',
-    'Equipment-confirmation recovery now keeps a strongly evidenced priced equipment trolley instead of discarding it as a generic accessory.',
-    'Invoice-number recovery now supports an exact Invoice/Tax Invoice heading followed by NO:, without treating GST/company registration numbers as invoice numbers.',
-    'Header cleanup removes label-only D/O values and exact duplicated leading supplier words while preserving real delivery-order values.',
-    'Level 3 review now highlights only the exact affected line-item card when the warning can be mapped to evidence; unrelated items remain normal.',
-    'Runtime integration fix: the parser gate now executes inside the final application scope immediately before Line Items render, using the live state.parsed and OCR evidence; this prevents a correct parser result from being lost while the Review screen still shows Delivery Fee.',
-    'Real scanned-PDF regression fixed using actual INV-Dmx200 OCR evidence: numbered rows tolerate OCR brackets/pipes/slashes and can reconcile across independent OCR modes instead of requiring an ideal one-line fixture.',
-    'Level 1/2 verification now records deterministic equipment recovery and independent OCR agreement before deciding whether Level 3 human review is required.',
-    'Fixed numbered-item invoices where a mathematically clean Delivery Fee row could outrank the real equipment row; service/charge classification now runs before candidate acceptance and again after reconciliation.',
-    'Added numbered-table equipment recovery for rows such as Clair Lighting DMX-200 Controller; printed model/description/quantity are recovered from invoice evidence without inventing missing prices.',
-    'Accessory rows such as DMX cables and service rows such as Delivery Fee are excluded from inventory even when their quantity × unit price = amount arithmetic is valid.',
-    'Coming Next roadmap now automatically removes completed roadmap items instead of continuing to show fixes that are already in the current release.',
-    'Vault search box reduced by 30% so Group by Company and Sort Newest to Oldest have enough room to display their full labels.',
-    'Maintenance All outcomes filter reduced by 60% for a more compact toolbar footprint.',
-    'Supplier recovery now treats a missing supplier as a deep-scan condition and accepts only company evidence actually read from the invoice header/OCR; Sold To / Delivered To customer text is not used as supplier evidence.',
-    'AVS-320 identity regression fixed: projector controller is preserved as Projector Controller instead of being shortened to Projector.',
-    'Level 3 user messaging is now plain-language review guidance; internal independent-extraction disagreement details remain internal and are not shown to the user.',
-    'Fixed Dashboard Coming Next so it always displays the same v7.03.4.0 roadmap as Patch Notes instead of stale legacy items.',
-    'Fixed Subtract selected confirmation layering: the confirmation is now a native modal dialog opened after the invoice-review dialog, placing it in the browser top layer above Parsed fields instead of behind it.',
-    'Added conservative parser deduplication: only line items with the same normalized identity, quantity, unit price, amount and serial evidence collapse.',
-    'Added SKU/model + quantity + economic cross-validation; unsupported SKU, invalid quantity, quantity/price/amount mismatch or serial-count mismatch is flagged for review.',
-    'Aerospace regression fixture verified PT-VW540 quantity 1 at 804 with serial DC2210037 while preserving genuinely distinct serial-number rows.',
-    'Corrected deployment/version instructions so the replacement-file list matches this release.',
-    'Synchronized front-end cache versions so updated HTML, CSS and JavaScript are loaded together.',
-    'Added accessible names and Close titles to icon-only dialog controls without changing their IDs or event bindings.',
-    'Improved readability of the smallest labels, badges and status text while preserving the compact interface.',
-    'Reduced the desktop Dashboard hero height so operational metrics and Automation Centre appear sooner.',
-    'Clarified Import Intelligence as a status-only card while Needs Attention and Stock Take remain actionable controls.',
-    'Normalized equivalent inventory categories in the Inventory view: Projector/Projection variants display and filter as Projection; Audio/Speaker variants display and filter as Audio, case-insensitively.',
-    'Inventory row descriptions now explicitly display the stored Standard item name and never substitute the raw Description field.',
+    'Fixed Inventory Hub startup and loader errors.',
+    'Corrected Master SKU merge loading.',
+    'Preserved existing parser and inventory fixes.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.4.0';
-  // Roadmap IDs make Coming Next deterministic: when a current patch completes an item,
-  // add its ID to COMPLETED_ROADMAP_IDS and it disappears from Upcoming automatically.
+  const RELEASE_UPCOMING_VERSION='7.03.3.14g';
   const RELEASE_ROADMAP=[
-    {id:'invoice-page-reference-classification',text:'Improve invoice-page classification so genuine Invoice/Tax Invoice pages may contain Delivery Order, Purchase Order or quotation references without being rejected.'},
-    {id:'duplicate-consolidation-evidence',text:'Tighten duplicate consolidation so generic same-name items with blank or unverified SKU/model evidence cannot be auto-merged.'},
-    {id:'admin-only-consolidation-rpc',text:'Restrict the duplicate-consolidation database RPC to Admin at the database level.'},
-    {id:'password-policy-flexibility',text:'Improve password policy handling so accounts are not restricted to exactly eight characters while preserving a minimum security requirement.'},
-    {id:'patch-loader-architecture',text:'Plan a dedicated architecture release to reduce the fragile runtime source-string patch loader without combining it with functional changes.'},
-    {id:'document-edit-transaction',text:'Move document metadata edits to one database transaction after live Supabase validation and rollback testing.'},
-    {id:'css-consolidation',text:'Consolidate legacy CSS overrides in a dedicated visual-regression release instead of a large one-step stylesheet rewrite.'},
-    {id:'responsive-navigation',text:'Redesign tablet/mobile navigation in a separate responsive-UX patch after device-level regression testing.'}
+    {id:'sku-merge-detection',text:'Improve duplicate SKU detection and merging.'},
+    {id:'merge-confirmation-errors',text:'Refine merge confirmation and error handling.'},
+    {id:'regression-protection',text:'Strengthen regression checks to prevent fixed issues returning.'}
   ];
-  // This roadmap item is already covered by the current conservative evidence-based dedupe/match safeguards.
-  const COMPLETED_ROADMAP_IDS=new Set(['duplicate-consolidation-evidence']);
-  const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.filter(x=>!COMPLETED_ROADMAP_IDS.has(x.id)).map(x=>x.text);
+  const COMPLETED_ROADMAP_IDS=new Set();
+  const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
     try{
