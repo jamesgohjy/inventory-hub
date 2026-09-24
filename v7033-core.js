@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14j';
+  const VERSION='7.03.3.14k';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -217,7 +217,7 @@
     const pairs=[['projector controller','Projector Controller'],['projector control','Projector Controller'],['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['control panel','Control Panel'],['controller','Controller'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
     for(const [k,v] of pairs)if(s.includes(k))return v;return '';
   }
-  function contentWords(s=''){return norm(s).split(' ').filter(w=>w.length>=4&&!/^(?:with|from|year|only|stock|warranty|supply|install|installation|safety|wired|secure|classroom)$/.test(w));}
+  function contentWords(s=''){return norm(s).split(' ').filter(w=>w.length>=4&&!/^(?:with|from|year|only|stock|warranty|supply|install|installation|dismantle|dismantled|dismantling|dismount|dismounted|dismounting|commissioning|labour|labor|service|services|safety|wired|secure|classroom)$/.test(w));}
 
   function productIdentityCandidates(raw='',row={}){
     const lines=String(raw||'').replace(/\r/g,'').split('\n').map(clean);
@@ -235,14 +235,16 @@
         let brand=before.slice(-1).join(' ').replace(/[^A-Za-z0-9&.'-]/g,'').trim();
         if(!brand||/\d/.test(brand)||MODEL_STOP.test(brand)||brand.length>24)brand='';
         let score=0;
-        const nl=norm(line);
+        const nl=norm(line),targetHits=target.reduce((n,w)=>n+(nl.includes(w)?1:0),0);
+        const rowType=equipmentType([row.item_name,row.description].filter(Boolean).join(' ')),lineType=equipmentType(line),typeMatch=!!rowType&&!!lineType&&rowType===lineType;
         if(i-headerIndex>=0&&i-headerIndex<=4)score+=12;
         if(/\b(?:PRODUCT\s*(?:NO\.?|NUMBER)|MODEL|SKU)\b/i.test(line))score+=8;
         if(brand)score+=4;
-        for(const w of target)if(nl.includes(w))score+=2;
+        score+=targetHits*2;
         if(/\b(?:screen|projector|microphone|speaker|player|controller|panel|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher)\b/i.test(line))score+=3;
         if(compact(raw).includes(compact(model)))score+=2;
-        out.push({brand,model,line,index:i,score,source:(i-headerIndex>=0&&i-headerIndex<=4)?'labelled-product-field':'invoice-text'});
+        const relevant=targetHits>0||typeMatch;
+        out.push({brand,model,line,index:i,score,targetHits,typeMatch,relevant,source:(i-headerIndex>=0&&i-headerIndex<=4)?'labelled-product-field':'invoice-text'});
       }
     }
     return out.sort((a,b)=>b.score-a.score||a.index-b.index);
@@ -255,17 +257,21 @@
     const top=candidates[0]||null;
     const currentSupported=currentCredible&&String(raw||'').toUpperCase().includes(current.toUpperCase());
 
-    // Labelled Product No/Model/SKU evidence outranks a description/spec fragment.
-    if(top&&top.score>=12){
+    // Never let an unrelated model elsewhere on the invoice overwrite a credible model that is directly printed.
+    if(currentCredible&&currentSupported&&!looksLikeDimensionOrSpec(current,currentLine)){
+      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:5,reason:'Current model is directly printed on the invoice.'};
+    }
+    // Global Product No/Model/SKU evidence may correct a row only when it is relevant to that row.
+    if(top&&top.relevant&&top.score>=12){
       if(!currentCredible||!currentSupported||looksLikeDimensionOrSpec(current,currentLine)||compact(current)!==compact(top.model)){
-        return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Invoice-labelled product identity evidence outranks description/specification text.'};
+        return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Relevant labelled product identity evidence outranks unsupported row text.'};
       }
     }
-    // Strong unlabelled brand+model evidence can correct an unsupported OCR model (e.g. P80 vs printed P60).
-    if(top&&top.score>=7&&(!currentCredible||!currentSupported)){
-      return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Unsupported parsed model replaced by stronger invoice evidence.'};
+    // Strong unlabelled brand+model evidence can correct an unsupported OCR model only with row relevance.
+    if(top&&top.relevant&&top.score>=7&&(!currentCredible||!currentSupported)){
+      return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Unsupported parsed model replaced by stronger relevant invoice evidence.'};
     }
-    return {brand:'',model:currentCredible?current:'',changed:false,evidenceLine:currentLine,source:currentSupported?'invoice-text':'unverified',score:currentSupported?5:0,reason:currentSupported?'Current model is printed on the invoice.':'No verified model was found.'};
+    return {brand:'',model:currentCredible?current:'',changed:false,evidenceLine:currentLine,source:currentSupported?'invoice-text':'unverified',score:currentSupported?5:0,reason:currentSupported?'Current model is printed on the invoice.':'No verified relevant model was found.'};
   }
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
@@ -274,7 +280,7 @@
     const typeRank=t=>({'Projector Controller':90,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
     const candidates=[{text:cleanName(row.description),source:'description',bonus:4},{text:cleanName(row.item_name),source:'item_name',bonus:2}]
       .map(x=>({...x,type:equipmentType(x.text)}))
-      .filter(x=>x.text&&x.type&&compact(x.text).includes(compact(model))&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee)\b/i.test(x.text));
+      .filter(x=>x.text&&x.type&&compact(x.text).includes(compact(model))&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|commissioning)\b/i.test(x.text));
     candidates.sort((a,b)=>(typeRank(b.type)+b.bonus)-(typeRank(a.type)+a.bonus)||a.text.length-b.text.length);
     const best=candidates[0];
     if(best){
@@ -468,11 +474,21 @@
 
   // V7.03.3.12l: scanned numbered-table recovery is based on actual OCR evidence,
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
-  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip)\b/i;
+  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
   const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
-  function v703312jIsServiceRow(row={}){return V703312J_SERVICE_ROW_RE.test(v703312jRowText(row));}
+  function v703314kHasStrongEquipmentIdentity(row={}){
+    const text=v703312jRowText(row),sku=clean(row.sku||''),primary=clean(row.item_name||'');
+    if(/^(?:professional\s+services?|services?|installation|installing|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)|testing|commissioning|labou?r)\b/i.test(primary))return false;
+    return !!text&&credibleSku(sku,text)&&V703312J_EQUIPMENT_RE.test(text);
+  }
+  function v703312jIsServiceRow(row={}){
+    const text=v703312jRowText(row);
+    if(!V703312J_SERVICE_ROW_RE.test(text))return false;
+    // Keep a bundled equipment row only when its primary identity is equipment, not a work action.
+    return !v703314kHasStrongEquipmentIdentity(row);
+  }
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
     if(isStructuredPhysicalAssetRow(row))return false;
@@ -677,7 +693,7 @@
 
   function normalizedItemIdentity(v=''){
     return norm(v)
-      .replace(/\b(?:the|a|an|supply|install|installation|with|for|in pair|pair)\b/g,' ')
+      .replace(/\b(?:the|a|an|supply|install|installation|dismantle|dismantled|dismantling|dismount|dismounted|dismounting|commissioning|service|services|labour|labor|with|for|in pair|pair)\b/g,' ')
       .replace(/\b\d+(?:\.\d+)?\s*(?:mm|cm|inch|inches|lumens?|ansi|hz|khz|mhz|ghz|w|kw)\b/g,' ')
       .replace(/\s+/g,' ').trim();
   }
@@ -745,6 +761,33 @@
     return out;
   }
 
+  function runRegressionChecks(){
+    const cases=[];const check=(name,actual,expected=true)=>{const pass=typeof expected==='function'?!!expected(actual):actual===expected;cases.push({name,pass,actual,expected:typeof expected==='function'?'predicate':expected});return pass;};
+    check('delivery fee is service',v703312jIsServiceRow({item_name:'Delivery Fee'}),true);
+    check('installation is service',v703312jIsServiceRow({item_name:'Installation work'}),true);
+    check('dismantle-only row is service',v703312jIsServiceRow({item_name:'Dismantle existing projector'}),true);
+    check('dismount-only row is service',v703312jIsServiceRow({item_name:'Dismount existing projector'}),true);
+    check('SKU-tagged dismantle action remains service',v703312jIsServiceRow({sku:'PT-TW381R',item_name:'Dismantle existing PT-TW381R projector'}),true);
+    check('verified equipment survives bundled service text',v703312jIsServiceRow({sku:'PT-TW381R',item_name:'Panasonic PT-TW381R Short Throw Projector',description:'Professional Services including dismantle of existing projectors, installation, testing and commissioning'}),false);
+    check('HDMI cable is accessory',v703312jIsAccessoryRow({item_name:'HDMI Cable'}),true);
+    const avsRaw='PRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT\nAVS-320 Supply Abtus AVS-320 projector controller 2 350.00 700.00';
+    const avs=fixRow({sku:'AVS-320',item_name:'Supply Abtus AVS-320 projector controller',description:'Supply Abtus AVS-320 projector controller',quantity:2,unit_price:350,amount:700},avsRaw);
+    check('AVS-320 identity preserved',avs.sku==='AVS-320'&&/projector controller/i.test(avs.item_name||''),true);
+    const p60Raw='PRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT\nP60 Voxoa P60 media player 1 100.00 100.00';
+    const p60=fixRow({sku:'P80',item_name:'Voxoa media player',description:'Voxoa media player',quantity:1,unit_price:100,amount:100},p60Raw);
+    check('unsupported P80 corrected to printed P60',p60.sku,'P60');
+    const unrelated=fixRow({sku:'PT-VW540',item_name:'Panasonic Projector',description:'Panasonic Projector',quantity:1,unit_price:1000,amount:1000},'PRODUCT NO. DESCRIPTION\nSW12-120E Power Adaptor For HDMI Panel 12V\nPanasonic Projector');
+    check('unrelated global model cannot hijack credible row',unrelated.sku,'PT-VW540');
+    const d=dedupeParsedLineItems([{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804,serials:'DC2210037'},{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804,serials:'DC2210037'},{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804,serials:'DIFFERENT'}]);
+    check('dedupe removes exact duplicate only',d.length,2);
+    const match=resolveInventoryMatch({sku:'AVS320',item_name:'AVS-320 projector controller'},[{id:'1',sku:'AVS-320',item_name:'AVS-320 projector controller',category:'AV Control'}]);
+    check('format-equivalent SKU reuses existing item',!!match.matched&&match.line?.sku==='AVS-320',true);
+    const invoice='TAX INVOICE\nInvoice Number INV-1001\nInvoice Date 24 Sep 2026\nDelivery Order Number D100\nDescription Quantity Unit Price Amount\nPT-TW381R Projector 1 1000.00 1000.00\nSubtotal 1000.00\nGST 90.00\nTotal 1090.00';
+    check('invoice remains valid with delivery-order reference',classifyInvoicePage(invoice).allowed,true);
+    check('current and upcoming versions differ',RELEASE_UPCOMING_VERSION!==VERSION,true);
+    return {ok:cases.every(x=>x.pass),version:VERSION,upcoming:RELEASE_UPCOMING_VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+
   function installParserPatch(){
     const p=globalThis.AVParserV7;if(!p||p.__v7033Installed)return false;
     const originalEnhance=p.enhanceParsed?.bind(p);const originalPrepare=p.prepareSave?.bind(p);
@@ -760,17 +803,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Added Data Health history search plus status, check, reviewer and date filters.',
-    'Added safe bulk management to reopen active reviews or delete selected history.',
-    'Recent Activities now gives clearer item, adjustment, invoice-line, serial, maintenance and Data Health summaries.'
+    'Added a behavioral parser regression gate that blocks startup when critical parser rules regress.',
+    'Dismantle/dismount-only work rows are excluded while verified equipment bundled with service text is preserved.',
+    'Prevented unrelated OCR model tokens elsewhere on an invoice from overwriting a credible row SKU/model.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14k';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14l';
   const RELEASE_ROADMAP=[
-    {id:'parser-workflow-hardening',text:'Continue parser and workflow regression hardening.'},
     {id:'audit-health-export',text:'Add audit/Data Health export and retention controls.'},
-    {id:'saved-review-filters',text:'Improve saved review/filter workflows.'}
+    {id:'saved-review-filters',text:'Improve saved review/filter workflows.'},
+    {id:'regression-evidence-reporting',text:'Expand historical invoice regression evidence and parser diagnostics.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
@@ -803,5 +846,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,runRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
