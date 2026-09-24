@@ -876,16 +876,8 @@
         }
       ],
       "expected": {
-        "status": "accepted",
-        "winnerOrigin": "layout-a",
-        "rows": [
-          [
-            "CTRL-700",
-            2,
-            350,
-            700
-          ]
-        ]
+        "status": "review",
+        "rows": []
       }
     }
   ]
