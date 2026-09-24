@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14d';
+  const VERSION='7.03.3.14e';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -291,7 +291,7 @@
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
   }
-  // v7.03.3.14d: field-level Level 3 evidence. This is parser metadata, not UI inference.
+  // v7.03.3.14e: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
     const out={};
     const add=(field,reason)=>{if(!field)return;out[field]={status:'review',reason:clean(reason||'Human verification required.')};};
@@ -721,9 +721,10 @@
   }
 
   const RELEASE_NOTES=[
+    'Loader hotfix: the Master SKU merge injector now uses a guarded native string replacement and no longer depends on an undefined replaceOnce helper.',
     'Editing a Master SKU to an existing exact or formatting-equivalent SKU now opens a controlled generic merge workflow instead of exposing a database unique-key error.',
     'The merge keeps the existing canonical target SKU and transfers linked history transactionally through merge_master_items_v703314d; invoice import continues to use the same compact SKU identity resolver.',
-    'v7.03.3.14d removes the duplicate loader-scoped stacked-row helper that could become undefined at runtime; the existing exported core recovery is now the single source of truth.',
+    'v7.03.3.14e removes the duplicate loader-scoped stacked-row helper that could become undefined at runtime; the existing exported core recovery is now the single source of truth.',
     'A cumulative runtime regression contract now blocks deployment if previously fixed import/review controls or required parser symbols disappear.',
     'Automatic deep recovery now adds a targeted first-page invoice-header OCR crop before Review when the invoice number is still missing.',
     'Scanned priced rows whose physical-equipment specifications wrap below the main row can now be reconstructed supplier-neutrally from verified SKU, quantity and amount evidence.',
