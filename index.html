@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=7.03.3.14k-r1" />
-  <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14k-r1" />
+  <link rel="stylesheet" href="styles.css?v=7.03.3.14l-r1" />
+  <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14l-r1" />
   <style>
     /* inherited v7.03.3.9c Vault layout refinement */
     /* v7.03.3.14f: compact maintenance outcome + 30% smaller Vault search. */
@@ -118,6 +118,16 @@
     .health-history-manage input[type="checkbox"],#healthHistoryResults14j input[type="checkbox"]{width:15px;height:15px;accent-color:#175cd3}
     @media(max-width:1100px){.health-history-toolbar{grid-template-columns:1fr 1fr 1fr}}
     @media(max-width:760px){.health-history-toolbar{grid-template-columns:1fr}.health-history-manage>span{width:100%;margin-right:0}}
+
+    /* v7.03.3.14l — parser diagnostics inside invoice Review */
+    .parser-diagnostics-14l{margin:14px 0;border:1px solid #d7e1ea;border-radius:12px;background:#fbfdff;overflow:hidden}
+    .parser-diagnostics-14l>summary{display:flex;align-items:center;gap:10px;cursor:pointer;padding:11px 13px;font-size:12px;font-weight:800;color:#243b53;background:#f3f7fb}
+    .parser-diagnostics-14l>summary span:first-child{margin-right:auto}.parser-diag-status{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:9px;letter-spacing:.04em}
+    .parser-diag-status.pass{background:#e7f8ef;color:#087443}.parser-diag-status.review{background:#fff4d6;color:#8a5a00}.parser-diag-status.block{background:#ffe8e6;color:#b42318}
+    .parser-diag-body{padding:12px}.parser-diag-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.parser-diag-summary>div{display:flex;flex-direction:column;gap:3px;padding:8px 10px;border:1px solid #e5edf4;border-radius:9px;background:#fff;font-size:10px}.parser-diag-summary b{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#667085}.parser-diag-summary span{color:#344054;line-height:1.4}
+    .parser-diag-table{font-size:10px}.parser-diag-table th,.parser-diag-table td{vertical-align:top}.parser-diag-trace{margin-top:10px;padding:9px 10px;border:1px solid #e5edf4;border-radius:9px;background:#fff;font-size:10px}.parser-diag-trace>p{margin:7px 0 0;color:#52667c;line-height:1.45}
+    .parser-diag-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.parser-diag-chips span{padding:3px 7px;border-radius:999px;background:#eef4fb;color:#37526d;font-weight:700}.parser-diag-raw{margin-top:10px}.parser-diag-raw summary{cursor:pointer;font-size:10px;font-weight:800;color:#52667c}.parser-diag-raw pre{max-height:360px;overflow:auto;margin:8px 0 0;padding:10px;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:9px;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+    @media(max-width:760px){.parser-diag-summary{grid-template-columns:1fr}}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
@@ -184,8 +194,8 @@
       </nav>
       <section id="patchNotesPanel" class="sidebar-patch-panel hidden" aria-label="Patch notes" aria-live="polite">
         <div class="sidebar-patch-head"><span>Release Notes</span><strong>Patch Notes</strong></div>
-        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14k</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Added a behavioral parser regression gate for critical parser rules.</li><li>Dismantle/dismount-only work rows are excluded while verified bundled equipment is preserved.</li><li>Unrelated OCR model tokens can no longer overwrite a credible row SKU/model.</li></ul></article>
-        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14l</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Continue parser and workflow regression hardening.</li><li>Add audit/Data Health export and retention controls.</li><li>Improve saved review/filter workflows.</li></ul></article>
+        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14l</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Review now shows structured parser diagnostics and Level 1/2/3 evidence.</li><li>Historical regression results now include expected vs actual evidence and explicit PASS/FAIL reasons.</li><li>Added machine-readable regression evidence covering 13 retrievable files across 7 logical cases.</li></ul></article>
+        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14m</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Add audit/Data Health export and retention controls.</li><li>Improve saved review/filter workflows.</li><li>Add one-click diagnostic package export for parser issue reports.</li></ul></article>
       </section>
       <div class="sidebar-footer"><div class="footer-rule"></div><p>Track today.<br>Empower tomorrow.</p><button id="signOutBtn" class="ghost hidden"><i data-lucide="log-out"></i> Sign out</button></div>
     </aside>
@@ -203,7 +213,7 @@
         <article class="panel automation-centre" id="automationCentre"><div class="panel-head automation-head"><div><h2>Automation Centre</h2><p class="muted">Automatic checks that keep inventory records clean and ready for reference.</p></div><div class="automation-head-actions"><span id="dataHealthScore" class="health-score">Data health —</span><button id="runHealthCheckBtn" class="secondary small-btn" type="button"><i data-lucide="refresh-cw"></i> Run check</button></div></div><div class="automation-grid"><button id="needsAttentionCard" class="automation-card attention" type="button"><span class="automation-icon"><i data-lucide="circle-alert"></i></span><span><small>Needs Attention</small><strong id="needsAttentionCount">0</strong><em id="needsAttentionSummary">No issues detected</em></span></button><button id="stockTakeCard" class="automation-card stocktake" type="button"><span class="automation-icon"><i data-lucide="clipboard-check"></i></span><span><small>Stock Take</small><strong>Compare</strong><em>System quantity vs physical count</em></span></button><div class="automation-card intelligence"><span class="automation-icon"><i data-lucide="sparkles"></i></span><span><small>Import Intelligence · Status</small><strong id="importRuleSummary">Supplier rules active</strong><em>SKU matching + document linking</em></span></div></div></article>
         <div class="grid-2 dashboard-grid"><article class="panel inventory-preview-panel"><div class="panel-head"><h2>Recent Inventory Items</h2><button class="link-btn" data-go="inventory">View all <i data-lucide="arrow-right"></i></button></div><div id="dashboardInventory" class="inventory-card-grid"></div></article><article class="panel activity-panel"><div class="panel-head"><h2>Recent Activities</h2><button class="link-btn" data-go="audit">View all <i data-lucide="arrow-right"></i></button></div><div id="recentAudit" class="activity-list"></div></article></div>
       </section>
-      <div class="dashboard-meta"><span id="healthStatus" class="health-status reconnecting"><i></i> Starting…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 7.03.3.14k</span></div>
+      <div class="dashboard-meta"><span id="healthStatus" class="health-status reconnecting"><i></i> Starting…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 7.03.3.14l</span></div>
       <section id="inventoryView" class="view"><article class="panel content-panel"><div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" autocomplete="off" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div><select id="categoryFilter"><option value="">All categories</option></select><select id="inventoryGroup" title="Group inventory items"><option value="none">No Grouping</option><option value="company">Group by Company</option></select><button id="inventoryHealthBtn" class="secondary toolbar-btn" type="button"><i data-lucide="shield-check"></i> Data Health</button></div><div id="inventoryTable" class="table-wrap"></div></article></section>
       <section id="documentsView" class="view"><article class="panel content-panel"><div class="toolbar documents-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="documentSort" title="Sort documents by uploaded date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select></div><div id="documentsTable" class="table-wrap"></div></article></section>
       <section id="vaultView" class="view"><article class="panel content-panel"><div class="toolbar documents-toolbar vault-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="vaultSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="vaultGroup" title="Group vault invoices"><option value="company">Group by Company</option><option value="none">No Grouping</option></select><select id="vaultSort" title="Sort vault invoices by invoice date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select></div><div id="vaultTable" class="table-wrap"></div></article></section>
@@ -226,9 +236,9 @@
   <div id="idleWarning" class="idle-warning hidden" role="alertdialog" aria-modal="true" aria-labelledby="idleWarningTitle"><div class="idle-warning-card"><div class="idle-warning-icon"><i data-lucide="clock-3"></i></div><div class="idle-warning-copy"><strong id="idleWarningTitle">Still there?</strong><p>No activity was detected. You will be signed out automatically in 5 minutes.</p></div><button id="staySignedInBtn" class="primary" type="button">Stay signed in</button></div></div>
   <div id="toast" class="toast hidden"></div>
   <script src="config.js"></script>
-  <script src="parser-v7-core.js?v=7.03.3.14k-r1"></script>
-  <script src="app.js?v=7.03.3.14k-r1"></script>
+  <script src="parser-v7-core.js?v=7.03.3.14l-r1"></script>
+  <script src="app.js?v=7.03.3.14l-r1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="feedback.js?v=7.03.3.14k-r1"></script>
+  <script src="feedback.js?v=7.03.3.14l-r1"></script>
 </body>
 </html>

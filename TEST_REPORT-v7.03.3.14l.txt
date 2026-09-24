@@ -1,0 +1,316 @@
+AV Inventory Hub v7.03.3.14l — Validation Report
+Generated: 2026-09-24T10:54:47.864Z
+=================================================
+
+PATCH FOCUS
+Expand historical invoice regression evidence and parser diagnostics.
+
+IMPLEMENTED
+- Every parsed invoice now carries v703314lDiagnostics with document classification, header evidence/corrections, row decisions, exclusion counts, recovered rows, final item identity/economic evidence, and Level 1/2/3 status.
+- Invoice Review now automatically shows Parser diagnostics with Patch Focus, Test Suite/Input, Overall Status, Expected vs Actual, evidence trace, raw parser test execution output, and timestamp.
+- Historical regression cases now store source files, expected result, actual result, evidence, PASS/FAIL, and a plain-language reason.
+- Added TEST_EVIDENCE-v7.03.3.14l.json for machine-readable evidence.
+
+BEHAVIORAL REGRESSION
+PASS 14 / 14
+PASS delivery fee is service | expected=true | actual=true
+PASS installation is service | expected=true | actual=true
+PASS dismantle-only row is service | expected=true | actual=true
+PASS dismount-only row is service | expected=true | actual=true
+PASS SKU-tagged dismantle action remains service | expected=true | actual=true
+PASS verified equipment survives bundled service text | expected=false | actual=false
+PASS HDMI cable is accessory | expected=true | actual=true
+PASS AVS-320 identity preserved | expected=true | actual=true
+PASS unsupported P80 corrected to printed P60 | expected="P60" | actual="P60"
+PASS unrelated global model cannot hijack credible row | expected="PT-VW540" | actual="PT-VW540"
+PASS dedupe removes exact duplicate only | expected=2 | actual=2
+PASS format-equivalent SKU reuses existing item | expected=true | actual=true
+PASS invoice remains valid with delivery-order reference | expected=true | actual=true
+PASS current and upcoming versions differ | expected=true | actual=true
+
+HISTORICAL REGRESSION
+PASS 7 / 7 logical cases; 13 retrievable file variants represented.
+PASS avs-320-vin17-049472
+  Source: VIN17-049472(signed).pdf, VIN17-049472(signed)(1).pdf
+  Expected: {"final_skus":["AVS-320"],"service_excluded":1,"accessory_excluded":1}
+  Actual: {"items":[{"sku":"AVS-320","item_name":"Abtus AVS-320 Projector Controller"}],"filter":{"excludedServiceCount":1,"excludedAccessoryCount":1,"recoveredEquipmentCount":0}}
+  Reason: AVS-320 equipment is retained while installation and HDMI cable rows are excluded.
+PASS aerospace-2022
+  Source: INV-Aerospace.pdf, INV-Aerospace(1).pdf, 12-08-2022-AV-Media-Pte-Ltd.pdf
+  Expected: {"must_include":["PT-VW540","AVS320"],"must_exclude":"installation work"}
+  Actual: {"items":[{"sku":"PT-VW540","item_name":"Panasonic PT-VW540 Projector"},{"sku":"AVS320","item_name":"Abtus AVS320 Control Panel"}],"filter":{"excludedServiceCount":1,"excludedAccessoryCount":0,"recoveredEquipmentCount":0}}
+  Reason: Credible PT-VW540 and AVS320 identities survive noisy OCR while installation work is excluded.
+PASS loud-pga58-00215542
+  Source: Invoice INV LTA-00215542_Signed.pdf, Invoice INV LTA-00215542_Signed(1).pdf, Invoice INV LTA-00215542_Signed(2).pdf
+  Expected: {"final_skus":["PGA58-LC"],"delivery_excluded":true}
+  Actual: {"items":[{"sku":"PGA58-LC","item_name":"SHURE PGA58-LC Microphone"}],"filter":{"excludedServiceCount":1,"excludedAccessoryCount":0,"recoveredEquipmentCount":0}}
+  Reason: PGA58-LC remains inventory and delivery service is excluded.
+PASS loud-mixed-00215840
+  Source: Invoice INV LTA-00215840_Signed.pdf
+  Expected: {"retain":["U35C","SLXD2+","AT-2","U3"],"delivery_excluded":true}
+  Actual: {"items":[{"sku":"U35C","item_name":"XVive U35C Microphone"},{"sku":"SLXD2+","item_name":"Shure SLXD2+ Microphone"},{"sku":"AT-2","item_name":"XVive AT-2 Portable Audio Tester"},{"sku":"U3","item_name":"Xvive Audio U3 Microphone"}],"filter":{"excludedServiceCount":1,"excludedAccessoryCount":0,"recoveredEquipmentCount":0}}
+  Reason: Four equipment identities remain while the delivery line is removed.
+PASS jny-rds-2021
+  Source: INV-RDSMar21.pdf
+  Expected: {"sku":"PT-TW381R","clean_name":true,"invoice_allowed":true}
+  Actual: {"items":[{"sku":"PT-TW381R","item_name":"Panasonic PT-TW381R Projector"}],"filter":{"excludedServiceCount":0,"excludedAccessoryCount":0,"recoveredEquipmentCount":0}}
+  Reason: Bundled projector remains tracked, work verbs stay out of Standard Item Name, and D/O reference does not reject the Tax Invoice.
+PASS seminar-room-2021
+  Source: INV-SeminarRoom123.pdf, INV-SeminarRoom123(1).pdf
+  Expected: {"must_include":["PT-VW540","SPS-1100"],"no_bracket":true,"no_unrelated_model_hijack":true}
+  Actual: {"items":[{"sku":"PT-VW540","item_name":"PT-VW540 Projector"},{"sku":"SPS-1100","item_name":"SPS-1100 Active Speaker"}],"filter":{"excludedServiceCount":0,"excludedAccessoryCount":1,"recoveredEquipmentCount":0}}
+  Reason: Projector and speaker identities survive; bracket is excluded and unrelated OCR tokens do not hijack SKU/model.
+PASS hawko-av-cart-2021
+  Source: INV-AVcart.pdf
+  Expected: {"structured_asset_recovered":true}
+  Actual: {"raw":"TAX INVOICE\nZS6HKOAV-EB97E METAL TROLLEY W C+S 2 550.00 1100.00\nAdjustable height 770-970mm\nLockable Security Cabinet with key\nSingle pull out shelf for PC keyboard\n4 caster wheels 2 locking\nSolid steel construction will not topple over\nSUBTOTAL 1100.00","recovered":[{"sku":"ZS6HKOAV-EB97E","item_name":"METAL TROLLEY W C+S","description":"METAL TROLLEY W C+S Adjustable height 770-970mm Lockable Security Cabinet with key Single pull out shelf for PC keyboard 4 caster wheels 2 locking Solid steel construction will not topple over","category":"AV Accessories","unit":"pcs","quantity":2,"unit_price":550,"amount":1100,"warranty":"","serials":"","v703312kOcrEvidence":true,"v703312kSource":"historical-hawko","v703312kSourceLine":"ZS6HKOAV-EB97E METAL TROLLEY W C+S 2 550.00 1100.00","v703314aStructuredPricedAsset":true}]}
+  Reason: Strongly evidenced priced trolley is recovered as a structured physical asset despite generic cart/trolley exclusions.
+
+CURRENTLY RETRIEVABLE FILE COVERAGE
+EXECUTED/REPRESENTED  VIN17-049472(signed).pdf -> avs-320-vin17-049472
+EXECUTED/REPRESENTED  VIN17-049472(signed)(1).pdf -> avs-320-vin17-049472
+EXECUTED/REPRESENTED  INV-Aerospace.pdf -> aerospace-2022
+EXECUTED/REPRESENTED  INV-Aerospace(1).pdf -> aerospace-2022
+EXECUTED/REPRESENTED  12-08-2022-AV-Media-Pte-Ltd.pdf -> aerospace-2022
+EXECUTED/REPRESENTED  Invoice INV LTA-00215542_Signed.pdf -> loud-pga58-00215542
+EXECUTED/REPRESENTED  Invoice INV LTA-00215542_Signed(1).pdf -> loud-pga58-00215542
+EXECUTED/REPRESENTED  Invoice INV LTA-00215542_Signed(2).pdf -> loud-pga58-00215542
+EXECUTED/REPRESENTED  Invoice INV LTA-00215840_Signed.pdf -> loud-mixed-00215840
+EXECUTED/REPRESENTED  INV-RDSMar21.pdf -> jny-rds-2021
+EXECUTED/REPRESENTED  INV-SeminarRoom123.pdf -> seminar-room-2021
+EXECUTED/REPRESENTED  INV-SeminarRoom123(1).pdf -> seminar-room-2021
+EXECUTED/REPRESENTED  INV-AVcart.pdf -> hawko-av-cart-2021
+
+KNOWN CASES NOT CURRENTLY RETRIEVABLE
+NOT EXECUTED  INV-Dmx200.pdf
+NOT EXECUTED  INV-Dmx200(1).pdf
+NOT EXECUTED  03-03-2026-AV-Media-Pte-Ltd.pdf
+NOT EXECUTED  21-01-2026-AV-Media-Pte-Ltd.pdf
+NOT EXECUTED  0026_001.pdf
+NOT EXECUTED  INV-STR.pdf
+NOT EXECUTED  INV-STR(1).pdf
+NOT EXECUTED  Marshal blk.pdf
+NOT EXECUTED  Remaco MAS-1818 source invoice
+
+SYNTAX / INTEGRATION GATES
+PASS v7033-core.js syntax
+PASS app.js syntax
+PASS v7.03.3.14l core/app/index version coherence
+PASS Current 14l / Upcoming 14m separation
+PASS diagnostic runtime block syntax
+PASS diagnostic Review UI staging contract
+PASS behavioral startup regression gate
+PASS historical startup regression gate
+
+OVERALL PRE-DEPLOYMENT STATUS
+PASS
+
+RAW PARSER TEST EXECUTION
+{
+  "timestamp": "2026-09-24T10:54:47.864Z",
+  "behavioral": {
+    "ok": true,
+    "failures": [],
+    "cases": [
+      {
+        "name": "delivery fee is service",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "installation is service",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "dismantle-only row is service",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "dismount-only row is service",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "SKU-tagged dismantle action remains service",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "verified equipment survives bundled service text",
+        "pass": true,
+        "actual": false,
+        "expected": false
+      },
+      {
+        "name": "HDMI cable is accessory",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "AVS-320 identity preserved",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "unsupported P80 corrected to printed P60",
+        "pass": true,
+        "actual": "P60",
+        "expected": "P60"
+      },
+      {
+        "name": "unrelated global model cannot hijack credible row",
+        "pass": true,
+        "actual": "PT-VW540",
+        "expected": "PT-VW540"
+      },
+      {
+        "name": "dedupe removes exact duplicate only",
+        "pass": true,
+        "actual": 2,
+        "expected": 2
+      },
+      {
+        "name": "format-equivalent SKU reuses existing item",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "invoice remains valid with delivery-order reference",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      },
+      {
+        "name": "current and upcoming versions differ",
+        "pass": true,
+        "actual": true,
+        "expected": true
+      }
+    ]
+  },
+  "historical": {
+    "ok": true,
+    "logical_cases": 7,
+    "represented_files": 13,
+    "failures": [],
+    "cases": [
+      {
+        "id": "avs-320-vin17-049472",
+        "source_files": [
+          "VIN17-049472(signed).pdf",
+          "VIN17-049472(signed)(1).pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "final_skus": [
+            "AVS-320"
+          ],
+          "service_excluded": 1,
+          "accessory_excluded": 1
+        },
+        "reason": "AVS-320 equipment is retained while installation and HDMI cable rows are excluded."
+      },
+      {
+        "id": "aerospace-2022",
+        "source_files": [
+          "INV-Aerospace.pdf",
+          "INV-Aerospace(1).pdf",
+          "12-08-2022-AV-Media-Pte-Ltd.pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "must_include": [
+            "PT-VW540",
+            "AVS320"
+          ],
+          "must_exclude": "installation work"
+        },
+        "reason": "Credible PT-VW540 and AVS320 identities survive noisy OCR while installation work is excluded."
+      },
+      {
+        "id": "loud-pga58-00215542",
+        "source_files": [
+          "Invoice INV LTA-00215542_Signed.pdf",
+          "Invoice INV LTA-00215542_Signed(1).pdf",
+          "Invoice INV LTA-00215542_Signed(2).pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "final_skus": [
+            "PGA58-LC"
+          ],
+          "delivery_excluded": true
+        },
+        "reason": "PGA58-LC remains inventory and delivery service is excluded."
+      },
+      {
+        "id": "loud-mixed-00215840",
+        "source_files": [
+          "Invoice INV LTA-00215840_Signed.pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "retain": [
+            "U35C",
+            "SLXD2+",
+            "AT-2",
+            "U3"
+          ],
+          "delivery_excluded": true
+        },
+        "reason": "Four equipment identities remain while the delivery line is removed."
+      },
+      {
+        "id": "jny-rds-2021",
+        "source_files": [
+          "INV-RDSMar21.pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "sku": "PT-TW381R",
+          "clean_name": true,
+          "invoice_allowed": true
+        },
+        "reason": "Bundled projector remains tracked, work verbs stay out of Standard Item Name, and D/O reference does not reject the Tax Invoice."
+      },
+      {
+        "id": "seminar-room-2021",
+        "source_files": [
+          "INV-SeminarRoom123.pdf",
+          "INV-SeminarRoom123(1).pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "must_include": [
+            "PT-VW540",
+            "SPS-1100"
+          ],
+          "no_bracket": true,
+          "no_unrelated_model_hijack": true
+        },
+        "reason": "Projector and speaker identities survive; bracket is excluded and unrelated OCR tokens do not hijack SKU/model."
+      },
+      {
+        "id": "hawko-av-cart-2021",
+        "source_files": [
+          "INV-AVcart.pdf"
+        ],
+        "pass": true,
+        "expected": {
+          "structured_asset_recovered": true
+        },
+        "reason": "Strongly evidenced priced trolley is recovered as a structured physical asset despite generic cart/trolley exclusions."
+      }
+    ]
+  }
+}

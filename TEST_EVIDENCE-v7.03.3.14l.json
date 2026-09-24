@@ -1,0 +1,1840 @@
+{
+  "version": "7.03.3.14l",
+  "generated_at": "2026-09-24T10:54:47.864Z",
+  "patch_focus": "Expand historical invoice regression evidence and parser diagnostics",
+  "overall_status": "PASS",
+  "methodology": {
+    "historical_invoices_are_one_test_method": true,
+    "additional_methods": [
+      "deterministic behavioral regression",
+      "source-assisted historical fixtures",
+      "JavaScript syntax preflight",
+      "runtime integration contract",
+      "version/cache coherence"
+    ],
+    "no_fake_pass": "Files not retrievable in the current session are listed as NOT EXECUTED rather than PASS."
+  },
+  "coverage": {
+    "behavioral": {
+      "passed": 14,
+      "total": 14,
+      "failures": []
+    },
+    "historical": {
+      "passed": 7,
+      "total": 7,
+      "represented_files": 13,
+      "failures": []
+    },
+    "retrievable_files": [
+      {
+        "name": "VIN17-049472(signed).pdf",
+        "case_id": "avs-320-vin17-049472",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "VIN17-049472(signed)(1).pdf",
+        "case_id": "avs-320-vin17-049472",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "INV-Aerospace.pdf",
+        "case_id": "aerospace-2022",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "INV-Aerospace(1).pdf",
+        "case_id": "aerospace-2022",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "12-08-2022-AV-Media-Pte-Ltd.pdf",
+        "case_id": "aerospace-2022",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "Invoice INV LTA-00215542_Signed.pdf",
+        "case_id": "loud-pga58-00215542",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "Invoice INV LTA-00215542_Signed(1).pdf",
+        "case_id": "loud-pga58-00215542",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "Invoice INV LTA-00215542_Signed(2).pdf",
+        "case_id": "loud-pga58-00215542",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "Invoice INV LTA-00215840_Signed.pdf",
+        "case_id": "loud-mixed-00215840",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "INV-RDSMar21.pdf",
+        "case_id": "jny-rds-2021",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "INV-SeminarRoom123.pdf",
+        "case_id": "seminar-room-2021",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "INV-SeminarRoom123(1).pdf",
+        "case_id": "seminar-room-2021",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      },
+      {
+        "name": "INV-AVcart.pdf",
+        "case_id": "hawko-av-cart-2021",
+        "retrieval_status": "indexed/retrievable in current session",
+        "execution": "represented by source-assisted historical case"
+      }
+    ],
+    "known_not_currently_retrievable": [
+      {
+        "name": "INV-Dmx200.pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "INV-Dmx200(1).pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "03-03-2026-AV-Media-Pte-Ltd.pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "21-01-2026-AV-Media-Pte-Ltd.pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "0026_001.pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "INV-STR.pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "INV-STR(1).pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "Marshal blk.pdf",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      },
+      {
+        "name": "Remaco MAS-1818 source invoice",
+        "status": "NOT EXECUTED — source file not retrievable in current session"
+      }
+    ]
+  },
+  "historical_cases": [
+    {
+      "id": "avs-320-vin17-049472",
+      "source_files": [
+        "VIN17-049472(signed).pdf",
+        "VIN17-049472(signed)(1).pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "final_skus": [
+          "AVS-320"
+        ],
+        "service_excluded": 1,
+        "accessory_excluded": 1
+      },
+      "actual": {
+        "items": [
+          {
+            "sku": "AVS-320",
+            "item_name": "Abtus AVS-320 Projector Controller",
+            "quantity": 2,
+            "unit_price": 350,
+            "amount": 700
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 1,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostic_status": "PASS"
+      },
+      "evidence": {
+        "final_items": [
+          {
+            "sku": "AVS-320",
+            "item_name": "Abtus AVS-320 Projector Controller"
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 1,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostics": {
+          "version": "7.03.3.14l",
+          "generated_at": "2026-09-24T10:54:47.842Z",
+          "overall_status": "PASS",
+          "patch_focus": "Historical invoice regression evidence + parser diagnostics",
+          "source": {
+            "character_count": 300,
+            "line_count": 7,
+            "evidence_source_count": 0,
+            "evidence_sources": []
+          },
+          "document": {
+            "classification": {
+              "allowed": true,
+              "disposition": "accept",
+              "type": "tax_invoice",
+              "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+              "review_required": false,
+              "score": 20,
+              "evidence": {
+                "strongTax": true,
+                "strongInvoice": false,
+                "fuzzyHead": true,
+                "invoiceNo": true,
+                "invoiceDate": false,
+                "billTo": false,
+                "itemTable": true,
+                "subtotal": false,
+                "tax": true,
+                "finalTotal": false,
+                "totals": false,
+                "gstReg": false,
+                "paymentTerms": false,
+                "currency": false,
+                "nonInvoiceTitles": []
+              }
+            },
+            "header": {
+              "supplier_name": "",
+              "invoice_number": "VIN17-049472",
+              "invoice_date": "",
+              "delivery_order_number": "",
+              "reference": "",
+              "currency": "",
+              "subtotal": null,
+              "gst": null,
+              "total_amount": null
+            },
+            "corrections": {
+              "invoice_number_corrected_from": "",
+              "invoice_number_review_required": false
+            }
+          },
+          "filtering": {
+            "incoming_count": 3,
+            "tracked_count": 1,
+            "excluded_service_count": 1,
+            "excluded_accessory_count": 1,
+            "recovered_equipment_count": 1,
+            "incoming_rows": [
+              {
+                "index": 1,
+                "sku": "AVS-320",
+                "item_name": "Supply Abtus AVS-320 projector controller",
+                "quantity": 2,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Supply Abtus AVS-320 projector controller Supply Abtus AVS-320 projector controller AVS-320"
+              },
+              {
+                "index": 2,
+                "sku": "SALES-INSTALLATION",
+                "item_name": "Installation",
+                "quantity": 2,
+                "classification": "service-excluded",
+                "reason": "Service/work language matched and no protected equipment identity applies.",
+                "text": "Installation Installation SALES-INSTALLATION"
+              },
+              {
+                "index": 3,
+                "sku": "CHD-AG28-2.0M/M-3R",
+                "item_name": "ABtUS HDMI Cable Round AWG28 M-M 3M V2.0",
+                "quantity": 2,
+                "classification": "accessory-excluded",
+                "reason": "Accessory/support identity matched the exclusion rules.",
+                "text": "ABtUS HDMI Cable Round AWG28 M-M 3M V2.0 ABtUS HDMI Cable Round AWG28 M-M 3M V2.0 CHD-AG28-2.0M/M-3R"
+              }
+            ]
+          },
+          "final_items": [
+            {
+              "index": 1,
+              "sku": "AVS-320",
+              "item_name": "Abtus AVS-320 Projector Controller",
+              "quantity": 2,
+              "unit_price": 350,
+              "amount": 700,
+              "identity": {
+                "brand": "",
+                "model": "AVS-320",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "AVS-320 Supply Abtus AVS-320 projector controller 2 350.00 700.00"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "status": "confirmed",
+                "reason": "Deterministic OCR/table evidence identifies a tracked equipment row."
+              },
+              "level2": {
+                "status": "unavailable",
+                "sources": 1,
+                "reason": "A second independent OCR read did not confirm the row."
+              },
+              "review_fields": {},
+              "human_review_required": false
+            }
+          ],
+          "verification": {
+            "level3_required": false,
+            "completeness": {
+              "expectedEquipmentCount": 1,
+              "finalEquipmentCount": 1,
+              "countMatch": true,
+              "identityMatch": true,
+              "missing": [],
+              "unexpected": [],
+              "recheckRequired": false,
+              "status": "pass",
+              "v703312kReason": "Actual OCR evidence was reconciled across independent OCR reads; service/accessory rows were excluded before identity correction."
+            },
+            "level1": [
+              {
+                "sku": "AVS-320",
+                "item_name": "Abtus AVS-320 Projector Controller",
+                "status": "confirmed"
+              }
+            ],
+            "level2": [
+              {
+                "sku": "AVS-320",
+                "item_name": "Abtus AVS-320 Projector Controller",
+                "status": "unavailable",
+                "sources": 1
+              }
+            ]
+          },
+          "decision_reasons": [
+            "1 service/work row(s) excluded.",
+            "1 accessory/support row(s) excluded.",
+            "1 equipment row(s) recovered from OCR/table evidence."
+          ]
+        }
+      },
+      "reason": "AVS-320 equipment is retained while installation and HDMI cable rows are excluded."
+    },
+    {
+      "id": "aerospace-2022",
+      "source_files": [
+        "INV-Aerospace.pdf",
+        "INV-Aerospace(1).pdf",
+        "12-08-2022-AV-Media-Pte-Ltd.pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "must_include": [
+          "PT-VW540",
+          "AVS320"
+        ],
+        "must_exclude": "installation work"
+      },
+      "actual": {
+        "items": [
+          {
+            "sku": "PT-VW540",
+            "item_name": "Panasonic PT-VW540 Projector",
+            "quantity": 1,
+            "unit_price": 804,
+            "amount": 804
+          },
+          {
+            "sku": "AVS320",
+            "item_name": "Abtus AVS320 Control Panel",
+            "quantity": 1,
+            "unit_price": 350,
+            "amount": 350
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostic_status": "PASS"
+      },
+      "evidence": {
+        "final_items": [
+          {
+            "sku": "PT-VW540",
+            "item_name": "Panasonic PT-VW540 Projector",
+            "identity": {
+              "brand": "",
+              "model": "PT-VW540",
+              "source": "invoice-text",
+              "score": 5,
+              "evidenceLine": "PT-VW540"
+            }
+          },
+          {
+            "sku": "AVS320",
+            "item_name": "Abtus AVS320 Control Panel",
+            "identity": {
+              "brand": "",
+              "model": "AVS320",
+              "source": "invoice-text",
+              "score": 5,
+              "evidenceLine": "AVS320"
+            }
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostics": {
+          "version": "7.03.3.14l",
+          "generated_at": "2026-09-24T10:54:47.846Z",
+          "overall_status": "PASS",
+          "patch_focus": "Historical invoice regression evidence + parser diagnostics",
+          "source": {
+            "character_count": 230,
+            "line_count": 11,
+            "evidence_source_count": 0,
+            "evidence_sources": []
+          },
+          "document": {
+            "classification": {
+              "allowed": true,
+              "disposition": "accept",
+              "type": "tax_invoice",
+              "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+              "review_required": false,
+              "score": 12,
+              "evidence": {
+                "strongTax": true,
+                "strongInvoice": false,
+                "fuzzyHead": true,
+                "invoiceNo": false,
+                "invoiceDate": false,
+                "billTo": false,
+                "itemTable": false,
+                "subtotal": false,
+                "tax": true,
+                "finalTotal": false,
+                "totals": false,
+                "gstReg": false,
+                "paymentTerms": false,
+                "currency": false,
+                "nonInvoiceTitles": []
+              }
+            },
+            "header": {
+              "supplier_name": "",
+              "invoice_number": "",
+              "invoice_date": "",
+              "delivery_order_number": "",
+              "reference": "",
+              "currency": "",
+              "subtotal": null,
+              "gst": null,
+              "total_amount": null
+            },
+            "corrections": {
+              "invoice_number_corrected_from": "",
+              "invoice_number_review_required": false
+            }
+          },
+          "filtering": {
+            "incoming_count": 3,
+            "tracked_count": 2,
+            "excluded_service_count": 1,
+            "excluded_accessory_count": 0,
+            "recovered_equipment_count": 0,
+            "incoming_rows": [
+              {
+                "index": 1,
+                "sku": "PT-VW540",
+                "item_name": "Panasonic PT-VW540 projector",
+                "quantity": 1,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Panasonic PT-VW540 projector Panasonic PT-VW540 projector 5000 ANSI lumens PT-VW540"
+              },
+              {
+                "index": 2,
+                "sku": "AVS320",
+                "item_name": "Abtus AVS320 HDMI Control panel",
+                "quantity": 1,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Abtus AVS320 HDMI Control panel Abtus AVS320 HDMI Control panel AVS320"
+              },
+              {
+                "index": 3,
+                "sku": "",
+                "item_name": "Installation work including supply and install bracket for projector",
+                "quantity": 1,
+                "classification": "service-excluded",
+                "reason": "Service/work language matched and no protected equipment identity applies.",
+                "text": "Installation work including supply and install bracket for projector Installation work including supply and install bracket for projector"
+              }
+            ]
+          },
+          "final_items": [
+            {
+              "index": 1,
+              "sku": "PT-VW540",
+              "item_name": "Panasonic PT-VW540 Projector",
+              "quantity": 1,
+              "unit_price": 804,
+              "amount": 804,
+              "identity": {
+                "brand": "",
+                "model": "PT-VW540",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "PT-VW540"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "PT-VW540",
+                "item_name": "Panasonic PT-VW540 Projector",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "PT-VW540",
+                "item_name": "Panasonic PT-VW540 Projector",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            },
+            {
+              "index": 2,
+              "sku": "AVS320",
+              "item_name": "Abtus AVS320 Control Panel",
+              "quantity": 1,
+              "unit_price": 350,
+              "amount": 350,
+              "identity": {
+                "brand": "",
+                "model": "AVS320",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "AVS320"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "AVS320",
+                "item_name": "Abtus AVS320 Control Panel",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "AVS320",
+                "item_name": "Abtus AVS320 Control Panel",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            }
+          ],
+          "verification": {
+            "level3_required": false,
+            "completeness": {},
+            "level1": [
+              {
+                "sku": "PT-VW540",
+                "item_name": "Panasonic PT-VW540 Projector",
+                "status": "unknown"
+              },
+              {
+                "sku": "AVS320",
+                "item_name": "Abtus AVS320 Control Panel",
+                "status": "unknown"
+              }
+            ],
+            "level2": [
+              {
+                "sku": "PT-VW540",
+                "item_name": "Panasonic PT-VW540 Projector",
+                "status": "unknown",
+                "sources": 0
+              },
+              {
+                "sku": "AVS320",
+                "item_name": "Abtus AVS320 Control Panel",
+                "status": "unknown",
+                "sources": 0
+              }
+            ]
+          },
+          "decision_reasons": [
+            "1 service/work row(s) excluded."
+          ]
+        }
+      },
+      "reason": "Credible PT-VW540 and AVS320 identities survive noisy OCR while installation work is excluded."
+    },
+    {
+      "id": "loud-pga58-00215542",
+      "source_files": [
+        "Invoice INV LTA-00215542_Signed.pdf",
+        "Invoice INV LTA-00215542_Signed(1).pdf",
+        "Invoice INV LTA-00215542_Signed(2).pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "final_skus": [
+          "PGA58-LC"
+        ],
+        "delivery_excluded": true
+      },
+      "actual": {
+        "items": [
+          {
+            "sku": "PGA58-LC",
+            "item_name": "SHURE PGA58-LC Microphone",
+            "quantity": 10,
+            "unit_price": 64.69,
+            "amount": 646.9
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostic_status": "PASS"
+      },
+      "evidence": {
+        "final_items": [
+          {
+            "sku": "PGA58-LC",
+            "item_name": "SHURE PGA58-LC Microphone"
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostics": {
+          "version": "7.03.3.14l",
+          "generated_at": "2026-09-24T10:54:47.848Z",
+          "overall_status": "PASS",
+          "patch_focus": "Historical invoice regression evidence + parser diagnostics",
+          "source": {
+            "character_count": 189,
+            "line_count": 6,
+            "evidence_source_count": 0,
+            "evidence_sources": []
+          },
+          "document": {
+            "classification": {
+              "allowed": true,
+              "disposition": "accept",
+              "type": "tax_invoice",
+              "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+              "review_required": false,
+              "score": 17,
+              "evidence": {
+                "strongTax": true,
+                "strongInvoice": false,
+                "fuzzyHead": true,
+                "invoiceNo": true,
+                "invoiceDate": false,
+                "billTo": false,
+                "itemTable": false,
+                "subtotal": false,
+                "tax": true,
+                "finalTotal": false,
+                "totals": false,
+                "gstReg": false,
+                "paymentTerms": false,
+                "currency": false,
+                "nonInvoiceTitles": []
+              }
+            },
+            "header": {
+              "supplier_name": "",
+              "invoice_number": "INV LTA-00215542",
+              "invoice_date": "",
+              "delivery_order_number": "",
+              "reference": "",
+              "currency": "",
+              "subtotal": null,
+              "gst": null,
+              "total_amount": null
+            },
+            "corrections": {
+              "invoice_number_corrected_from": "",
+              "invoice_number_review_required": false
+            }
+          },
+          "filtering": {
+            "incoming_count": 2,
+            "tracked_count": 1,
+            "excluded_service_count": 1,
+            "excluded_accessory_count": 0,
+            "recovered_equipment_count": 0,
+            "incoming_rows": [
+              {
+                "index": 1,
+                "sku": "PGA58-LC",
+                "item_name": "SHURE PGA58-LC Cardioid Dynamic Vocal Microphone",
+                "quantity": 10,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "SHURE PGA58-LC Cardioid Dynamic Vocal Microphone SHURE PGA58-LC Cardioid Dynamic Vocal Microphone PGA58-LC"
+              },
+              {
+                "index": 2,
+                "sku": "",
+                "item_name": "Delivery Services with return Trip for Signed Delivery Order",
+                "quantity": 1,
+                "classification": "service-excluded",
+                "reason": "Service/work language matched and no protected equipment identity applies.",
+                "text": "Delivery Services with return Trip for Signed Delivery Order Delivery Services with return Trip for Signed Delivery Order"
+              }
+            ]
+          },
+          "final_items": [
+            {
+              "index": 1,
+              "sku": "PGA58-LC",
+              "item_name": "SHURE PGA58-LC Microphone",
+              "quantity": 10,
+              "unit_price": 64.69,
+              "amount": 646.9,
+              "identity": {
+                "brand": "",
+                "model": "PGA58-LC",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "SHURE PGA58-LC Cardioid Dynamic Vocal Microphone"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "PGA58-LC",
+                "item_name": "SHURE PGA58-LC Microphone",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "PGA58-LC",
+                "item_name": "SHURE PGA58-LC Microphone",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            }
+          ],
+          "verification": {
+            "level3_required": false,
+            "completeness": {},
+            "level1": [
+              {
+                "sku": "PGA58-LC",
+                "item_name": "SHURE PGA58-LC Microphone",
+                "status": "unknown"
+              }
+            ],
+            "level2": [
+              {
+                "sku": "PGA58-LC",
+                "item_name": "SHURE PGA58-LC Microphone",
+                "status": "unknown",
+                "sources": 0
+              }
+            ]
+          },
+          "decision_reasons": [
+            "1 service/work row(s) excluded."
+          ]
+        }
+      },
+      "reason": "PGA58-LC remains inventory and delivery service is excluded."
+    },
+    {
+      "id": "loud-mixed-00215840",
+      "source_files": [
+        "Invoice INV LTA-00215840_Signed.pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "retain": [
+          "U35C",
+          "SLXD2+",
+          "AT-2",
+          "U3"
+        ],
+        "delivery_excluded": true
+      },
+      "actual": {
+        "items": [
+          {
+            "sku": "U35C",
+            "item_name": "XVive U35C Microphone",
+            "quantity": 4,
+            "unit_price": 340,
+            "amount": 1360
+          },
+          {
+            "sku": "SLXD2+",
+            "item_name": "Shure SLXD2+ Microphone",
+            "quantity": 1,
+            "unit_price": 480,
+            "amount": 480
+          },
+          {
+            "sku": "AT-2",
+            "item_name": "XVive AT-2 Portable Audio Tester",
+            "quantity": 1,
+            "unit_price": 270,
+            "amount": 270
+          },
+          {
+            "sku": "U3",
+            "item_name": "Xvive Audio U3 Microphone",
+            "quantity": 4,
+            "unit_price": 275,
+            "amount": 1100
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostic_status": "REVIEW"
+      },
+      "evidence": {
+        "final_items": [
+          {
+            "sku": "U35C",
+            "item_name": "XVive U35C Microphone"
+          },
+          {
+            "sku": "SLXD2+",
+            "item_name": "Shure SLXD2+ Microphone"
+          },
+          {
+            "sku": "AT-2",
+            "item_name": "XVive AT-2 Portable Audio Tester"
+          },
+          {
+            "sku": "U3",
+            "item_name": "Xvive Audio U3 Microphone"
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 1,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostics": {
+          "version": "7.03.3.14l",
+          "generated_at": "2026-09-24T10:54:47.856Z",
+          "overall_status": "REVIEW",
+          "patch_focus": "Historical invoice regression evidence + parser diagnostics",
+          "source": {
+            "character_count": 402,
+            "line_count": 7,
+            "evidence_source_count": 0,
+            "evidence_sources": []
+          },
+          "document": {
+            "classification": {
+              "allowed": true,
+              "disposition": "accept",
+              "type": "tax_invoice",
+              "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+              "review_required": false,
+              "score": 17,
+              "evidence": {
+                "strongTax": true,
+                "strongInvoice": false,
+                "fuzzyHead": true,
+                "invoiceNo": true,
+                "invoiceDate": false,
+                "billTo": false,
+                "itemTable": false,
+                "subtotal": false,
+                "tax": true,
+                "finalTotal": false,
+                "totals": false,
+                "gstReg": false,
+                "paymentTerms": false,
+                "currency": false,
+                "nonInvoiceTitles": []
+              }
+            },
+            "header": {
+              "supplier_name": "",
+              "invoice_number": "INV LTA-00215840",
+              "invoice_date": "",
+              "delivery_order_number": "",
+              "reference": "",
+              "currency": "",
+              "subtotal": null,
+              "gst": null,
+              "total_amount": null
+            },
+            "corrections": {
+              "invoice_number_corrected_from": "",
+              "invoice_number_review_required": false
+            }
+          },
+          "filtering": {
+            "incoming_count": 5,
+            "tracked_count": 4,
+            "excluded_service_count": 1,
+            "excluded_accessory_count": 0,
+            "recovered_equipment_count": 2,
+            "incoming_rows": [
+              {
+                "index": 1,
+                "sku": "U35C",
+                "item_name": "XVive U35C Wireless System for Condenser Microphones 5.8GHz",
+                "quantity": 4,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "XVive U35C Wireless System for Condenser Microphones 5.8GHz XVive U35C Wireless System for Condenser Microphones 5.8GHz U35C"
+              },
+              {
+                "index": 2,
+                "sku": "SLXD2+",
+                "item_name": "Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter",
+                "quantity": 1,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter SLXD2+"
+              },
+              {
+                "index": 3,
+                "sku": "AT-2",
+                "item_name": "XVive AT-2 Portable Audio Tester",
+                "quantity": 1,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "XVive AT-2 Portable Audio Tester XVive AT-2 Portable Audio Tester AT-2"
+              },
+              {
+                "index": 4,
+                "sku": "U3",
+                "item_name": "Xvive Audio U3 Digital Wireless Microphone System",
+                "quantity": 4,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Xvive Audio U3 Digital Wireless Microphone System Xvive Audio U3 Digital Wireless Microphone System U3"
+              },
+              {
+                "index": 5,
+                "sku": "DEL",
+                "item_name": "Delivery Services with return Trip for Signed Delivery Order",
+                "quantity": 1,
+                "classification": "service-excluded",
+                "reason": "Service/work language matched and no protected equipment identity applies.",
+                "text": "Delivery Services with return Trip for Signed Delivery Order Delivery Services with return Trip for Signed Delivery Order DEL"
+              }
+            ]
+          },
+          "final_items": [
+            {
+              "index": 1,
+              "sku": "U35C",
+              "item_name": "XVive U35C Microphone",
+              "quantity": 4,
+              "unit_price": 340,
+              "amount": 1360,
+              "identity": {
+                "brand": "",
+                "model": "U35C",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "XVive U35C Wireless System for Condenser Microphones 5.8GHz 4 340.00 1360.00"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "U35C",
+                "item_name": "XVive U35C Microphone",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "U35C",
+                "item_name": "XVive U35C Microphone",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            },
+            {
+              "index": 2,
+              "sku": "SLXD2+",
+              "item_name": "Shure SLXD2+ Microphone",
+              "quantity": 1,
+              "unit_price": 480,
+              "amount": 480,
+              "identity": {
+                "brand": "",
+                "model": "SLXD2+",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter 1 480.00 480.00"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "status": "confirmed",
+                "reason": "Deterministic OCR/table evidence identifies a tracked equipment row."
+              },
+              "level2": {
+                "status": "unavailable",
+                "sources": 1,
+                "reason": "A second independent OCR read did not confirm the row."
+              },
+              "review_fields": {},
+              "human_review_required": false
+            },
+            {
+              "index": 3,
+              "sku": "AT-2",
+              "item_name": "XVive AT-2 Portable Audio Tester",
+              "quantity": 1,
+              "unit_price": 270,
+              "amount": 270,
+              "identity": {
+                "brand": "",
+                "model": "AT-2",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "XVive AT-2 Portable Audio Tester 1 270.00 270.00"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "AT-2",
+                "item_name": "XVive AT-2 Portable Audio Tester",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "AT-2",
+                "item_name": "XVive AT-2 Portable Audio Tester",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            },
+            {
+              "index": 4,
+              "sku": "U3",
+              "item_name": "Xvive Audio U3 Microphone",
+              "quantity": 4,
+              "unit_price": 275,
+              "amount": 1100,
+              "identity": {
+                "brand": "",
+                "model": "U3",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "XVive U35C Wireless System for Condenser Microphones 5.8GHz 4 340.00 1360.00"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "status": "confirmed",
+                "reason": "Deterministic OCR/table evidence identifies a tracked equipment row."
+              },
+              "level2": {
+                "status": "unavailable",
+                "sources": 1,
+                "reason": "A second independent OCR read did not confirm the row."
+              },
+              "review_fields": {},
+              "human_review_required": false
+            }
+          ],
+          "verification": {
+            "level3_required": true,
+            "completeness": {
+              "expectedEquipmentCount": 2,
+              "finalEquipmentCount": 4,
+              "countMatch": false,
+              "identityMatch": false,
+              "missing": [],
+              "unexpected": [],
+              "recheckRequired": true,
+              "status": "review",
+              "v703312kReason": "Actual OCR evidence was reconciled across independent OCR reads; service/accessory rows were excluded before identity correction."
+            },
+            "level1": [
+              {
+                "sku": "U35C",
+                "item_name": "XVive U35C Microphone",
+                "status": "unknown"
+              },
+              {
+                "sku": "SLXD2+",
+                "item_name": "Shure SLXD2+ Microphone",
+                "status": "confirmed"
+              },
+              {
+                "sku": "AT-2",
+                "item_name": "XVive AT-2 Portable Audio Tester",
+                "status": "unknown"
+              },
+              {
+                "sku": "U3",
+                "item_name": "Xvive Audio U3 Microphone",
+                "status": "confirmed"
+              }
+            ],
+            "level2": [
+              {
+                "sku": "U35C",
+                "item_name": "XVive U35C Microphone",
+                "status": "unknown",
+                "sources": 0
+              },
+              {
+                "sku": "SLXD2+",
+                "item_name": "Shure SLXD2+ Microphone",
+                "status": "unavailable",
+                "sources": 1
+              },
+              {
+                "sku": "AT-2",
+                "item_name": "XVive AT-2 Portable Audio Tester",
+                "status": "unknown",
+                "sources": 0
+              },
+              {
+                "sku": "U3",
+                "item_name": "Xvive Audio U3 Microphone",
+                "status": "unavailable",
+                "sources": 1
+              }
+            ]
+          },
+          "decision_reasons": [
+            "1 service/work row(s) excluded.",
+            "2 equipment row(s) recovered from OCR/table evidence.",
+            "Level 3 review is still required for unresolved evidence."
+          ]
+        }
+      },
+      "reason": "Four equipment identities remain while the delivery line is removed."
+    },
+    {
+      "id": "jny-rds-2021",
+      "source_files": [
+        "INV-RDSMar21.pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "sku": "PT-TW381R",
+        "clean_name": true,
+        "invoice_allowed": true
+      },
+      "actual": {
+        "items": [
+          {
+            "sku": "PT-TW381R",
+            "item_name": "Panasonic PT-TW381R Projector",
+            "quantity": 1,
+            "unit_price": 4820,
+            "amount": 4820
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 0,
+          "excludedAccessoryCount": 0,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostic_status": "PASS"
+      },
+      "evidence": {
+        "final_items": [
+          {
+            "sku": "PT-TW381R",
+            "item_name": "Panasonic PT-TW381R Projector"
+          }
+        ],
+        "classification": {
+          "allowed": true,
+          "disposition": "accept",
+          "type": "tax_invoice",
+          "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+          "review_required": true,
+          "score": 17,
+          "evidence": {
+            "strongTax": true,
+            "strongInvoice": false,
+            "fuzzyHead": true,
+            "invoiceNo": true,
+            "invoiceDate": false,
+            "billTo": false,
+            "itemTable": false,
+            "subtotal": false,
+            "tax": true,
+            "finalTotal": false,
+            "totals": false,
+            "gstReg": false,
+            "paymentTerms": false,
+            "currency": false,
+            "nonInvoiceTitles": [
+              "DELIVERY ORDER NUMBER D20210026"
+            ]
+          }
+        },
+        "diagnostics": {
+          "version": "7.03.3.14l",
+          "generated_at": "2026-09-24T10:54:47.859Z",
+          "overall_status": "PASS",
+          "patch_focus": "Historical invoice regression evidence + parser diagnostics",
+          "source": {
+            "character_count": 358,
+            "line_count": 8,
+            "evidence_source_count": 0,
+            "evidence_sources": []
+          },
+          "document": {
+            "classification": {
+              "allowed": true,
+              "disposition": "accept",
+              "type": "tax_invoice",
+              "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+              "review_required": true,
+              "score": 17,
+              "evidence": {
+                "strongTax": true,
+                "strongInvoice": false,
+                "fuzzyHead": true,
+                "invoiceNo": true,
+                "invoiceDate": false,
+                "billTo": false,
+                "itemTable": false,
+                "subtotal": false,
+                "tax": true,
+                "finalTotal": false,
+                "totals": false,
+                "gstReg": false,
+                "paymentTerms": false,
+                "currency": false,
+                "nonInvoiceTitles": [
+                  "DELIVERY ORDER NUMBER D20210026"
+                ]
+              }
+            },
+            "header": {
+              "supplier_name": "",
+              "invoice_number": "IV20210040",
+              "invoice_date": "",
+              "delivery_order_number": "",
+              "reference": "",
+              "currency": "",
+              "subtotal": null,
+              "gst": null,
+              "total_amount": null
+            },
+            "corrections": {
+              "invoice_number_corrected_from": "",
+              "invoice_number_review_required": false
+            }
+          },
+          "filtering": {
+            "incoming_count": 1,
+            "tracked_count": 1,
+            "excluded_service_count": 0,
+            "excluded_accessory_count": 0,
+            "recovered_equipment_count": 0,
+            "incoming_rows": [
+              {
+                "index": 1,
+                "sku": "PT-TW381R",
+                "item_name": "Panasonic PT-TW381R Short Throw 3300 Lumens Projector",
+                "quantity": 1,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Panasonic PT-TW381R Short Throw 3300 Lumens Projector Panasonic PT-TW381R Short Throw 3300 Lumens Projector. Professional Services including dismantle of existing projectors, installation of new projectors, Testing & Commissioning PT-TW381R"
+              }
+            ]
+          },
+          "final_items": [
+            {
+              "index": 1,
+              "sku": "PT-TW381R",
+              "item_name": "Panasonic PT-TW381R Projector",
+              "quantity": 1,
+              "unit_price": 4820,
+              "amount": 4820,
+              "identity": {
+                "brand": "",
+                "model": "PT-TW381R",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "Panasonic PT-TW381R Short Throw 3300 Lumens Projector"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "PT-TW381R",
+                "item_name": "Panasonic PT-TW381R Projector",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "PT-TW381R",
+                "item_name": "Panasonic PT-TW381R Projector",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            }
+          ],
+          "verification": {
+            "level3_required": false,
+            "completeness": {},
+            "level1": [
+              {
+                "sku": "PT-TW381R",
+                "item_name": "Panasonic PT-TW381R Projector",
+                "status": "unknown"
+              }
+            ],
+            "level2": [
+              {
+                "sku": "PT-TW381R",
+                "item_name": "Panasonic PT-TW381R Projector",
+                "status": "unknown",
+                "sources": 0
+              }
+            ]
+          },
+          "decision_reasons": [
+            "Document-title evidence requires review."
+          ]
+        }
+      },
+      "reason": "Bundled projector remains tracked, work verbs stay out of Standard Item Name, and D/O reference does not reject the Tax Invoice."
+    },
+    {
+      "id": "seminar-room-2021",
+      "source_files": [
+        "INV-SeminarRoom123.pdf",
+        "INV-SeminarRoom123(1).pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "must_include": [
+          "PT-VW540",
+          "SPS-1100"
+        ],
+        "no_bracket": true,
+        "no_unrelated_model_hijack": true
+      },
+      "actual": {
+        "items": [
+          {
+            "sku": "PT-VW540",
+            "item_name": "PT-VW540 Projector",
+            "quantity": 2,
+            "unit_price": 707,
+            "amount": 1414
+          },
+          {
+            "sku": "SPS-1100",
+            "item_name": "SPS-1100 Active Speaker",
+            "quantity": 2,
+            "unit_price": 90,
+            "amount": 180
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 0,
+          "excludedAccessoryCount": 1,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostic_status": "PASS"
+      },
+      "evidence": {
+        "final_items": [
+          {
+            "sku": "PT-VW540",
+            "item_name": "PT-VW540 Projector",
+            "identity": {
+              "brand": "",
+              "model": "PT-VW540",
+              "source": "invoice-text",
+              "score": 5,
+              "evidenceLine": "PT-VW540"
+            }
+          },
+          {
+            "sku": "SPS-1100",
+            "item_name": "SPS-1100 Active Speaker",
+            "identity": {
+              "brand": "",
+              "model": "SPS-1100",
+              "source": "invoice-text",
+              "score": 5,
+              "evidenceLine": "SPS-1100"
+            }
+          }
+        ],
+        "filter": {
+          "excludedServiceCount": 0,
+          "excludedAccessoryCount": 1,
+          "recoveredEquipmentCount": 0
+        },
+        "diagnostics": {
+          "version": "7.03.3.14l",
+          "generated_at": "2026-09-24T10:54:47.863Z",
+          "overall_status": "PASS",
+          "patch_focus": "Historical invoice regression evidence + parser diagnostics",
+          "source": {
+            "character_count": 192,
+            "line_count": 7,
+            "evidence_source_count": 0,
+            "evidence_sources": []
+          },
+          "document": {
+            "classification": {
+              "allowed": true,
+              "disposition": "accept",
+              "type": "tax_invoice",
+              "reason": "TAX INVOICE heading phrase plus invoice evidence.",
+              "review_required": false,
+              "score": 12,
+              "evidence": {
+                "strongTax": true,
+                "strongInvoice": false,
+                "fuzzyHead": true,
+                "invoiceNo": false,
+                "invoiceDate": false,
+                "billTo": false,
+                "itemTable": false,
+                "subtotal": false,
+                "tax": true,
+                "finalTotal": false,
+                "totals": false,
+                "gstReg": false,
+                "paymentTerms": false,
+                "currency": false,
+                "nonInvoiceTitles": []
+              }
+            },
+            "header": {
+              "supplier_name": "",
+              "invoice_number": "",
+              "invoice_date": "",
+              "delivery_order_number": "",
+              "reference": "",
+              "currency": "",
+              "subtotal": null,
+              "gst": null,
+              "total_amount": null
+            },
+            "corrections": {
+              "invoice_number_corrected_from": "",
+              "invoice_number_review_required": false
+            }
+          },
+          "filtering": {
+            "incoming_count": 3,
+            "tracked_count": 2,
+            "excluded_service_count": 0,
+            "excluded_accessory_count": 1,
+            "recovered_equipment_count": 0,
+            "incoming_rows": [
+              {
+                "index": 1,
+                "sku": "PT-VW540",
+                "item_name": "Panasonic Projector WXGA 5500 Lumens",
+                "quantity": 2,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "Panasonic Projector WXGA 5500 Lumens Panasonic Projector WXGA 5500 Lumens PT-VW540"
+              },
+              {
+                "index": 2,
+                "sku": "SPS-1100",
+                "item_name": "ABTUS Active Speaker 20W",
+                "quantity": 2,
+                "classification": "tracked-candidate",
+                "reason": "Equipment type and/or credible printed SKU/model evidence is present.",
+                "text": "ABTUS Active Speaker 20W ABTUS Active Speaker 20W SPS-1100"
+              },
+              {
+                "index": 3,
+                "sku": "",
+                "item_name": "Supply and install bracket for projector",
+                "quantity": 2,
+                "classification": "accessory-excluded",
+                "reason": "Accessory/support identity matched the exclusion rules.",
+                "text": "Supply and install bracket for projector Supply and install bracket for projector"
+              }
+            ]
+          },
+          "final_items": [
+            {
+              "index": 1,
+              "sku": "PT-VW540",
+              "item_name": "PT-VW540 Projector",
+              "quantity": 2,
+              "unit_price": 707,
+              "amount": 1414,
+              "identity": {
+                "brand": "",
+                "model": "PT-VW540",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "PT-VW540"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "PT-VW540",
+                "item_name": "PT-VW540 Projector",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "PT-VW540",
+                "item_name": "PT-VW540 Projector",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            },
+            {
+              "index": 2,
+              "sku": "SPS-1100",
+              "item_name": "SPS-1100 Active Speaker",
+              "quantity": 2,
+              "unit_price": 90,
+              "amount": 180,
+              "identity": {
+                "brand": "",
+                "model": "SPS-1100",
+                "source": "invoice-text",
+                "score": 5,
+                "evidenceLine": "SPS-1100"
+              },
+              "line_evidence": {
+                "skuPrinted": true,
+                "qtyValid": true,
+                "economic": true,
+                "economicComplete": true,
+                "serialQtyOk": true,
+                "verified": true
+              },
+              "level1": {
+                "sku": "SPS-1100",
+                "item_name": "SPS-1100 Active Speaker",
+                "status": "unknown"
+              },
+              "level2": {
+                "sku": "SPS-1100",
+                "item_name": "SPS-1100 Active Speaker",
+                "status": "unknown",
+                "sources": 0
+              },
+              "review_fields": {},
+              "human_review_required": false
+            }
+          ],
+          "verification": {
+            "level3_required": false,
+            "completeness": {},
+            "level1": [
+              {
+                "sku": "PT-VW540",
+                "item_name": "PT-VW540 Projector",
+                "status": "unknown"
+              },
+              {
+                "sku": "SPS-1100",
+                "item_name": "SPS-1100 Active Speaker",
+                "status": "unknown"
+              }
+            ],
+            "level2": [
+              {
+                "sku": "PT-VW540",
+                "item_name": "PT-VW540 Projector",
+                "status": "unknown",
+                "sources": 0
+              },
+              {
+                "sku": "SPS-1100",
+                "item_name": "SPS-1100 Active Speaker",
+                "status": "unknown",
+                "sources": 0
+              }
+            ]
+          },
+          "decision_reasons": [
+            "1 accessory/support row(s) excluded."
+          ]
+        }
+      },
+      "reason": "Projector and speaker identities survive; bracket is excluded and unrelated OCR tokens do not hijack SKU/model."
+    },
+    {
+      "id": "hawko-av-cart-2021",
+      "source_files": [
+        "INV-AVcart.pdf"
+      ],
+      "source_kind": "historical-source-excerpt",
+      "pass": true,
+      "expected": {
+        "structured_asset_recovered": true
+      },
+      "actual": {
+        "raw": "TAX INVOICE\nZS6HKOAV-EB97E METAL TROLLEY W C+S 2 550.00 1100.00\nAdjustable height 770-970mm\nLockable Security Cabinet with key\nSingle pull out shelf for PC keyboard\n4 caster wheels 2 locking\nSolid steel construction will not topple over\nSUBTOTAL 1100.00",
+        "recovered": [
+          {
+            "sku": "ZS6HKOAV-EB97E",
+            "item_name": "METAL TROLLEY W C+S",
+            "description": "METAL TROLLEY W C+S Adjustable height 770-970mm Lockable Security Cabinet with key Single pull out shelf for PC keyboard 4 caster wheels 2 locking Solid steel construction will not topple over",
+            "category": "AV Accessories",
+            "unit": "pcs",
+            "quantity": 2,
+            "unit_price": 550,
+            "amount": 1100,
+            "warranty": "",
+            "serials": "",
+            "v703312kOcrEvidence": true,
+            "v703312kSource": "historical-hawko",
+            "v703312kSourceLine": "ZS6HKOAV-EB97E METAL TROLLEY W C+S 2 550.00 1100.00",
+            "v703314aStructuredPricedAsset": true
+          }
+        ]
+      },
+      "evidence": {
+        "recovered": [
+          {
+            "sku": "ZS6HKOAV-EB97E",
+            "item_name": "METAL TROLLEY W C+S",
+            "quantity": 2,
+            "amount": 1100,
+            "structured": true
+          }
+        ]
+      },
+      "reason": "Strongly evidenced priced trolley is recovered as a structured physical asset despite generic cart/trolley exclusions."
+    }
+  ],
+  "behavioral_cases": [
+    {
+      "name": "delivery fee is service",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "installation is service",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "dismantle-only row is service",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "dismount-only row is service",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "SKU-tagged dismantle action remains service",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "verified equipment survives bundled service text",
+      "pass": true,
+      "actual": false,
+      "expected": false
+    },
+    {
+      "name": "HDMI cable is accessory",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "AVS-320 identity preserved",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "unsupported P80 corrected to printed P60",
+      "pass": true,
+      "actual": "P60",
+      "expected": "P60"
+    },
+    {
+      "name": "unrelated global model cannot hijack credible row",
+      "pass": true,
+      "actual": "PT-VW540",
+      "expected": "PT-VW540"
+    },
+    {
+      "name": "dedupe removes exact duplicate only",
+      "pass": true,
+      "actual": 2,
+      "expected": 2
+    },
+    {
+      "name": "format-equivalent SKU reuses existing item",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "invoice remains valid with delivery-order reference",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    },
+    {
+      "name": "current and upcoming versions differ",
+      "pass": true,
+      "actual": true,
+      "expected": true
+    }
+  ],
+  "runtime_diagnostics_contract": {
+    "review_panel": true,
+    "fields": [
+      "Patch Focus",
+      "Test Suite / Input",
+      "Overall Status",
+      "Expected vs Actual",
+      "Evidence trace",
+      "Raw parser test execution output",
+      "Timestamp"
+    ],
+    "per_parse_trace": [
+      "document classification",
+      "header fields/corrections",
+      "incoming row decisions",
+      "service/accessory exclusions",
+      "recovered equipment",
+      "final item identity",
+      "quantity/price/amount evidence",
+      "Level 1/2/3 status"
+    ]
+  },
+  "limitations": [
+    "Historical cases use source excerpts recovered from the user's previously submitted invoices; they are not a substitute for a fresh OCR render of every PDF.",
+    "Known invoice files not retrievable in the current session are explicitly NOT EXECUTED.",
+    "Live browser rendering is verified through runtime integration contracts and GitHub Pages deployment status; the external page checker may still be unable to open the github.io site."
+  ]
+}
