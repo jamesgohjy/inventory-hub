@@ -1,0 +1,36 @@
+name: Inventory Hub Regression Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "v7033-core.js"
+      - "parser-v7-core.js"
+      - "index.html"
+      - "tests/**"
+      - "supabase-v7-03-3-14o-parser-intelligence.sql"
+      - ".github/workflows/inventory-regression.yml"
+  pull_request:
+    paths:
+      - "app.js"
+      - "v7033-core.js"
+      - "parser-v7-core.js"
+      - "index.html"
+      - "tests/**"
+      - "supabase-v7-03-3-14o-parser-intelligence.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run parser and release regression gates
+        run: node tests/run-regression.cjs

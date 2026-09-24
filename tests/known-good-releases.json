@@ -1,0 +1,8 @@
+{
+  "version": "7.03.3.14m",
+  "status": "known-good",
+  "commit": "742bbf4f66b4f3ae257b5e813661c7b555fb874c",
+  "branch": "freeze/v7.03.3.14m-known-good",
+  "purpose": "Recovery baseline. Do not move this branch as part of normal release work.",
+  "verified_release_message": "Publish v7.03.3.14m Admin-only parser diagnostics"
+}

@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14n';
+  const VERSION='7.03.3.14o';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -957,18 +957,47 @@
     p.__v7033Installed=true;p.__v7033Version=VERSION;return true;
   }
 
+
+  function v703314oSupplierKey(v=''){return norm(v).replace(/\b(?:pte|ltd|limited|private|co|company)\b/g,' ').replace(/\s+/g,' ').trim();}
+  function v703314oEvidenceContains(raw='',value=''){const needle=compact(value);if(!needle||needle.length<2)return false;return compact(raw).includes(needle);}
+  function v703314oCorrectionDecision(correction={},context={}){
+    const status=norm(correction.status||''),field=clean(correction.field_name||correction.field||''),source=clean(correction.source_value||''),corrected=clean(correction.corrected_value||'');
+    const supplierMatch=!correction.supplier_key||v703314oSupplierKey(correction.supplier_key)===v703314oSupplierKey(context.supplier_name||''),current=clean(context.current_value||''),raw=String(context.raw||''),autoFields=new Set(['sku','invoice_number']);
+    const sourceMatch=field==='sku'||field==='invoice_number'?compact(source)===compact(current):norm(source)===norm(current),evidenceMatch=v703314oEvidenceContains(raw,corrected),autoApply=status==='approved'&&supplierMatch&&autoFields.has(field)&&!!source&&!!corrected&&sourceMatch&&evidenceMatch;
+    return {autoApply,supplierMatch,sourceMatch,evidenceMatch,field,status,reason:autoApply?'Approved correction matches supplier/current value and corrected value is printed in invoice evidence.':status!=='approved'?'Correction is not approved.':!supplierMatch?'Supplier does not match.':!autoFields.has(field)?'This field is suggestion-only and cannot auto-apply.':!sourceMatch?'Current value does not match the learned source value.':!evidenceMatch?'Corrected value is not present in invoice evidence.':'Correction is not eligible.'};
+  }
+  function v703314oExtractProfileCandidate(raw='',labels=[],kind='invoice_number'){
+    const lines=String(raw||'').replace(/\r/g,'').split('\n').map(clean),wanted=(labels||[]).map(x=>clean(x)).filter(Boolean);
+    for(let i=0;i<lines.length;i++){const line=lines[i];if(!line)continue;for(const label of wanted){const escaped=label.split('').map(ch=>'\\^$.*+?()[]{}|'.includes(ch)?'\\'+ch:ch).join(''),re=new RegExp('^'+escaped+'\\s*[:#.-]?\\s*(.*)$','i'),m=line.match(re);if(!m)continue;let candidate=clean(m[1]||'');if(!candidate){for(let j=i+1;j<Math.min(lines.length,i+4);j++){if(lines[j]){candidate=lines[j];break;}}}if(kind==='invoice_number'){candidate=normalizeInvoiceNumberCandidate(candidate);if(candidate&&/\d/.test(candidate)&&candidate.length<=64)return {value:candidate,label,line:i+1,evidence:line};}else if(kind==='invoice_date'){const d=String(candidate||'').match(/\b(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})\b/);if(d)return {value:d[1],label,line:i+1,evidence:line};}}}
+    return null;
+  }
+  function v703314oValidFingerprint(v=''){return /^[a-f0-9]{64}$/i.test(clean(v));}
+  function runIntelligenceRegressionChecks14o(){
+    const cases=[],check=(name,actual,expected=true)=>{const pass=typeof expected==='function'?!!expected(actual):actual===expected;cases.push({name,pass,actual,expected:typeof expected==='function'?'predicate':expected});},base={status:'approved',supplier_key:'AV Media',field_name:'sku',source_value:'P80',corrected_value:'P60'};
+    check('approved printed SKU correction is eligible',v703314oCorrectionDecision(base,{supplier_name:'AV MEDIA PTE LTD',current_value:'P80',raw:'Voxoa P60 media player'}).autoApply,true);
+    check('pending correction cannot auto-apply',v703314oCorrectionDecision({...base,status:'pending'},{supplier_name:'AV Media',current_value:'P80',raw:'P60'}).autoApply,false);
+    check('supplier mismatch cannot auto-apply',v703314oCorrectionDecision(base,{supplier_name:'Other Supplier',current_value:'P80',raw:'P60'}).autoApply,false);
+    check('unprinted correction cannot auto-apply',v703314oCorrectionDecision(base,{supplier_name:'AV Media',current_value:'P80',raw:'P80'}).autoApply,false);
+    check('quantity memory is suggestion-only',v703314oCorrectionDecision({...base,field_name:'quantity',source_value:'8',corrected_value:'2'},{supplier_name:'AV Media',current_value:'8',raw:'Qty 2'}).autoApply,false);
+    check('supplier profile extracts invoice number from following line',v703314oExtractProfileCandidate('TAX INVOICE\nInvoice Number\nINV-2048\nDescription Qty',['Invoice Number'],'invoice_number')?.value,'INV-2048');
+    check('supplier profile rejects non-identifier invoice value',v703314oExtractProfileCandidate('Invoice Number\nAccounts Payable',['Invoice Number'],'invoice_number')===null,true);
+    check('valid SHA-256 fingerprint accepted',v703314oValidFingerprint('a'.repeat(64)),true);
+    check('short fingerprint rejected',v703314oValidFingerprint('abc123'),false);
+    return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+
   const RELEASE_NOTES=[
-    'Added Golden Invoice regression coverage with separate holdout validation.',
-    'Added field evidence tracing, per-field confidence and fail-closed arithmetic validation.',
-    'Added OCR recovery preprocessing candidates while preserving the original OCR path.'
+    'Frozen v7.03.3.14m as the known-good recovery baseline and added automatic regression CI.',
+    'Added Admin-approved Correction Memory, Supplier Layout Profiles and exact PDF fingerprint duplicate protection.',
+    'Added an Admin-only Parser Quality Dashboard with regression, memory/profile and duplicate metrics.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14o';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14p';
   const RELEASE_ROADMAP=[
-    {id:'architecture-stability',text:'Local verified baseline, gradual runtime patch removal and automated regression CI.'},
-    {id:'parser-learning-observability',text:'Admin-approved correction memory, supplier layout profiles and an Admin parser-quality dashboard.'},
-    {id:'operational-safeguards',text:'Automated backups and PDF fingerprint duplicate detection.'}
+    {id:'architecture-stability',text:'Move the verified baseline into the repository and gradually retire runtime string patching.'},
+    {id:'operational-backups',text:'Add automated Supabase/database and document backup verification.'},
+    {id:'quality-retention',text:'Add parser-quality export, retention and long-term trend controls.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation','known-good-14m-freeze','automatic-regression-ci','correction-memory','supplier-layout-profiles','pdf-fingerprint-dedupe','admin-parser-quality-dashboard']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
@@ -1001,5 +1030,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
