@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14a';
+  const VERSION='7.03.3.14b';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -18,7 +18,7 @@
   const uniq=(xs,key=x=>x)=>{const out=[],seen=new Set();for(const x of xs||[]){const k=key(x);if(!k||seen.has(k))continue;seen.add(k);out.push(x);}return out;};
 
 
-  // V7.03.3.14a — additive exception for a complete equipment trolley.
+  // V7.03.3.14b — additive exception for a complete equipment trolley.
   // A generic trolley remains excluded. Promotion requires printed SKU + consistent economics
   // + multiple physical construction features, so older accessory behavior stays unchanged.
   function isStructuredPhysicalAssetRow(row={}){
@@ -291,7 +291,7 @@
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
   }
-  // v7.03.3.14a: field-level Level 3 evidence. This is parser metadata, not UI inference.
+  // v7.03.3.14b: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
     const out={};
     const add=(field,reason)=>{if(!field)return;out[field]={status:'review',reason:clean(reason||'Human verification required.')};};
@@ -495,7 +495,7 @@
     return '';
   }
 
-  // V7.03.3.14aa — recover a complete physical trolley from a priced OCR row plus its continuation lines.
+  // V7.03.3.14ba — recover a complete physical trolley from a priced OCR row plus its continuation lines.
   // This does not relax generic trolley/accessory exclusions: the row must have a directly printed
   // mixed alphanumeric SKU, internally consistent quantity/price/amount, and >=3 construction features.
   function v703314aRecoverStructuredPricedAssetRows(text='',source=''){
@@ -721,6 +721,9 @@
   }
 
   const RELEASE_NOTES=[
+    'Automatic deep recovery now adds a targeted first-page invoice-header OCR crop before Review when the invoice number is still missing.',
+    'Scanned priced rows whose physical-equipment specifications wrap below the main row can now be reconstructed supplier-neutrally from verified SKU, quantity and amount evidence.',
+    'HAWKO-class trolley rows retain wrapped cabinet/shelf/caster/steel evidence before accessory classification, while generic trolley/accessory exclusions remain unchanged.',
     'Restored the Equipment invoice / Service invoice choice whenever equipment is detected but the invoice number or physical line-item extraction is still incomplete.',
     'Level 3 now waits for the invoice-type decision and recovery scan instead of appearing immediately on an incomplete equipment parse.',
     'Directly printed mixed alphanumeric SKU/model codes up to 28 characters are preserved through parser cleanup, review inputs and save; the existing 13-character fallback rule is unchanged.',
