@@ -37,8 +37,11 @@
     if(row.economicEvidenceVerified){score+=12;reasons.push('economic-evidence');}
     if(row.provenance&&Object.keys(row.provenance).length){score+=8;reasons.push('provenance');}
     if(reviewFlag(row)){score-=45;reasons.push('review-required');}
-    if(row.classification?.type==='service'||row.classification?.type==='accessory'){score-=100;reasons.push('non-inventory-classification');}
-    return {score,economics:econ,identity:identityKey(row),reviewRequired:reviewFlag(row),reasons};
+    const nonInventory=row.classification?.type==='service'||row.classification?.type==='accessory'||row.classification?.type==='noninventory';
+    const metadataLike=/^(?:serial(?:\\s*(?:no|number|numbers))?|s\\/n|warranty|remark|remarks|note|notes)\\b/i.test(description);
+    if(nonInventory){score-=100;reasons.push('non-inventory-classification');}
+    if(metadataLike){score-=120;reasons.push('metadata-like-row');}
+    return {score,economics:econ,identity:identityKey(row),reviewRequired:reviewFlag(row)||nonInventory||metadataLike,reasons};
   }
 
   function rowAgreementSupport(candidate={},all=[]){
