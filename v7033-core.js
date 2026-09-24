@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14h3';
+  const VERSION='7.03.3.14i';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -760,17 +760,17 @@
   }
 
   const RELEASE_NOTES=[
-    'Made duplicate-merge startup resilient with a built-in analyzer fallback.',
-    'Kept UI/workflow hardening non-blocking so optional diagnostics cannot stop Inventory Hub.',
-    'Preserved merge concurrency, responsive toolbar and merge-dialog regression guards.'
+    'Data Health reviews now stay visible until the underlying issue is actually corrected.',
+    'Added Data Health review history with Resolved and Still detected status.',
+    'Master Item merges now appear as readable Merged activities with expandable details.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14i';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14j';
   const RELEASE_ROADMAP=[
-    {id:'health-resolution',text:'Improve Data Health issue resolution and history.'},
-    {id:'merge-audit-visibility',text:'Surface Master Item merge details in Recent Activities.'},
-    {id:'import-review-hardening',text:'Continue regression hardening for import and review workflows.'}
+    {id:'import-review-hardening',text:'Continue regression hardening for import and review workflows.'},
+    {id:'health-history-controls',text:'Add richer Data Health history filtering and management.'},
+    {id:'activity-detail-expansion',text:'Extend detailed Recent Activities summaries to more inventory actions.'}
   ];
-  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression']);
+  const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
