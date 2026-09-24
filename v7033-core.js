@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14r';
+  const VERSION='7.03.3.14s';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -1205,15 +1205,15 @@
   }
 
   const RELEASE_NOTES=[
-    'Moved the verified baseline and derived runtime into the repository, retiring the outer runtime-generation layer.',
-    'Added header-aligned Qty / Unit Price / Amount reconstruction that repairs merged OCR tokens only when arithmetic verifies.',
-    'Inventory company grouping now uses the same clean collapsed card layout as Documents.'
+    'Removed the remaining browser-time source patch layer and now load the flattened application directly from repository files.',
+    'Moved header-aligned invoice parsing and grouped-company UI into independently testable repository modules.',
+    'Kept the v7.03.3.14r baseline/runtime only as rollback references; production no longer loads them.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14s';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14t';
   const RELEASE_ROADMAP=[
-    {id:'architecture-flatten',text:'Convert the remaining inner compatibility patch layer into direct repository modules.'},
     {id:'operational-backups',text:'Add automated Supabase/database and document backup verification.'},
-    {id:'quality-retention',text:'Add parser-quality export, retention and long-term trend controls.'}
+    {id:'quality-retention',text:'Add parser-quality export, retention and long-term trend controls.'},
+    {id:'module-decomposition',text:'Continue low-risk module separation for audit, maintenance and data-access code.'}
   ];
   const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation','known-good-14m-freeze','automatic-regression-ci','correction-memory','supplier-layout-profiles','pdf-fingerprint-dedupe','admin-parser-quality-dashboard']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);

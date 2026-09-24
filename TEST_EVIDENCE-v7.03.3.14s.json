@@ -1,0 +1,41 @@
+{
+  "version": "7.03.3.14s",
+  "generated_at": "2026-09-24T14:30:03.732Z",
+  "overall_status": "PASS (pre-merge)",
+  "architecture": {
+    "production_source_replacement_count": 0,
+    "production_blob_generated_runtime_count": 0,
+    "production_raw_github_baseline": false,
+    "production_baseline_text_fetch": false,
+    "direct_runtime": "runtime-v7.03.3.14s.js",
+    "direct_modules": [
+      "modules/parser-table.js",
+      "modules/grouped-company-ui.js"
+    ],
+    "rollback_only": [
+      "runtime-v7.03.3.14r.js",
+      "baseline-v6.55-d452.js"
+    ]
+  },
+  "regression": {
+    "core_total": "77/77 PASS",
+    "parser_module": "PASS",
+    "grouped_company_module": "PASS",
+    "known_good_14m_unchanged": true
+  },
+  "targeted_parser": {
+    "AVS-320A": {
+      "quantity": 1,
+      "unit_price": 350,
+      "amount": 350
+    },
+    "60100-SALES": {
+      "quantity": 1,
+      "unit_price": 90,
+      "amount": 90
+    },
+    "installation_row_excluded": true
+  },
+  "ci_status": "PENDING PR GATE",
+  "database_changes": "none"
+}
