@@ -458,7 +458,7 @@ function documentSortTime(d){
   return Number.isFinite(t)?t:0;
 }
 function renderDocuments(){
-  const q=norm($('documentSearch').value),editable=canEdit(),sort=$('documentSort')?.value||'newest',group=$('documentGroup')?.value||'company';
+  const q=norm($('documentSearch').value),editable=canEdit(),sort=$('documentSort')?.value||'newest',group=$('documentGroup')?.value||'none';
   const docs=state.data.documents
     .filter(d=>!(d.is_vault===true||String(d.is_vault)==='true'))
     .filter(d=>!q||norm([d.file_name,d.supplier_name,d.invoice_number,documentInvoiceDate(d),...linkedItemsForDocument(d.id).map(i=>i.sku+' '+i.item_name)].join(' ')).includes(q))
