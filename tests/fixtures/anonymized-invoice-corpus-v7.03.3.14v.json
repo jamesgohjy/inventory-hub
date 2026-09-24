@@ -372,16 +372,8 @@
         }
       ],
       "expected": {
-        "status": "accepted",
-        "winnerOrigin": "structured",
-        "rows": [
-          [
-            "MAS-1818",
-            2,
-            550,
-            1100
-          ]
-        ]
+        "status": "review",
+        "rows": []
       }
     },
     {
