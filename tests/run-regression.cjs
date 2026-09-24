@@ -17,6 +17,7 @@ const backupScript=read('scripts/verify-backups.mjs');
 const backupWorkflow=read('.github/workflows/backup-verification.yml');
 const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
+const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
 new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
@@ -77,6 +78,9 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
+assert(runtime.includes('evidenceEngine.runPipeline(candidates,{subtotal:doc.subtotal,confidenceThreshold:.72})'),'Production finalizer must use candidate -> evidence -> economics -> confidence -> review pipeline');
+assert(runtime.includes("pipeline.status==='accepted'?(pipeline.items||[]):[]"),'Production finalizer must not accept rows when pipeline requires review');
+assert(!runtime.includes('v687CompletenessReconcile(candidates,inventory,evidence)'),'Post-ranking completeness must not reintroduce weaker candidate rows');
 assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Direct runtime does not call parser module');
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(runtime.includes('InventoryHubBackupVerificationUI'),'Direct runtime does not call backup UI module');
@@ -149,7 +153,30 @@ const evidenceRanking=mctx.InventoryHubParserEvidenceEngine.rankCandidateSets([
   {origin:'service-contaminated',items:[{sku:'U35C',item_name:'Wireless System',quantity:4,unit_price:340,amount:1360},{sku:'DEL',item_name:'Delivery Fee',quantity:1,unit_price:50,amount:50,classification:{type:'service'}}]}
 ],{subtotal:1360});
 assert(evidenceRanking.best?.origin==='verified-layout','Evidence engine selected a weaker or contaminated candidate');
+
 console.log('evidence-ranking: verified candidate selected PASS');
+
+// 14v: execute every anonymized fixture through the production candidate -> evidence -> economics -> confidence -> review pipeline.
+let corpusPassed=0,corpusFields=0;
+for(const fx of anonymizedCorpus.cases){
+  const result=mctx.InventoryHubParserEvidenceEngine.runPipeline(fx.candidates,{subtotal:fx.subtotal,confidenceThreshold:.72});
+  assert(result.status===fx.expected.status,'Anonymized corpus '+fx.id+' status expected '+fx.expected.status+' got '+result.status);
+  if(fx.expected.winnerOrigin)assert(result.winnerOrigin===fx.expected.winnerOrigin,'Anonymized corpus '+fx.id+' winner expected '+fx.expected.winnerOrigin+' got '+result.winnerOrigin);
+  const rows=result.items||[];
+  assert(rows.length===fx.expected.rows.length,'Anonymized corpus '+fx.id+' row count expected '+fx.expected.rows.length+' got '+rows.length);
+  for(let i=0;i<fx.expected.rows.length;i++){
+    const [sku,qty,unit,amount]=fx.expected.rows[i],row=rows[i]||{};
+    for(const [field,actual,expected] of [['sku',row.sku,sku],['quantity',row.quantity,qty],['unit_price',row.unit_price,unit],['amount',row.amount,amount]]){
+      corpusFields++;
+      assert(field==='sku'?String(actual)===String(expected):near(actual,expected),'Anonymized corpus '+fx.id+' '+field+' expected '+expected+' got '+actual);
+    }
+  }
+  if(fx.expected.status==='review')assert(result.review.length>0,'Anonymized corpus '+fx.id+' expected review reasons');
+  corpusPassed++;
+}
+assert(corpusPassed===anonymizedCorpus.cases.length,'Not all anonymized corpus fixtures passed');
+console.log('anonymized-pipeline-corpus: '+corpusPassed+'/'+anonymizedCorpus.cases.length+' fixtures, '+corpusFields+' accepted-row fields PASS');
+
 
 vm.runInContext(groupModule,mctx,{filename:'modules/grouped-company-ui.js'});
 const host={innerHTML:'',querySelectorAll(){return[];}};

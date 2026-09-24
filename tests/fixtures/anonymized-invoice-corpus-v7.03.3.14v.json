@@ -1,0 +1,283 @@
+{
+  "version": "7.03.3.14v",
+  "description": "Synthetic/anonymized invoice evidence fixtures. No customer names, addresses, contacts, original invoice numbers, or source PDF bytes.",
+  "cases": [
+    {
+      "id": "clean-columnar-a",
+      "subtotal": 1360,
+      "candidates": [
+        {
+          "origin": "native-layout",
+          "items": [
+            {
+              "sku": "WM-410",
+              "item_name": "Wireless microphone system",
+              "quantity": 4,
+              "unit_price": 340,
+              "amount": 1360,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "native-layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "ocr-text",
+          "items": [
+            {
+              "sku": "WM-410",
+              "item_name": "Wireless microphone system",
+              "quantity": 4,
+              "unit_price": 1360,
+              "amount": 340,
+              "provenance": {
+                "source": "ocr"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "native-layout",
+        "rows": [
+          [
+            "WM-410",
+            4,
+            340,
+            1360
+          ]
+        ]
+      }
+    },
+    {
+      "id": "service-contamination",
+      "subtotal": 700,
+      "candidates": [
+        {
+          "origin": "table-clean",
+          "items": [
+            {
+              "sku": "CTRL-320",
+              "item_name": "Projector controller",
+              "quantity": 2,
+              "unit_price": 350,
+              "amount": 700,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "table"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "text-contaminated",
+          "items": [
+            {
+              "sku": "CTRL-320",
+              "item_name": "Projector controller",
+              "quantity": 2,
+              "unit_price": 350,
+              "amount": 700
+            },
+            {
+              "sku": "DELIVERY",
+              "item_name": "Delivery fee",
+              "quantity": 1,
+              "unit_price": 80,
+              "amount": 80,
+              "classification": {
+                "type": "service"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "table-clean",
+        "rows": [
+          [
+            "CTRL-320",
+            2,
+            350,
+            700
+          ]
+        ]
+      }
+    },
+    {
+      "id": "description-number-not-quantity",
+      "subtotal": 2828,
+      "candidates": [
+        {
+          "origin": "header-aligned",
+          "items": [
+            {
+              "sku": "PJ-5000",
+              "item_name": "Projector 5000 ANSI lumens",
+              "quantity": 2,
+              "unit_price": 1414,
+              "amount": 2828,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "header"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "flat-text",
+          "items": [
+            {
+              "sku": "PJ-5000",
+              "item_name": "Projector 5000 ANSI lumens",
+              "quantity": 5000,
+              "unit_price": 2,
+              "amount": 2828,
+              "provenance": {
+                "source": "text"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "header-aligned",
+        "rows": [
+          [
+            "PJ-5000",
+            2,
+            1414,
+            2828
+          ]
+        ]
+      }
+    },
+    {
+      "id": "economic-conflict-review",
+      "subtotal": 500,
+      "candidates": [
+        {
+          "origin": "single-ocr",
+          "items": [
+            {
+              "sku": "MIX-100",
+              "item_name": "Audio mixer",
+              "quantity": 2,
+              "unit_price": 350,
+              "amount": 500,
+              "layoutEvidenceVerified": true,
+              "provenance": {
+                "source": "ocr"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "ambiguous-low-confidence",
+      "subtotal": null,
+      "candidates": [
+        {
+          "origin": "native-text",
+          "items": [
+            {
+              "sku": "SPK-20",
+              "item_name": "Powered speaker",
+              "quantity": 1,
+              "unit_price": null,
+              "amount": null,
+              "provenance": {
+                "source": "native"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "ocr-text",
+          "items": [
+            {
+              "sku": "SPK-20",
+              "item_name": "Powered speaker",
+              "quantity": 1,
+              "unit_price": null,
+              "amount": null,
+              "provenance": {
+                "source": "ocr"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "review",
+        "rows": []
+      }
+    },
+    {
+      "id": "duplicate-candidate-penalty",
+      "subtotal": 900,
+      "candidates": [
+        {
+          "origin": "deduplicated",
+          "items": [
+            {
+              "sku": "AMP-90",
+              "item_name": "Power amplifier",
+              "quantity": 2,
+              "unit_price": 450,
+              "amount": 900,
+              "layoutEvidenceVerified": true,
+              "economicEvidenceVerified": true,
+              "provenance": {
+                "source": "layout"
+              }
+            }
+          ]
+        },
+        {
+          "origin": "duplicated",
+          "items": [
+            {
+              "sku": "AMP-90",
+              "item_name": "Power amplifier",
+              "quantity": 2,
+              "unit_price": 450,
+              "amount": 900
+            },
+            {
+              "sku": "AMP-90",
+              "item_name": "Power amplifier",
+              "quantity": 2,
+              "unit_price": 450,
+              "amount": 900
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "status": "accepted",
+        "winnerOrigin": "deduplicated",
+        "rows": [
+          [
+            "AMP-90",
+            2,
+            450,
+            900
+          ]
+        ]
+      }
+    }
+  ]
+}
