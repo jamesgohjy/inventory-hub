@@ -238,7 +238,7 @@
         ['ui-workflow-14h-hardening',v703314hWorkflowInnerPatch]
       ];
       for(const [label,code] of v703313cGeneratedPatchBlocks){
-        try{new Function(code);}catch(e){throw new Error('V7.03.3.14f generated inner patch syntax failed ['+label+']: '+(e?.message||e));}
+        try{new Function(code);}catch(e){throw new Error('V7.03.3.14h generated inner patch syntax failed ['+label+']: '+(e?.message||e));}
       }
       if(!src.includes(v70336InnerMarker))throw new Error('V7.03.3.9 inner application patch marker not found.');
       src=src.replace(v70336InnerMarker,v70336InnerPatch+'\n'+v703311InnerPatch+'\n'+v703312lRuntimeParserPatch+'\n'+v703312InnerPatch+'\n'+v703314fMergeInnerPatch+'\n'+v703314gDuplicateInnerPatch+'\n'+v703314hWorkflowInnerPatch+'\n'+v70336InnerMarker);
@@ -321,7 +321,7 @@ window.v7033ConsolidateExistingSafeDuplicates=v7033ConsolidateExistingSafeDuplic
       if(!window.__AV_UI_WORKFLOW_14H__?.installed)throw new Error('V7.03.3.14h UI/workflow hardening did not initialise.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
       window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='7.03.2 cumulative on '+BASELINE_VERSION+'@'+BASELINE_SHA;
-      console.info('AV Inventory Hub v'+VERSION+' loaded cumulatively from live v7.03.2 logic with freeze hotfix.');
+      console.info('AV Inventory Hub v'+VERSION+' loaded with verified merge and UI/workflow regression hardening.');
     }catch(err){
       console.error('AV Inventory Hub v7.03.3.14h startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
