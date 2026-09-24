@@ -1,12 +1,12 @@
-// AV Inventory Hub v7.03.3.14j — Data Health history management + richer activity summaries
+// AV Inventory Hub v7.03.3.14k — parser and workflow regression hardening
 // Live baseline: v7.03.2. Verified underlying source: v7.03.1 @ f088a9602929d24165fd1ab98fc6744cbada1cb3
 (function(){
   'use strict';
   if(window.__AV_V7033_LOADER_STARTED__)return;
   window.__AV_V7033_LOADER_STARTED__=true;
 
-  const VERSION='7.03.3.14j';
-  const ASSET_REV='v703314j-health-activity-management-20260924-2';
+  const VERSION='7.03.3.14k';
+  const ASSET_REV='v703314k-parser-workflow-regression-20260924-1';
   const BASELINE_VERSION='7.03.1';
   const BASELINE_SHA='f088a9602929d24165fd1ab98fc6744cbada1cb3';
   const BASELINE_APP_URL='https://raw.githubusercontent.com/jamesgohjy/inventory-hub/'+BASELINE_SHA+'/app.js';
@@ -243,7 +243,7 @@
         ['data-health-management-activity-14j',v703314jHealthActivityInnerPatch]
       ];
       for(const [label,code] of v703313cGeneratedPatchBlocks){
-        try{new Function(code);}catch(e){throw new Error('V7.03.3.14j generated inner patch syntax failed ['+label+']: '+(e?.message||e));}
+        try{new Function(code);}catch(e){throw new Error('V7.03.3.14k generated inner patch syntax failed ['+label+']: '+(e?.message||e));}
       }
       if(!src.includes(v70336InnerMarker))throw new Error('V7.03.3.9 inner application patch marker not found.');
       src=src.replace(v70336InnerMarker,v70336InnerPatch+'\n'+v703311InnerPatch+'\n'+v703312lRuntimeParserPatch+'\n'+v703312InnerPatch+'\n'+v703314fMergeInnerPatch+'\n'+v703314gDuplicateInnerPatch+'\n'+v703314hWorkflowInnerPatch+'\n'+v703314iHealthAuditInnerPatch+'\n'+v703314jHealthActivityInnerPatch+'\n'+v70336InnerMarker);
@@ -318,7 +318,10 @@ window.v7033ConsolidateExistingSafeDuplicates=v7033ConsolidateExistingSafeDuplic
         ['v7.03.3.14i Data Health history staged',src.includes('__AV_14I_DIAGNOSTICS__')&&src.includes('healthHistory')],
         ['v7.03.3.14i merge activity details staged',src.includes('master_items_merge')&&src.includes('mergeDetailHtml')],
         ['v7.03.3.14j Data Health management staged',src.includes('__AV_14J_DIAGNOSTICS__')&&src.includes('manage_health_issue_reviews_v703314j')],
-        ['v7.03.3.14j richer activity summaries staged',src.includes('virtualHealthAudits14j')&&src.includes('changed14j')]
+        ['v7.03.3.14j richer activity summaries staged',src.includes('virtualHealthAudits14j')&&src.includes('changed14j')],
+        ['v7.03.3.14k core version matches loader',v7033?.VERSION===VERSION],
+        ['v7.03.3.14k upcoming version differs from current',!!v7033?.RELEASE_UPCOMING_VERSION&&v7033.RELEASE_UPCOMING_VERSION!==VERSION],
+        ['v7.03.3.14k behavioral regression suite passes',typeof v7033?.runRegressionChecks==='function'&&v7033.runRegressionChecks().ok===true]
       ];
       const v703314cRuntimeFailures=v703314cRuntimeContracts.filter(x=>!x[1]).map(x=>x[0]);
       if(v703314cRuntimeFailures.length)throw new Error('Regression contract failed: '+v703314cRuntimeFailures.join(', '));
@@ -331,13 +334,14 @@ window.v7033ConsolidateExistingSafeDuplicates=v7033ConsolidateExistingSafeDuplic
       if(!window.__AV_UI_WORKFLOW_14H__?.installed)console.warn('V7.03.3.14i UI/workflow hardening is unavailable; core Inventory Hub remains active.',window.__AV_UI_WORKFLOW_14H__||null);
       if(!window.__AV_14I_DIAGNOSTICS__?.installed)console.warn('V7.03.3.14i Data Health / merge-history enhancement is unavailable; core Inventory Hub remains active.',window.__AV_14I_DIAGNOSTICS__||null);
       if(!window.__AV_14J_DIAGNOSTICS__?.installed)console.warn('V7.03.3.14j Data Health management / activity enhancement is unavailable; core Inventory Hub remains active.',window.__AV_14J_DIAGNOSTICS__||null);
+      window.__AV_14K_REGRESSION__=v7033.runRegressionChecks();
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
       window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='7.03.2 cumulative on '+BASELINE_VERSION+'@'+BASELINE_SHA;
-      console.info('AV Inventory Hub v'+VERSION+' loaded with Data Health history management and richer Recent Activities summaries.');
+      console.info('AV Inventory Hub v'+VERSION+' loaded with parser/workflow regression hardening.',window.__AV_14K_REGRESSION__);
     }catch(err){
-      console.error('AV Inventory Hub v7.03.3.14j startup error:',err);
+      console.error('AV Inventory Hub v7.03.3.14k startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub v7.03.3.14j could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
+      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub v7.03.3.14k could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
     }
   }
   launch();
