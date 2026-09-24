@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=7.03.3.14h3" />
-  <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14h3" />
+  <link rel="stylesheet" href="styles.css?v=7.03.3.14i" />
+  <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14i" />
   <style>
     /* inherited v7.03.3.9c Vault layout refinement */
     /* v7.03.3.14f: compact maintenance outcome + 30% smaller Vault search. */
@@ -34,7 +34,7 @@
       #maintenanceView #maintenanceOutcome{flex:0 0 90px;width:90px;min-width:90px;max-width:90px;}
     }
 
-    /* v7.03.3.14h3: final UI regression guards. Keep these after legacy toolbar rules. */
+    /* v7.03.3.14i: final UI regression guards. Keep these after legacy toolbar rules. */
     #inventoryView .toolbar{min-width:0;align-items:center;}
     #inventoryView .toolbar>*{box-sizing:border-box;}
     #inventoryView .toolbar .input-icon{min-width:260px;}
@@ -75,6 +75,38 @@
       #v703314gDuplicateReviewDialog [style*="grid-template-columns:repeat(2"]{grid-template-columns:1fr!important;}
       #mergeMasterItemDialog .detail-cards{grid-template-columns:1fr!important;}
     }
+
+    /* v7.03.3.14i — Data Health resolution/history + merge activity details */
+    .health-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+    .health-review-state,.health-history-status{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:9px;font-weight:800;white-space:nowrap}
+    .health-review-state.reviewed,.health-history-status.still{background:#fff7e8;color:#9a5b00;border:1px solid #f2d39a}
+    .health-history-status.resolved{background:#ecfdf3;color:#067647;border:1px solid #b7e4c7}
+    .health-history-status.open{background:#eef6ff;color:#175cd3;border:1px solid #cfe3ff}
+    .health-review-note{display:block;margin-top:5px;color:#9a6700;font-size:9px;font-weight:700}
+    .health-overview-14i{align-items:center}
+    .health-resolution-summary{display:flex;gap:8px;flex-wrap:wrap}
+    .health-resolution-summary span{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #dfe7ef;border-radius:9px;padding:7px 9px}
+    .health-resolution-summary strong{font-size:12px}
+    .health-tabs{display:flex;gap:6px;flex-wrap:wrap}
+    .health-tabs button{border:1px solid #d6e0ec;background:#fff;color:#52667c;border-radius:9px;padding:8px 10px;font-weight:700;cursor:pointer}
+    .health-tabs button.active{border-color:#8cbdf5;background:#eef6ff;color:#0b63ce}
+    .badge.merged{background:#f1ecff;color:#6941c6}
+    .activity-icon.merge{background:#f1ecff;color:#6941c6}
+    .merge-audit-detail-row td{background:#faf8ff!important;padding:0!important}
+    .merge-audit-detail{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:14px}
+    .merge-audit-detail>div{border:1px solid #e5ddf8;background:#fff;border-radius:9px;padding:10px;min-width:0}
+    .merge-audit-detail span{display:block;color:#667085;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+    .merge-audit-detail strong{display:block;margin-top:4px;color:#2f2353;font-size:12px;overflow-wrap:anywhere}
+    .merge-audit-detail small{display:block;margin-top:3px;color:#748094;overflow-wrap:anywhere}
+    .merge-audit-moved{grid-column:1/-1;margin:0;border:1px solid #e5ddf8;background:#fff;border-radius:9px;padding:10px;color:#52667c;font-size:11px;line-height:1.5}
+    .merge-audit-moved span{margin-bottom:4px}
+    @media(max-width:760px){
+      .health-actions{justify-content:flex-start}
+      .health-resolution-summary,.health-tabs{width:100%}
+      .health-tabs button{flex:1 1 auto}
+      .merge-audit-detail{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:480px){.merge-audit-detail{grid-template-columns:1fr}}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
@@ -141,8 +173,8 @@
       </nav>
       <section id="patchNotesPanel" class="sidebar-patch-panel hidden" aria-label="Patch notes" aria-live="polite">
         <div class="sidebar-patch-head"><span>Release Notes</span><strong>Patch Notes</strong></div>
-        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14h3</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Made duplicate-merge startup resilient with a built-in analyzer fallback.</li><li>Kept UI/workflow hardening non-blocking so optional diagnostics cannot stop Inventory Hub.</li><li>Preserved merge concurrency, responsive toolbar and merge-dialog regression guards.</li></ul></article>
-        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14i</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Improve Data Health issue resolution and history.</li><li>Surface Master Item merge details in Recent Activities.</li><li>Continue regression hardening for import and review workflows.</li></ul></article>
+        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14i</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Data Health reviews stay visible until the underlying issue is actually corrected.</li><li>Added review history with Resolved and Still detected status.</li><li>Master Item merges now appear as readable Merged activities with expandable details.</li></ul></article>
+        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14j</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Continue regression hardening for import and review workflows.</li><li>Add richer Data Health history filtering and management.</li><li>Extend detailed Recent Activities summaries to more inventory actions.</li></ul></article>
       </section>
       <div class="sidebar-footer"><div class="footer-rule"></div><p>Track today.<br>Empower tomorrow.</p><button id="signOutBtn" class="ghost hidden"><i data-lucide="log-out"></i> Sign out</button></div>
     </aside>
@@ -160,12 +192,12 @@
         <article class="panel automation-centre" id="automationCentre"><div class="panel-head automation-head"><div><h2>Automation Centre</h2><p class="muted">Automatic checks that keep inventory records clean and ready for reference.</p></div><div class="automation-head-actions"><span id="dataHealthScore" class="health-score">Data health —</span><button id="runHealthCheckBtn" class="secondary small-btn" type="button"><i data-lucide="refresh-cw"></i> Run check</button></div></div><div class="automation-grid"><button id="needsAttentionCard" class="automation-card attention" type="button"><span class="automation-icon"><i data-lucide="circle-alert"></i></span><span><small>Needs Attention</small><strong id="needsAttentionCount">0</strong><em id="needsAttentionSummary">No issues detected</em></span></button><button id="stockTakeCard" class="automation-card stocktake" type="button"><span class="automation-icon"><i data-lucide="clipboard-check"></i></span><span><small>Stock Take</small><strong>Compare</strong><em>System quantity vs physical count</em></span></button><div class="automation-card intelligence"><span class="automation-icon"><i data-lucide="sparkles"></i></span><span><small>Import Intelligence · Status</small><strong id="importRuleSummary">Supplier rules active</strong><em>SKU matching + document linking</em></span></div></div></article>
         <div class="grid-2 dashboard-grid"><article class="panel inventory-preview-panel"><div class="panel-head"><h2>Recent Inventory Items</h2><button class="link-btn" data-go="inventory">View all <i data-lucide="arrow-right"></i></button></div><div id="dashboardInventory" class="inventory-card-grid"></div></article><article class="panel activity-panel"><div class="panel-head"><h2>Recent Activities</h2><button class="link-btn" data-go="audit">View all <i data-lucide="arrow-right"></i></button></div><div id="recentAudit" class="activity-list"></div></article></div>
       </section>
-      <div class="dashboard-meta"><span id="healthStatus" class="health-status reconnecting"><i></i> Starting…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 7.03.3.14h3</span></div>
+      <div class="dashboard-meta"><span id="healthStatus" class="health-status reconnecting"><i></i> Starting…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 7.03.3.14i</span></div>
       <section id="inventoryView" class="view"><article class="panel content-panel"><div class="toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" autocomplete="off" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div><select id="categoryFilter"><option value="">All categories</option></select><select id="inventoryGroup" title="Group inventory items"><option value="none">No Grouping</option><option value="company">Group by Company</option></select><button id="inventoryHealthBtn" class="secondary toolbar-btn" type="button"><i data-lucide="shield-check"></i> Data Health</button></div><div id="inventoryTable" class="table-wrap"></div></article></section>
       <section id="documentsView" class="view"><article class="panel content-panel"><div class="toolbar documents-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="documentSort" title="Sort documents by uploaded date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select></div><div id="documentsTable" class="table-wrap"></div></article></section>
       <section id="vaultView" class="view"><article class="panel content-panel"><div class="toolbar documents-toolbar vault-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="vaultSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="vaultGroup" title="Group vault invoices"><option value="company">Group by Company</option><option value="none">No Grouping</option></select><select id="vaultSort" title="Sort vault invoices by invoice date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select></div><div id="vaultTable" class="table-wrap"></div></article></section>
       <section id="maintenanceView" class="view"><article class="panel content-panel"><div class="panel-head maintenance-head"><div><h2>Maintenance Records</h2><p class="muted">Keep equipment repair and service history together with your inventory records.</p></div><button id="addMaintenanceBtn" class="primary"><i data-lucide="plus"></i> Add Maintenance Record</button></div><div class="toolbar maintenance-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="maintenanceSearch" class="search" autocomplete="off" placeholder="Search equipment, SKU, serial, issue..." /></div><select id="maintenanceOutcome"><option value="">All outcomes</option><option>Repaired</option><option>Replaced</option><option>Sent for Service</option><option>No Fault Found</option><option>Disposed</option></select></div><div id="maintenanceTable" class="table-wrap"></div></article></section>
-      <section id="auditView" class="view"><article class="panel content-panel"><div class="toolbar audit-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="auditSearch" class="search" type="search" name="recent-activity-query" autocomplete="off" value="" placeholder="Search activities..." /></div><select id="auditUser"><option value="">All users</option></select><select id="auditAction"><option value="">All actions</option><option value="INSERT">Added / Imported</option><option value="UPDATE">Edited</option><option value="DELETE">Deleted</option><option value="ADJUST">Adjusted</option></select><input id="auditDate" type="date" title="Filter by date"></div><div id="auditTable" class="table-wrap"></div></article></section>
+      <section id="auditView" class="view"><article class="panel content-panel"><div class="toolbar audit-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="auditSearch" class="search" type="search" name="recent-activity-query" autocomplete="off" value="" placeholder="Search activities..." /></div><select id="auditUser"><option value="">All users</option></select><select id="auditAction"><option value="">All actions</option><option value="INSERT">Added / Imported</option><option value="UPDATE">Edited</option><option value="DELETE">Deleted</option><option value="ADJUST">Adjusted</option><option value="MERGE">Merged</option></select><input id="auditDate" type="date" title="Filter by date"></div><div id="auditTable" class="table-wrap"></div></article></section>
     </main>
   </div>
   <dialog id="itemDialog" class="dialog"><form method="dialog" id="itemForm"><div class="dialog-head"><div><h2 id="itemDialogTitle">Add item</h2><p>Create or edit a master SKU.</p></div><button value="cancel" class="icon-btn" aria-label="Close item editor" title="Close"><i data-lucide="x"></i></button></div><input type="hidden" id="itemId" /><div class="form-grid"><label>SKU / Model code<input id="itemSku" required /></label><label>Standard item name<input id="itemName" required /></label><label>Category<input id="itemCategory" /></label><label>Unit<input id="itemUnit" value="pcs" /></label><label class="span-2">Product photo URL <input id="itemImageUrl" type="url" placeholder="https://... (optional exact product photo)" /></label><label class="span-2">Description<textarea id="itemDescription" rows="3"></textarea></label></div><div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="saveItemBtn" value="default" class="primary">Save item</button></div></form></dialog>
@@ -183,9 +215,9 @@
   <div id="idleWarning" class="idle-warning hidden" role="alertdialog" aria-modal="true" aria-labelledby="idleWarningTitle"><div class="idle-warning-card"><div class="idle-warning-icon"><i data-lucide="clock-3"></i></div><div class="idle-warning-copy"><strong id="idleWarningTitle">Still there?</strong><p>No activity was detected. You will be signed out automatically in 5 minutes.</p></div><button id="staySignedInBtn" class="primary" type="button">Stay signed in</button></div></div>
   <div id="toast" class="toast hidden"></div>
   <script src="config.js"></script>
-  <script src="parser-v7-core.js?v=7.03.3.14h3"></script>
-  <script src="app.js?v=7.03.3.14h3"></script>
+  <script src="parser-v7-core.js?v=7.03.3.14i"></script>
+  <script src="app.js?v=7.03.3.14i"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="feedback.js?v=7.03.3.14h3"></script>
+  <script src="feedback.js?v=7.03.3.14i"></script>
 </body>
 </html>
