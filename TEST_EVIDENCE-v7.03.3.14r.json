@@ -1,0 +1,86 @@
+{
+  "version": "7.03.3.14r",
+  "generated_at": "2026-09-24T14:03:52.573Z",
+  "overall_status": "PASS",
+  "architecture": {
+    "bootstrap_source_generation": false,
+    "repository_local_baseline": "baseline-v6.55-d452.js",
+    "repository_local_derived_runtime": "runtime-v7.03.3.14r.js",
+    "remote_raw_github_baseline": false,
+    "remaining_inner_compatibility_patch_layer": true
+  },
+  "suites": {
+    "behavioral": {
+      "pass": 14,
+      "total": 14,
+      "failures": []
+    },
+    "golden": {
+      "pass": 7,
+      "total": 7,
+      "failures": []
+    },
+    "quality14n": {
+      "pass": 12,
+      "total": 12,
+      "failures": []
+    },
+    "holdout14n": {
+      "pass": 6,
+      "total": 6,
+      "failures": []
+    },
+    "intelligence14o": {
+      "pass": 9,
+      "total": 9,
+      "failures": []
+    },
+    "aerospace14p": {
+      "pass": 12,
+      "total": 12,
+      "failures": []
+    },
+    "monetary14q": {
+      "pass": 10,
+      "total": 10,
+      "failures": []
+    },
+    "headerAligned14r": {
+      "pass": 7,
+      "total": 7,
+      "failures": []
+    }
+  },
+  "total_regression": "77/77",
+  "targeted_aerospace_layout": {
+    "status": "PASS",
+    "rows": [
+      {
+        "sku": "AVS-320A",
+        "quantity": 1,
+        "unit_price": 350,
+        "amount": 350
+      },
+      {
+        "sku": "60100-SALES",
+        "quantity": 1,
+        "unit_price": 90,
+        "amount": 90
+      }
+    ],
+    "installation_excluded": true
+  },
+  "grouped_inventory_ui": {
+    "status": "PASS",
+    "same_document_card_classes": true,
+    "collapsed_by_default": true
+  },
+  "syntax": {
+    "core": "PASS",
+    "bootstrap": "PASS",
+    "static_runtime": "PASS",
+    "final_module_parse": "PASS",
+    "module_runtime_stop": "undefined: unsupported import in exec"
+  },
+  "limitation": "The historical Aerospace PDF raw bytes were not materializable in this session, so its real browser PDF.js/Tesseract import was not executed offline. The actual page evidence plus an Aerospace-shaped layout runtime harness were used; live re-import remains the final PDF execution confirmation."
+}

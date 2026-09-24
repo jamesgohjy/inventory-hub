@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14q';
+  const VERSION='7.03.3.14r';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -1176,14 +1176,42 @@
     return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
 
+
+  function v703314rNumericFragments(item={}){
+    const text=clean(item.text||''),x=Number(item.x)||0,width=Math.max(0,Number(item.width)||0);
+    const matches=[...text.matchAll(/-?\d[\d,]*(?:\.\d{1,2})?/g)],out=[];
+    for(let i=0;i<matches.length;i++){const raw=matches[i][0],value=Number(raw.replace(/,/g,''));if(!Number.isFinite(value))continue;const virtualX=matches.length>1&&width>0?x+width*((i+.5)/matches.length):x+width/2;out.push({id:String(x)+'|'+String(width)+'|'+String(i)+'|'+raw,raw,value,x:virtualX,decimal:/[.,]\d{1,2}$/.test(raw)});}
+    return out;
+  }
+  function v703314rResolveEconomicsFromItems(items=[],columns={}){
+    const qtyX=Number(columns.qty),priceX=Number(columns.price),amountX=Number(columns.amount);
+    if(![qtyX,priceX,amountX].every(Number.isFinite)||!(qtyX<priceX&&priceX<amountX))return {ok:false,reason:'Invalid numeric column geometry.'};
+    const spacing=Math.min(priceX-qtyX,amountX-priceX),radius=Math.max(18,spacing*.72),fragments=(items||[]).flatMap(v703314rNumericFragments);
+    const pool=(name,cx)=>fragments.map(f=>({...f,distance:Math.abs(f.x-cx),column:name})).filter(f=>f.distance<=radius).filter(f=>name==='qty'?Number.isInteger(f.value)&&f.value>0&&f.value<=999:f.value>=0).sort((a,b)=>(a.distance-b.distance)||(Number(b.decimal)-Number(a.decimal))).slice(0,8);
+    const q=pool('qty',qtyX),p=pool('price',priceX),a=pool('amount',amountX);let best=null;
+    for(const qq of q)for(const pp of p)for(const aa of a){if(new Set([qq.id,pp.id,aa.id]).size<3)continue;const tolerance=Math.max(.03,Math.abs(aa.value)*.003),delta=Math.abs(qq.value*pp.value-aa.value);if(delta>tolerance)continue;const positional=(qq.distance+pp.distance+aa.distance)/Math.max(1,spacing),decimalBonus=(pp.decimal?12:0)+(aa.decimal?12:0),score=1000-(positional*80)+decimalBonus;if(!best||score>best.score)best={score,quantity:qq.value,unit_price:pp.value,amount:aa.value,delta,tolerance,evidence:[qq,pp,aa]};}
+    return best?{ok:true,...best}:{ok:false,reason:'No complete column-aligned Qty × Unit Price = Amount combination was verified.',fragmentCount:fragments.length};
+  }
+  function runHeaderAlignedMoneyRegressionChecks14r(){
+    const cases=[],check=(name,actual,expected)=>{const pass=typeof expected==='function'?!!expected(actual):actual===expected;cases.push({name,pass,actual,expected:typeof expected==='function'?'predicate':expected});},cols={qty:500,price:610,amount:720};
+    let r=v703314rResolveEconomicsFromItems([{text:'1',x:492,width:16},{text:'350.00',x:585,width:50},{text:'350.00',x:695,width:50}],cols);check('separate Qty/Price/Amount tokens',r,x=>x.ok&&x.quantity===1&&x.unit_price===350&&x.amount===350);
+    r=v703314rResolveEconomicsFromItems([{text:'1 350.00 350.00',x:450,width:320}],cols);check('single OCR block spanning all numeric columns',r,x=>x.ok&&x.quantity===1&&x.unit_price===350&&x.amount===350);
+    r=v703314rResolveEconomicsFromItems([{text:'1 90.00',x:455,width:210},{text:'90.00',x:698,width:45}],cols);check('merged Qty plus Unit Price token',r,x=>x.ok&&x.quantity===1&&x.unit_price===90&&x.amount===90);
+    r=v703314rResolveEconomicsFromItems([{text:'2 1,414.00 2,828.00',x:450,width:320}],cols);check('thousands separators remain monetary values',r,x=>x.ok&&x.quantity===2&&x.unit_price===1414&&x.amount===2828);
+    r=v703314rResolveEconomicsFromItems([{text:'1.35',x:585,width:45},{text:'0',x:710,width:12}],cols);check('collapsed decimal fragment cannot invent missing digits',r,x=>x.ok===false);
+    r=v703314rResolveEconomicsFromItems([{text:'5000',x:490,width:30},{text:'804.00',x:590,width:48},{text:'804.00',x:700,width:48}],cols);check('specification-sized quantity is rejected',r,x=>x.ok===false);
+    r=v703314rResolveEconomicsFromItems([{text:'1',x:492,width:16},{text:'350.00',x:590,width:48},{text:'0.00',x:700,width:42}],cols);check('inconsistent amount remains unverified',r,x=>x.ok===false);
+    return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
+  }
+
   const RELEASE_NOTES=[
-    'Monetary line-item recovery now uses cross-OCR/layout consensus plus Qty × Unit Price = Amount validation.',
-    'Weak decimal fragments cannot overwrite stronger verified Unit Price/Amount evidence; unresolved conflicts stay Level 3.',
-    'Documents and Inventory company groups now render collapsed by default and expand only when selected.'
+    'Moved the verified baseline and derived runtime into the repository, retiring the outer runtime-generation layer.',
+    'Added header-aligned Qty / Unit Price / Amount reconstruction that repairs merged OCR tokens only when arithmetic verifies.',
+    'Inventory company grouping now uses the same clean collapsed card layout as Documents.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14r';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14s';
   const RELEASE_ROADMAP=[
-    {id:'architecture-stability',text:'Move the verified baseline into the repository and gradually retire runtime string patching.'},
+    {id:'architecture-flatten',text:'Convert the remaining inner compatibility patch layer into direct repository modules.'},
     {id:'operational-backups',text:'Add automated Supabase/database and document backup verification.'},
     {id:'quality-retention',text:'Add parser-quality export, retention and long-term trend controls.'}
   ];
@@ -1220,5 +1248,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });

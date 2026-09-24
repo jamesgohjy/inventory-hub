@@ -1,0 +1,35 @@
+AV Inventory Hub v7.03.3.14r — Static Baseline + Header-Aligned Money Hardening
+Generated: 2026-09-24T14:03:52.573Z
+============================================================================
+
+ROOT CAUSE
+14q validated downstream consensus but the live evidence generator could still merge Qty with Unit Price.
+The production startup also had two source-generation layers.
+
+FIX
+Header geometry now separates Qty / Unit Price / Amount before arithmetic validation.
+Text-only AV targeted rows no longer receive a monetary candidate boost.
+Header-aligned verified rows are preferred over weaker candidates.
+Inventory Group by Company uses the same card/toggle/body classes as Documents.
+Verified d452 base + derived 14r runtime are repository-local; outer runtime generation is retired.
+
+VALIDATION
+PASS behavioral: 14/14
+PASS golden: 7/7
+PASS quality14n: 12/12
+PASS holdout14n: 6/6
+PASS intelligence14o: 9/9
+PASS aerospace14p: 12/12
+PASS monetary14q: 10/10
+PASS headerAligned14r: 7/7
+PASS TOTAL: 77/77
+PASS AVS-320A: 1 × 350.00 = 350.00
+PASS 60100-SALES: 1 × 90.00 = 90.00
+PASS installation row excluded
+PASS grouped Inventory card layout
+PASS core/bootstrap/static runtime syntax and final module parse
+
+LIMITATION
+Actual browser re-import of the historical Aerospace PDF was not executable offline because raw PDF bytes were unavailable.
+
+OVERALL PRE-DEPLOYMENT STATUS: PASS
