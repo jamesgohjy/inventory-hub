@@ -23,6 +23,7 @@ declare
   v_moved jsonb := '{}'::jsonb;
   v_patch jsonb := coalesce(p_target_patch,'{}'::jsonb);
   v_actor_role text := '';
+  v_app_confirmed boolean := false;
   v_requested_sku text := '';
 
   v_expected_total_purchased numeric := 0;
@@ -48,16 +49,22 @@ begin
 
   begin
     execute
-      'select lower(trim(coalesce(role::text, '''')))
+      'select lower(trim(coalesce(role::text, ''''))),
+              coalesce(app_confirmed,false)
          from public.profiles
         where id=$1'
-      into v_actor_role
+      into v_actor_role,v_app_confirmed
       using auth.uid();
   exception
     when undefined_column then
       raise exception using errcode='42501',
-        message='Inventory member role information is unavailable. Merge was blocked.';
+        message='Inventory member authorization information is unavailable. Merge was blocked.';
   end;
+
+  if v_app_confirmed is not true then
+    raise exception using errcode='42501',
+      message='Confirmed Inventory Hub account required.';
+  end if;
 
   if coalesce(v_actor_role,'') not in ('admin','editor') then
     raise exception using errcode='42501',
@@ -109,7 +116,8 @@ begin
   if exists (
     select 1
       from pg_constraint fk
-      join pg_namespace n on n.oid=(select relnamespace from pg_class where oid=fk.conrelid)
+      join pg_class c on c.oid=fk.conrelid
+      join pg_namespace n on n.oid=c.relnamespace
      where fk.contype='f'
        and fk.confrelid='public.master_items'::regclass
        and n.nspname='public'
@@ -344,6 +352,7 @@ begin
     jsonb_build_object(
       'target',to_jsonb(v_target_after),
       'actor_role',v_actor_role,
+      'app_confirmed',v_app_confirmed,
       'moved_rows',v_moved,
       'total_purchased',v_total_purchased,
       'total_adjusted',v_total_adjusted,
@@ -360,6 +369,7 @@ begin
     'target_id',p_target_id,
     'target_sku',v_target_after.sku,
     'actor_role',v_actor_role,
+    'app_confirmed',v_app_confirmed,
     'moved_rows',v_moved,
     'total_purchased',v_total_purchased,
     'total_adjusted',v_total_adjusted,
