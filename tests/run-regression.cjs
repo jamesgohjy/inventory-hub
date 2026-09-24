@@ -8,6 +8,8 @@ const app=read('app.js');
 const runtime=read('runtime-v7.03.3.14u.js');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
+const canonicalParser=read('modules/canonical-parser.js');
+const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const groupModule=read('modules/grouped-company-ui.js');
 const backupUiModule=read('modules/backup-verification-ui.js');
 const parser=read('parser-v7-core.js');
@@ -19,7 +21,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -78,6 +80,29 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
+assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
+assert(runtime.includes('InventoryHubCanonicalParser.normalizeResult'),'Production finalizer does not return canonical parser result');
+assert(!runtime.includes('globalThis.AVParserV7.enhanceParsed({parsed:normalized'),'Independent post-finalizer parser mutation still exists');
+assert(!runtime.includes('globalThis.AVParserV7.prepareSave(state.parsed.items'),'Independent save-time parser correction still exists');
+assert(runtime.includes("this.sb.rpc('confirm_and_save_invoice_v703314v'"),'Confirm & Save does not use canonical PostgreSQL RPC');
+assert(!runtime.includes("this.sb.rpc('import_invoice_atomic'"),'Legacy import_invoice_atomic remains in production Confirm & Save path');
+assert(canonicalSaveSql.includes('create or replace function public.confirm_and_save_invoice_v703314v'),'Canonical Confirm & Save RPC missing');
+for(const table of ['public.documents','public.purchases','public.master_items','public.purchase_items','public.serial_numbers'])assert(canonicalSaveSql.includes(table),'Atomic save RPC/schema missing '+table);
+assert(canonicalSaveSql.includes('canonical_brand')&&canonicalSaveSql.includes('canonical_model')&&canonicalSaveSql.includes('verified_aliases'),'Canonical identity schema incomplete');
+assert(canonicalSaveSql.includes('invoice_evidence'),'Original invoice evidence retention missing');
+assert(canonicalSaveSql.includes('security invoker'),'Confirm & Save RPC must remain SECURITY INVOKER');
+assert(canonicalSaveSql.includes('revoke execute on function public.confirm_and_save_invoice_v703314v')&&canonicalSaveSql.includes('grant execute on function public.confirm_and_save_invoice_v703314v'),'RPC execution grants missing');
+
+const canonicalCtx={};canonicalCtx.window=canonicalCtx;canonicalCtx.globalThis=canonicalCtx;vm.createContext(canonicalCtx);vm.runInContext(canonicalParser,canonicalCtx,{filename:'modules/canonical-parser.js'});
+const canonicalApi=canonicalCtx.InventoryHubCanonicalParser;
+const identity=canonicalApi.canonicalIdentity({brand:'Remaco',model:'MAS-1818',sku:'MAS-1818',verified_aliases:['MAS1818']});
+assert(identity.key==='REMACO::MAS1818','Canonical brand+model identity normalization failed');
+assert(identity.verifiedAliases.includes('MAS1818'),'Verified alias retention failed');
+const canonicalResult=canonicalApi.normalizeResult({doc:{invoice_number:'ANON-1'},items:[{brand:'Remaco',model:'MAS-1818',sku:'MAS-1818',item_name:'Projector mount controller',description:'Original invoice wording',quantity:2,unit_price:350,amount:700,verified_aliases:['MAS1818']}],rawText:'anonymized invoice evidence',parseEvidence:{evidenceRanking:{review:[]}}});
+assert(canonicalResult.apiVersion==='1.0'&&canonicalResult.status==='accepted','Canonical result contract failed');
+assert(canonicalResult.items[0].invoice_evidence.original_description==='Original invoice wording','Canonical normalization lost original invoice evidence');
+assert(canonicalResult.items[0].canonical_identity.key==='REMACO::MAS1818','Canonical result lost identity');
+console.log('canonical-parser-and-atomic-save: API, identity, evidence and RPC contracts PASS');
 assert(runtime.includes('evidenceEngine.runPipeline(candidates,{subtotal:doc.subtotal,confidenceThreshold:.72})'),'Production finalizer must use candidate -> evidence -> economics -> confidence -> review pipeline');
 assert(runtime.includes("pipeline.status==='accepted'?(pipeline.items||[]):[]"),'Production finalizer must not accept rows when pipeline requires review');
 assert(!runtime.includes('v687CompletenessReconcile(candidates,inventory,evidence)'),'Post-ranking completeness must not reintroduce weaker candidate rows');
