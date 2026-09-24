@@ -48,7 +48,7 @@ select
 
 -- 4) Current role values. Expected application roles are admin/editor/viewer.
 -- Also reports how many profiles are app-confirmed.
-do $
+do $$
 declare
   v_roles text;
   v_confirmed bigint;
