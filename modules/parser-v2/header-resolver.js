@@ -11,6 +11,10 @@
   const invoiceLabel=/(?:\bINVOICE\s*(?:NO\.?|NUMBER|#)|\bINV\s*(?:NO\.?|#))(?=\s*[:#.-]|\s|$)/i;
   const dateLabel=/\b(?:INVOICE\s+DATE|DATE)\b/i;
 
+  function dateToken(v=''){
+    const m=clean(v).match(/(?:^|[^A-Za-z0-9\/.-])([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*(?:\d{4}|\d{2}))(?![A-Za-z0-9])/);
+    return m?m[1]:'';
+  }
   function parseDateStrict(v=''){
     const m=clean(v).match(/^([0-3]?\d)\s*[/.\-]\s*([01]?\d)\s*[/.\-]\s*(\d{2}|\d{4})$/);
     if(!m)return '';
@@ -175,5 +179,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.3-adjacent-header-values',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.4-safe-date-boundary',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
