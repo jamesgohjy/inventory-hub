@@ -60,6 +60,8 @@ jobs:
           node --check modules/parser-evidence-engine.js
           node --check modules/parser-v2/evidence-model.js
           node --check modules/parser-v2/header-resolver.js
+          node --check modules/parser-v2/table-detector.js
+          node --check modules/parser-v2/row-builder.js
           node --check modules/parser-v2/row-accounting.js
           node --check modules/parser-v2/engine.js
           node --check modules/parser-table.js
