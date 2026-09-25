@@ -226,11 +226,11 @@ assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||n
 assert(runtime.includes('const nativeSchedule=')&&runtime.includes('nativeSchedule||ocrSchedule'),'High-resolution schedule discovery lacks native-text fallback');
 assert(runtime.includes('const nativeInvoiceModels=')&&runtime.includes('nativeInvoiceModels||ocrInvoiceModels'),'High-resolution invoice-model discovery lacks native-text fallback');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
-const richMixedText='TAX INVOICE\\nNo. Description Qty Unit Price Amount\\n1 Mixer 1 100.00 100.00\\nSCHEDULES OF PRICES AND TECHNICAL DATA\\n1 Mixer ABC-1 UK 1 $100.00 $100.00';
+const richMixedText=['TAX INVOICE','No. Description Qty Unit Price Amount','1 Mixer 1 100.00 100.00','SCHEDULES OF PRICES AND TECHNICAL DATA','1 Mixer ABC-1 UK 1 $100.00 $100.00'].join(String.fromCharCode(10));
 const oldStrongNativeGate=5000<80||(1===0&&60<20);
 assert(oldStrongNativeGate===false,'Regression fixture must represent a strong native PDF that previously skipped OCR');
 assert((oldStrongNativeGate||supportScheduleRe.test(richMixedText))===true,'Attached price schedule must force corroborating OCR even when native invoice structure is strong');
-assert((oldStrongNativeGate||supportScheduleRe.test('TAX INVOICE\\nNo. Description Qty Unit Price Amount'))===false,'Ordinary strong native invoices must not be forced through the expensive support OCR path');
+assert((oldStrongNativeGate||supportScheduleRe.test(['TAX INVOICE','No. Description Qty Unit Price Amount'].join(String.fromCharCode(10))))===false,'Ordinary strong native invoices must not be forced through the expensive support OCR path');
 console.log('live-support-ocr-trigger: strong-native mixed-document corroboration PASS');
 
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
