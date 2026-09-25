@@ -2290,7 +2290,7 @@ function recoverAvMediaHeader(doc={},rawText=''){
     if(date)break;
     const saved=state.pdfLayout;state.pdfLayout=src.layout||[];date=detectInvoiceDateFromLayout();state.pdfLayout=saved;if(date)break;
   }
-  if(date)doc.invoice_date=date;else if(isAv)doc.invoice_date='';
+  if(date)doc.invoice_date=date;
   if(/^(?:sold|sold\s*to|delivered|delivered\s*to|customer|customer\s*code|reference|ref|date|invoice)$/i.test(String(doc.delivery_order_number||'').trim()))doc.delivery_order_number='';
   if(/^(?:sold|sold\s*to|delivered|delivered\s*to|customer|customer\s*code|date|invoice|terms)$/i.test(String(doc.reference_number||'').trim()))doc.reference_number='';
   return doc;
@@ -2365,7 +2365,23 @@ function v703314sRenderInventoryGroups(groups,head){
 }
 function v661FinalizeParsedInvoice(parsed={},raw=''){
   const sources=v661EvidenceSources(parsed.rawText||raw||''),evidence=sources.map(x=>x.text).join('\n');
-  let doc=recoverAvMediaHeader({...parsed.doc},evidence);for(const es of sources){const fixed=globalThis.V7033Patch?.fixDocumentHeader?.(doc,es.text||'');if(fixed)doc={...doc,...fixed};if(String(doc.invoice_number||'').trim())break;}doc=v662RecoverMoneyFromText(doc,evidence);
+  let doc=recoverAvMediaHeader({...parsed.doc},evidence);
+  // Header sources are additive. One field succeeding must never stop other sources from supplying missing fields.
+  for(const es of sources){
+    const fixed=globalThis.V7033Patch?.fixDocumentHeader?.({...doc},es.text||'');
+    if(!fixed)continue;
+    for(const k of ['supplier_name','invoice_number','invoice_date','delivery_order_number','currency']){
+      const incoming=String(fixed[k]??'').trim();
+      if(incoming&&!String(doc[k]??'').trim())doc[k]=fixed[k];
+    }
+  }
+  // Reference Number is evidence-only: exact labelled evidence or blank. Never retain a guessed/reconstructed value.
+  try{
+    const ev2=window.InventoryHubParserV2Evidence?.buildDocumentEvidence?.({sources,raw:evidence});
+    const h2=ev2&&window.InventoryHubParserV2Header?.resolveHeaders?.(ev2);
+    doc.reference_number=String(h2?.reference_number||'').trim();
+  }catch(refErr){console.warn('Strict Reference Number resolver unavailable; leaving Reference Number blank.',refErr);doc.reference_number='';}
+  doc=v662RecoverMoneyFromText(doc,evidence);
   const savedLayout=state.pdfLayout;let moneyCandidates=[];
   for(const src of sources){state.pdfLayout=src.layout||[];let d=v661RepairInvoiceMoneyFromLayout({...doc});d=v662RecoverMoneyFromText(d,src.text||'');const a=Number(d.subtotal),b=Number(d.gst),c=Number(d.total_amount),ok=[a,b,c].every(Number.isFinite)&&Math.abs((a+b)-c)<=.06;moneyCandidates.push({d,ok,score:(Number.isFinite(a)?1:0)+(Number.isFinite(b)?1:0)+(Number.isFinite(c)?1:0)+(ok?8:0)});}
   state.pdfLayout=savedLayout;moneyCandidates.sort((a,b)=>b.score-a.score);if(moneyCandidates[0])doc=moneyCandidates[0].d;
