@@ -887,22 +887,27 @@
   function prepareLinesForInventory(lines=[],items=[]){return (lines||[]).map(x=>{const resolved=resolveInventoryMatch(x,items).line;const standard=clean(resolved.item_name||'');return standard?{...resolved,description:standard}:resolved;});}
   function analyzeDuplicatePair(a={},b={},items=[]){
     const skuA=clean(a.sku||''),skuB=clean(b.sku||''),keyA=compact(skuA),keyB=compact(skuB);
-    if(!keyA||!keyB||keyA!==keyB)return {candidate:false,mergeEligible:false,reason:'different-sku-identity',score:0,blockers:[],warnings:[],a,b};
-    const exact=skuA.toLowerCase()===skuB.toLowerCase();
+    const textA=compact([a.item_name,a.description].filter(Boolean).join(' ')),textB=compact([b.item_name,b.description].filter(Boolean).join(' '));
+    const embeddedA=!keyA&&keyB&&keyB.length>=5&&textA.includes(keyB);
+    const embeddedB=!keyB&&keyA&&keyA.length>=5&&textB.includes(keyA);
+    const embeddedAlias=!!(embeddedA||embeddedB);
+    if((!keyA||!keyB||keyA!==keyB)&&!embeddedAlias)return {candidate:false,mergeEligible:false,reason:'different-sku-identity',score:0,blockers:[],warnings:[],a,b};
+    const normalizedKey=keyA||keyB,exact=!!keyA&&!!keyB&&skuA.toLowerCase()===skuB.toLowerCase();
     const catA=norm(a.category||''),catB=norm(b.category||'');
     const blockers=[],warnings=[];
     if(catA&&catB&&catA!==catB)blockers.push('Categories conflict: '+clean(a.category)+' vs '+clean(b.category)+'.');
-    const sameKey=(items||[]).filter(i=>compact(i.sku||'')===keyA);
-    if(sameKey.length>2)blockers.push('More than two Master Items share this SKU identity. Review the full duplicate group first.');
+    const sameKey=(items||[]).filter(i=>compact(i.sku||'')===normalizedKey);
+    if(!embeddedAlias&&sameKey.length>2)blockers.push('More than two Master Items share this SKU identity. Review the full duplicate group first.');
     const nameA=normalizedItemIdentity(a.item_name||a.description||''),nameB=normalizedItemIdentity(b.item_name||b.description||'');
-    if(nameA&&nameB&&nameA!==nameB)warnings.push('Item names differ. Confirm both records refer to the same physical model before merging.');
+    if(embeddedAlias)warnings.push('One record has no SKU, but its item text contains the surviving SKU/model. Explicit confirmation is required.');
+    else if(nameA&&nameB&&nameA!==nameB)warnings.push('Item names differ. Confirm both records refer to the same physical model before merging.');
     return {
       candidate:true,
       mergeEligible:blockers.length===0,
-      reason:exact?'exact-sku':'format-normalized-sku',
-      confidence:exact?'exact':'high',
-      score:exact?1:0.98,
-      normalizedSku:keyA,
+      reason:embeddedAlias?'embedded-sku-alias':(exact?'exact-sku':'format-normalized-sku'),
+      confidence:embeddedAlias?'review':'exact',
+      score:embeddedAlias?.92:(exact?1:.98),
+      normalizedSku:normalizedKey,
       blockers,
       warnings,
       a,b
@@ -953,6 +958,10 @@
     check('dedupe removes exact duplicate only',d.length,2);
     const match=resolveInventoryMatch({sku:'AVS320',item_name:'AVS-320 projector controller'},[{id:'1',sku:'AVS-320',item_name:'AVS-320 projector controller',category:'AV Control'}]);
     check('format-equivalent SKU reuses existing item',!!match.matched&&match.line?.sku==='AVS-320',true);
+    const noSkuMerge=analyzeDuplicatePair({sku:'',item_name:'PT-VMW51 Projector',category:'Projection'},{sku:'PT-VMW51',item_name:'Projector',category:'Projection'},[]);
+    check('no-SKU duplicate can use embedded surviving model as explicit-review evidence',noSkuMerge.candidate&&noSkuMerge.mergeEligible&&noSkuMerge.reason==='embedded-sku-alias',true);
+    const unsafeNoSku=analyzeDuplicatePair({sku:'',item_name:'Generic Projector',category:'Projection'},{sku:'PT-VMW51',item_name:'Projector',category:'Projection'},[]);
+    check('no-SKU duplicate without embedded model stays blocked',unsafeNoSku.candidate,false);
     const invoice='TAX INVOICE\nInvoice Number INV-1001\nInvoice Date 24 Sep 2026\nDelivery Order Number D100\nDescription Quantity Unit Price Amount\nPT-TW381R Projector 1 1000.00 1000.00\nSubtotal 1000.00\nGST 90.00\nTotal 1090.00';
     check('invoice remains valid with delivery-order reference',classifyInvoicePage(invoice).allowed,true);
     check('current and upcoming versions differ',RELEASE_UPCOMING_VERSION!==VERSION,true);
@@ -1272,9 +1281,9 @@
   }
 
   const RELEASE_NOTES=[
-    'Improved Reference No. parsing from labelled invoice fields.',
-    'Removed duplicate or fragmented parsed item rows more safely.',
-    'Added automatic Amount calculation when Qty or Unit Price changes.'
+    'Improved invoice parsing, Reference No. handling and automatic Amount calculation.',
+    'Fixed Confirm & Save database deployment and Master Item merge review.',
+    'Added a persistent Resolve option for valid Data Health exceptions.'
   ];
   const RELEASE_UPCOMING_VERSION='7.03.3.14y';
   const RELEASE_ROADMAP=[
