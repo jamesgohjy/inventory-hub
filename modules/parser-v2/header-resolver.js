@@ -165,9 +165,25 @@
     if(strictConflict&&second&&second.maxScore>=minScore&&second.key!==best.key&&Math.abs(best.maxScore-second.maxScore)<20)return {field,value:'',status:'blank',reason:'conflicting-evidence',candidates:ranked};
     return {field,value:best.value,status:'resolved',reason:'evidence-supported',support:best.support,candidates:ranked};
   }
+  function guardSingleSourceOcrInvoice(evidence,decision){
+    if(!decision||decision.status!=='resolved'||Number(decision.support)!==1)return decision;
+    const best=decision.candidates?.[0];
+    if(!best)return decision;
+    const bestSources=new Set(best.sources||[]);
+    const kinds=(best.evidence||[]).map(x=>String(x.kind||'').toLowerCase()).filter(Boolean);
+    if(kinds.length&&!kinds.every(k=>k.includes('ocr')))return decision;
+    const labelSources=(evidence.sources||[])
+      .filter(src=>String(src.kind||'').toLowerCase().includes('ocr')&&invoiceLabel.test(String(src.text||'')))
+      .map(src=>src.id);
+    if(labelSources.length<2)return decision;
+    const unconfirmed=labelSources.some(id=>!bestSources.has(id));
+    if(!unconfirmed)return decision;
+    return {...decision,value:'',status:'blank',reason:'single-source-ocr-unconfirmed'};
+  }
   function resolveHeaders(evidence){
     const supplier=choose('supplier_name',supplierCandidates(evidence),{minScore:90});
-    const invoice=choose('invoice_number',invoiceCandidates(evidence),{minScore:95});
+    const rawInvoice=choose('invoice_number',invoiceCandidates(evidence),{minScore:95});
+    const invoice=guardSingleSourceOcrInvoice(evidence,rawInvoice);
     const date=choose('invoice_date',dateCandidates(evidence),{minScore:95});
     // Reference Number policy: exact evidence or blank. No repair, no review state, no guessing.
     const reference=choose('reference_number',referenceCandidates(evidence),{strictConflict:true,minScore:98});
@@ -179,5 +195,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.4-safe-date-boundary',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.5-ocr-corroboration',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
