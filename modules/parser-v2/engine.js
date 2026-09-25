@@ -38,6 +38,11 @@
       const sig=economicSignature(x.row);if(sig)variants.get(id).add(sig);
     }
     const conflicts=[...variants.entries()].filter(([,s])=>s.size>1).map(([identity,s])=>({identity,variants:[...s]}));
+    for(const x of equipment){
+      if(!x?.economicConflict)continue;
+      const identity=promotionIdentity(x.row)||x.key;
+      if(!conflicts.some(c=>c.identity===identity))conflicts.push({identity,variants:[...(x.economicSignatures||[])]});
+    }
     if(conflicts.length)blockers.push({code:'conflicting-equipment-economics',conflicts});
 
     const safe=blockers.length===0&&promotable.length>0;
@@ -98,7 +103,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.2-evidence-promotion',
+      version:'2.3-variant-conflict-guard',
       mode:'evidence-first-independent-table',
       headers,
       tables,
