@@ -27,6 +27,10 @@
     const m=String(line||'').match(new RegExp(label.source,'i'));if(!m)return '';
     return clean(String(line).slice(m.index+m[0].length).replace(/^\s*[:#.-]?\s*/,''));
   }
+  function identifierFromTail(value=''){
+    const tail=clean(value),m=tail.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})(?=\s|$)/i);
+    return m&&/\d/.test(m[1])?m[1]:'';
+  }
   function geometryValues(evidence,labelRe,field){
     const out=[];
     for(const src of evidence.sources||[])for(const pg of src.layout||[])for(const row of pg.rows||[]){
@@ -59,7 +63,7 @@
     for(const src of evidence.sources||[])for(const line of clean(src.text).split(/\n+/).filter(Boolean)){
       const v=lineValueAfterLabel(line,invoiceLabel);if(v)pushCandidate(out,'invoice_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
     }
-    return out.filter(x=>valueToken.test(compact(x.value))&&!/^(?:DATE|CUSTOMER|CODE|TERMS|SALESMAN|REF|REFERENCE)$/i.test(compact(x.value)));
+    return out.map(x=>({...x,value:identifierFromTail(x.value)})).filter(x=>x.value&&valueToken.test(compact(x.value))&&!/^(?:DATE|CUSTOMER|CODE|TERMS|SALESMAN|REF|REFERENCE)$/i.test(compact(x.value)));
   }
   function dateCandidates(evidence){
     const out=[...geometryValues(evidence,dateLabel,'invoice_date')];
@@ -75,7 +79,7 @@
     for(const src of evidence.sources||[])for(const line of clean(src.text).split(/\n+/).filter(Boolean)){
       const v=lineValueAfterLabel(line,refLabel);if(v)pushCandidate(out,'reference_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
     }
-    return out.filter(x=>valueToken.test(compact(x.value))&&/\d/.test(x.value)&&!parseDateStrict(x.value)&&!/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i.test(compact(x.value)));
+    return out.map(x=>({...x,value:identifierFromTail(x.value)})).filter(x=>x.value&&valueToken.test(compact(x.value))&&/\d/.test(x.value)&&!parseDateStrict(x.value)&&!/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i.test(compact(x.value)));
   }
   function choose(field,candidates,{strictConflict=true,minScore=90}={}){
     const grouped=new Map();
@@ -105,5 +109,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.0-shadow',parseDateStrict,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.0-shadow',parseDateStrict,identifierFromTail,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
