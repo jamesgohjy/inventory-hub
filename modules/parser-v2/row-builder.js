@@ -33,8 +33,13 @@
   }
   function strictQuantity(text=''){
     const t=clean(text);if(!t)return null;
-    const m=t.match(/^(\d+(?:\.\d+)?)\s*(?:PCS?|UNITS?|SETS?)?$/i);if(!m)return null;
-    const n=Number(m[1]);return n>0&&n<=100000?n:null;
+    const direct=t.match(/^(\d+(?:\.\d+)?)\s*(?:PCS?|UNITS?|SETS?)?$/i);
+    if(direct){const n=Number(direct[1]);return n>0&&n<=100000?n:null;}
+    // OCR/table geometry can spill a country/unit label into the Qty cell (e.g. "USA 2").
+    // Recover only when there is exactly one numeric token in the cell; multiple numbers remain ambiguous.
+    const nums=[...t.matchAll(/(?:^|[^\d.])(\d+(?:\.\d+)?)(?=$|[^\d.])/g)].map(m=>m[1]);
+    if(nums.length!==1)return null;
+    const n=Number(nums[0]);return n>0&&n<=100000?n:null;
   }
   function strictMoney(text=''){
     const t=clean(text).replace(/(?:SGD|S\$|\$)/ig,'').trim();if(!t)return null;
@@ -260,5 +265,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'3.1-numbered-skeleton-only',numberedPhysicalRowStart,buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'3.2-quantity-label-spill',numberedPhysicalRowStart,buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
