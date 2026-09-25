@@ -108,9 +108,8 @@ assert(runtime.includes("pipeline.status==='accepted'?(pipeline.items||[]):[]"),
 assert(!runtime.includes('v687CompletenessReconcile(candidates,inventory,evidence)'),'Post-ranking completeness must not reintroduce weaker candidate rows');
 assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Direct runtime does not call parser module');
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
-assert(runtime.includes('InventoryHubBackupVerificationUI'),'Direct runtime does not call backup UI module');
-assert(runtime.includes('admin_backup_verification_history_v703314t'),'Admin backup history RPC is not staged');
-assert(runtime.includes("currentRole()==='admin'"),'Backup history is not visibly admin-gated in the runtime');
+assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
+assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
 assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14u'"),'14u direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
