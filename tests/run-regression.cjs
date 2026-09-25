@@ -121,6 +121,8 @@ const health14xStart=runtime.indexOf('function v703314x');
 const health14xTail=health14xStart>=0?runtime.slice(health14xStart):runtime.slice(runtime.indexOf('function renderNeedsAttention14x')-5000);
 assert(!health14xTail.includes('v703314xBaseRenderQuality=renderQualityDashboard14o'),'14x must not reference closure-local renderQualityDashboard14o');
 assert(!health14xTail.includes('renderQualityDashboard14o=function'),'14x must not overwrite closure-local parser dashboard renderer');
+const intel14oStart=runtime.indexOf('(function v703314oInstallParserIntelligence(){'),intel14oEnd=runtime.indexOf('})();',intel14oStart)+5,intel14oBlock=runtime.slice(intel14oStart,intel14oEnd),intel14oExecutableCalls=(intel14oBlock.match(/renderQualityDashboard14o\(\)/g)||[]).length;
+assert(intel14oExecutableCalls===1&&intel14oBlock.includes('function renderQualityDashboard14o()'),'Retired 14o quality renderer must have no executable call sites');
 assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
 assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
 assert(/ASSET_REV='v703314x-[^']+'/.test(app),'14x loader must carry an explicit cache-busting asset revision');
