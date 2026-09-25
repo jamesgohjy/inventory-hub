@@ -49,7 +49,7 @@ const avMediaDedupe=api.dedupeParsedLineItems([
   {sku:'',item_name:'PT-MZI7K Replacement of AV Projector and control Panel',description:'PT-MZI7K Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352},
   {sku:'PT-MZI7K',item_name:'Replacement of AV Projector and control Panel',description:'Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352}
 ]);
-assert(avMediaDedupe.length===1&&avMediaDedupe[0].sku==='PT-MZI7K'&&near(avMediaDedupe[0].amount,38352),'Fragmented duplicate consolidation did not retain the strongest evidenced PT-MZI7K row');
+assert(avMediaDedupe.length===1&&avMediaDedupe[0].sku==='PT-MZI7K'&&Math.abs(Number(avMediaDedupe[0].amount)-38352)<=.01,'Fragmented duplicate consolidation did not retain the strongest evidenced PT-MZI7K row');
 assert(api.v703312jIsTrackedEquipment({sku:'RC-208/UK',item_name:'I/O Control Button Keypad',description:'I/O Control Button Keypad'})===true,'Generic keypad equipment recognition failed');
 
 // 14u: historical source excerpts are now checked field-by-field, not just by broad case predicates.
