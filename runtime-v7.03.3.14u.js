@@ -18,8 +18,7 @@ const RELEASE_UPCOMING_NOTES=[
   'Improve automatic item matching and consolidation.',
   'Simplify review messages and workflow.'
 ];
-const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
-const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
+const RELEASE_UPCOMING_VERSION='7.03.3.14v';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const authUrlParams=()=>{
   const search=new URLSearchParams(location.search||'');
