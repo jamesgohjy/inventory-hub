@@ -28,8 +28,14 @@
     return clean(String(line).slice(m.index+m[0].length).replace(/^[\s:#.\-]+/,''));
   }
   function identifierFromTail(value=''){
-    const tail=clean(value),m=tail.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})(?=\s|$)/i);
-    return m&&/\d/.test(m[1])?m[1]:'';
+    const tail=clean(value),m=tail.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})(?:\s+([A-Z0-9][A-Z0-9._\/-]{2,}))?(?=\s|$)/i);
+    if(!m)return '';
+    const first=m[1],second=m[2]||'';
+    if(/\d/.test(first))return first;
+    // Allow a short alphabetic prefix plus one identifier token, e.g. "INV LTA-00215840".
+    // Do not absorb arbitrary trailing prose or field labels.
+    if(second&&/^[A-Z]{2,8}$/i.test(first)&&/\d/.test(second))return first+' '+second;
+    return '';
   }
   function geometryValues(evidence,labelRe,field){
     const out=[];
@@ -148,5 +154,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.1-shadow',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.2-multipart-identifier',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);

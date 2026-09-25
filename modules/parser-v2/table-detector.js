@@ -82,9 +82,29 @@
   function rowPosition(row,headerY,direction){return (Number(row.y)-headerY)*direction;}
   function detectDirection(rows,headerY){
     const totals=rows.filter(r=>isTotalRowText(r.text||'')&&Number.isFinite(Number(r.y)));
+    const sideScore=(direction,total)=>{
+      if(!total)return -1;
+      const ty=Number(total.y);
+      const between=rows.filter(r=>{
+        const y=Number(r.y);if(!Number.isFinite(y)||isTotalRowText(r.text||''))return false;
+        return direction>0?(y>headerY&&y<ty):(y<headerY&&y>ty);
+      });
+      // A real table body normally contains both descriptive text and numeric/economic rows.
+      // This prevents a previous table's subtotal from pulling a later table upward.
+      const numeric=between.filter(r=>/\d/.test(r.text||'')).length;
+      const textual=between.filter(r=>/[A-Za-z]/.test(r.text||'')).length;
+      return numeric*3+textual;
+    };
     if(totals.length){
-      const nearest=totals.sort((a,b)=>Math.abs(Number(a.y)-headerY)-Math.abs(Number(b.y)-headerY))[0];
-      const d=Math.sign(Number(nearest.y)-headerY);if(d)return d;
+      const below=totals.filter(r=>Number(r.y)>headerY).sort((a,b)=>Number(a.y)-Number(b.y))[0]||null;
+      const above=totals.filter(r=>Number(r.y)<headerY).sort((a,b)=>Number(b.y)-Number(a.y))[0]||null;
+      if(below&&!above)return 1;
+      if(above&&!below)return -1;
+      if(below&&above){
+        const downScore=sideScore(1,below),upScore=sideScore(-1,above);
+        if(downScore!==upScore)return downScore>upScore?1:-1;
+        return Math.abs(Number(below.y)-headerY)<=Math.abs(Number(above.y)-headerY)?1:-1;
+      }
     }
     const plus=rows.filter(r=>Number(r.y)>headerY&&/\d/.test(r.text||'')).length;
     const minus=rows.filter(r=>Number(r.y)<headerY&&/\d/.test(r.text||'')).length;
@@ -214,5 +234,5 @@
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.3-gst-metadata-guard',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.4-body-evidence-direction',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
