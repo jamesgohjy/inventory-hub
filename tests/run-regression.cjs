@@ -332,7 +332,7 @@ const conflictLedger=v2ctx.InventoryHubParserV2Rows.buildLedger([
 ]);
 const conflictPromotion=v2ctx.InventoryHubParserV2.assessPromotion(conflictLedger,v2ctx.InventoryHubParserV2Rows.summarize(conflictLedger),{complete:false});
 assert(conflictPromotion.safe===false&&conflictPromotion.blockers.some(x=>x.code==='conflicting-equipment-economics'),'Conflicting geometry economics must block automatic promotion');
-assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='service','Numeric SALES accounting code must not be promoted as equipment');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='equipment','SALES accounting code must not override verified physical-equipment evidence');
 
 const multipartHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
   v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
