@@ -4360,9 +4360,18 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
   }
 
   const reviewMap14x=()=>new Map((state.data?.healthReviews||[]).filter(r=>r?.issue_key).map(r=>[String(r.issue_key),r]));
-  buildHealthIssues=function(){
+  const unresolvedHealthIssues14x=()=>{
     const reviews=reviewMap14x();
-    return (buildAllHealthIssues()||[]).filter(x=>reviews.get(String(x.key))?.resolution_status!=='resolved').map(x=>({...x,review:reviews.get(String(x.key))||null}));
+    return (buildAllHealthIssues()||[]).filter(x=>String(reviews.get(String(x.key))?.resolution_status||'').toLowerCase()!=='resolved').map(x=>({...x,review:reviews.get(String(x.key))||null}));
+  };
+  buildHealthIssues=unresolvedHealthIssues14x;
+  const v703314xBaseRenderAutomationCentre=renderAutomationCentre;
+  renderAutomationCentre=function(){
+    const issues=unresolvedHealthIssues14x(),score=healthScore(issues),high=issues.filter(x=>x.severity==='high').length;
+    if($('needsAttentionCount'))$('needsAttentionCount').textContent=issues.length;
+    if($('needsAttentionSummary'))$('needsAttentionSummary').textContent=issues.length?`${high?high+' important · ':''}${issues.length} record${issues.length===1?'':'s'} to review`:'No issues detected';
+    if($('dataHealthScore')){$('dataHealthScore').textContent=`${score}% ${healthLabel(score)}`;$('dataHealthScore').classList.toggle('warn',score<85);}
+    if($('importRuleSummary'))$('importRuleSummary').textContent='Loud + AV Media rules active';
   };
 
   const previousIssueReviewButton14x=issueReviewButton;
