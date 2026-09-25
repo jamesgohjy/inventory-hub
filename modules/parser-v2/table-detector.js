@@ -175,6 +175,47 @@
       proof:{quantity:best.q.value,unit_price:best.p.value,amount:best.a.value,delta:best.delta}
     };
   }
+  function median(values=[]){
+    const a=(values||[]).map(Number).filter(Number.isFinite).sort((x,y)=>x-y);
+    if(!a.length)return null;const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2;
+  }
+  function detectEconomicBandTable(source,page){
+    const rows=(page?.rows||[]).filter(r=>Array.isArray(r.items)&&r.items.length&&Number.isFinite(Number(r.y))).sort((a,b)=>Number(a.y)-Number(b.y));
+    if(rows.length<3)return null;
+    const width=Number(page?.width)||0,proofs=[];
+    for(const row of rows){
+      if(isTotalRowText(row.text||'')||HEADERLESS_META_RE.test(row.text||''))continue;
+      const columns=inferEconomicColumns(row);if(!columns)continue;
+      const qx=Number(columns.x?.quantity),px=Number(columns.x?.unit_price),ax=Number(columns.x?.amount);
+      if(!(Number.isFinite(qx)&&Number.isFinite(px)&&Number.isFinite(ax)&&qx<px&&px<ax))continue;
+      if(width&&qx<width*.48)continue;
+      proofs.push({row,columns,qx,px,ax});
+    }
+    if(proofs.length<2)return null;
+    const qx=median(proofs.map(x=>x.qx)),px=median(proofs.map(x=>x.px)),ax=median(proofs.map(x=>x.ax));
+    if(![qx,px,ax].every(Number.isFinite)||!(qx<px&&px<ax))return null;
+    const consistent=proofs.filter(x=>Math.abs(x.qx-qx)<=Math.max(90,width*.07)&&Math.abs(x.px-px)<=Math.max(90,width*.07)&&Math.abs(x.ax-ax)<=Math.max(100,width*.08));
+    if(consistent.length<2)return null;
+    const firstY=Math.min(...consistent.map(x=>Number(x.row.y))),lastY=Math.max(...consistent.map(x=>Number(x.row.y)));
+    const headerCandidates=rows.filter(r=>Number(r.y)<firstY&&/\bDESCRIPTION\b/i.test(r.text||'')&&/\b(?:QTY|QUANTITY)\b/i.test(r.text||'')).sort((a,b)=>Number(b.y)-Number(a.y));
+    const headerY=headerCandidates[0]?Number(headerCandidates[0].y):firstY-Math.max(12,Number(page.yTolerance)||3)*4;
+    const totals=rows.filter(r=>Number(r.y)>lastY&&isTotalRowText(r.text||'')).sort((a,b)=>Number(a.y)-Number(b.y));
+    const endY=totals[0]?Number(totals[0].y):Infinity;
+    const bodyRows=rows.filter(r=>Number(r.y)>headerY&&Number(r.y)<endY-Math.max(1,Number(page.yTolerance)||3));
+    if(!bodyRows.length)return null;
+    const qLo=Math.max(0,qx-Math.max(180,(px-qx)*1.05)),qHi=(qx+px)/2,pHi=(px+ax)/2;
+    const xs=bodyRows.flatMap(r=>(r.items||[]).map(i=>Number(i.x)).filter(Number.isFinite));
+    const leftEdge=xs.length?Math.max(0,Math.min(...xs)-8):0;
+    const columns={
+      hasCode:false,x:{description:(leftEdge+qLo)/2,quantity:qx,unit_price:px,amount:ax},
+      boundaries:{code:[leftEdge,leftEdge],description:[leftEdge,qLo],quantity:[qLo,qHi],unit_price:[qHi,pHi],amount:[pHi,ax+Math.max(100,(ax-px)*.9)]},
+      ignoredColumns:{tax:null,discount:null},
+      labels:{code:'',description:'DESCRIPTION',quantity:'QTY',unit_price:'UNIT PRICE',amount:'AMOUNT'},
+      inferredFromEconomicBand:true,proofRows:consistent.length
+    };
+    return {id:[source.id,'p'+page.page,'band'+Math.round(headerY)].join(':'),source:source.id,sourceKind:source.kind,page:page.page,headerY,direction:1,
+      yTolerance:Number(page.yTolerance)||3,columns,bodyRows,totalRow:totals[0]||null,confidence:.78,detectionMode:'economic-band'};
+  }
   function detectHeaderlessTables(source,page){
     const rows=(page?.rows||[]).filter(r=>Array.isArray(r.items)&&r.items.length&&Number.isFinite(Number(r.y)));
     const out=[];
@@ -230,9 +271,13 @@
     for(const source of evidence.sources||[])for(const page of source.layout||[]){
       const headerTables=detectPageTables(source,page);
       if(headerTables.length)all.push(...headerTables);
-      else all.push(...detectHeaderlessTables(source,page));
+      else{
+        const band=detectEconomicBandTable(source,page);
+        if(band)all.push(band);
+        else all.push(...detectHeaderlessTables(source,page));
+      }
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.4-body-evidence-direction',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.5-economic-band',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectEconomicBandTable,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
