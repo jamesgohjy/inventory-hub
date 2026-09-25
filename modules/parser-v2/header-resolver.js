@@ -162,7 +162,12 @@
     const ranked=[...grouped.values()].map(g=>({...g,sources:[...g.sources],support:g.sources.size})).sort((a,b)=>(b.maxScore+Math.min(30,b.score/10)+b.support*8)-(a.maxScore+Math.min(30,a.score/10)+a.support*8));
     const best=ranked[0],second=ranked[1];
     if(!best||best.maxScore<minScore)return {field,value:'',status:'blank',reason:'insufficient-evidence',candidates:ranked};
-    if(strictConflict&&second&&second.maxScore>=minScore&&second.key!==best.key&&Math.abs(best.maxScore-second.maxScore)<20)return {field,value:'',status:'blank',reason:'conflicting-evidence',candidates:ranked};
+    if(strictConflict&&second&&second.maxScore>=minScore&&second.key!==best.key&&Math.abs(best.maxScore-second.maxScore)<20){
+      // For invoice IDs, two or more independent sources agreeing on the same value can
+      // outweigh one conflicting OCR read. A 1-vs-1 conflict still fails closed.
+      const corroboratedInvoice=field==='invoice_number'&&Number(best.support)>=2&&Number(best.support)>Number(second.support||0);
+      if(!corroboratedInvoice)return {field,value:'',status:'blank',reason:'conflicting-evidence',candidates:ranked};
+    }
     return {field,value:best.value,status:'resolved',reason:'evidence-supported',support:best.support,candidates:ranked};
   }
   function guardSingleSourceOcrInvoice(evidence,decision){
