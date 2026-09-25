@@ -5,9 +5,24 @@
   const center=it=>Number(it?.x)+(Number(it?.width)||0)/2;
   const finite=v=>Number.isFinite(Number(v));
   const round2=v=>finite(v)?Math.round(Number(v)*100)/100:null;
-  const META_RE=/^\s*(?:SERIAL(?:\s*(?:NO|NUMBER|NUMBERS))?|S\/?N|SHIPMENT\s*(?:NO|NUMBER)|REMARKS?|NOTES?)\b/i;
+  const META_RE=/^\s*(?:SERIAL(?:\s*(?:NO|NUMBER|NUMBERS))?|S\/?N|SHIPMENT\s*(?:NO|NUMBER)|REMARKS?|NOTES?|ATTENTION|ATTN|COMPANY|ADDRESS|EMAIL(?:\s+ADDRESS)?|CONTACT(?:\s+NUMBER)?|CUSTOMER|SOLD\s+TO|BILL\s+TO|SHIP\s+TO|DELIVERED\s+TO|IN\s+STOCK|SERVICE\s+CENTRE|SERVICE\s+CENTER)\b/i;
   const WARRANTY_RE=/\b(?:WARRANTY|WT\s+FOR)\b/i;
 
+  function mergeBodyBands(rows=[],tolerance=3){
+    const sorted=(rows||[]).slice().sort((a,b)=>Number(a.y)-Number(b.y)),bands=[];
+    for(const row of sorted){
+      const y=Number(row.y);if(!Number.isFinite(y))continue;
+      let band=bands.find(b=>Math.abs(b.y-y)<=Math.max(2,Number(tolerance)||3));
+      if(!band){band={y,rows:[],items:[],textParts:[],rowIndexes:[]};bands.push(band);}
+      band.rows.push(row);band.items.push(...(row.items||[]));if(clean(row.text))band.textParts.push(clean(row.text));if(row.rowIndex!==undefined)band.rowIndexes.push(row.rowIndex);
+      band.y=band.rows.reduce((n,r)=>n+Number(r.y),0)/band.rows.length;
+    }
+    return bands.sort((a,b)=>a.y-b.y).map((b,index)=>({
+      y:b.y,rowIndex:index,sourceRowIndexes:b.rowIndexes,
+      text:clean(b.textParts.join(' ')),
+      items:b.items.slice().sort((a,c)=>(Number(a.x)||0)-(Number(c.x)||0))
+    }));
+  }
   function parseNumericTokens(text=''){
     return [...String(text).matchAll(/-?\d[\d,]*(?:\.\d{1,2})?/g)].map(m=>Number(m[0].replace(/,/g,''))).filter(Number.isFinite);
   }
@@ -68,38 +83,48 @@
     return !!(code&&desc)||(econCount>=2&&!!desc)||(econCount===3);
   }
   function buildTableRows(table){
-    const body=(table?.bodyRows||[]).slice().sort((a,b)=>((Number(a.y)-table.headerY)*table.direction)-((Number(b.y)-table.headerY)*table.direction));
+    const body=mergeBodyBands(table?.bodyRows||[],table?.yTolerance||3)
+      .sort((a,b)=>((Number(a.y)-table.headerY)*table.direction)-((Number(b.y)-table.headerY)*table.direction));
     if(!body.length)return [];
-    let anchors=[];
-    for(let i=0;i<body.length;i++)if(rowLooksLikeStart(body[i],table.columns))anchors.push(i);
+
+    // Economic anchors are verified independently. Text preceding an anchor belongs to that priced row;
+    // this supports invoices where description wraps across lines before Qty/Price/Amount.
+    const anchors=[];
+    for(let i=0;i<body.length;i++){
+      const econ=economicsFromGroup([body[i]],table.columns);
+      if(econ.verified)anchors.push({index:i,econ});
+    }
     if(!anchors.length){
-      // Preserve the table as an unexplained physical segment rather than silently returning no rows.
       return [{sourceRowId:table.id+':r1',sku:'',item_name:clean(body.map(r=>r.text).join(' ')),description:clean(body.map(r=>r.text).join(' ')),quantity:null,unit_price:null,amount:null,
         classification:{type:'unknown'},layoutEvidenceVerified:true,economicEvidenceVerified:false,
-        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,page:table.page,rowIndexes:body.map(r=>r.rowIndex)}}];
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,page:table.page,rowIndexes:body.flatMap(r=>r.sourceRowIndexes||[])}}];
     }
-    // Lines before the first economic/code anchor belong to that first row when they contain description-column text.
+
     const rows=[];
+    let previousAnchor=-1;
     for(let ai=0;ai<anchors.length;ai++){
-      const start=ai===0?0:anchors[ai],end=ai+1<anchors.length?anchors[ai+1]:body.length;
-      const group=body.slice(start,end);
-      const anchor=body[anchors[ai]];
-      const economics=economicsFromGroup(group,table.columns),sku=codeFromRow(anchor,table.columns),description=descriptionFromGroup(group,table.columns);
+      const anchorInfo=anchors[ai],group=body.slice(previousAnchor+1,anchorInfo.index+1),anchor=body[anchorInfo.index],economics=anchorInfo.econ;
+      previousAnchor=anchorInfo.index;
+
+      const description=descriptionFromGroup(group,table.columns);
+      let sku='';
+      // Prefer a printed code from the same segment, nearest the economic anchor.
+      for(let gi=group.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(group[gi],table.columns);
       const raw=clean(group.map(r=>r.text).join(' '));
       if(!sku&&!description&&!/[0-9]/.test(raw))continue;
+
       rows.push({
         sourceRowId:table.id+':r'+(ai+1),
-        sku,
-        model:sku,
+        sku,model:sku,
         item_name:description||raw,
         description:description||raw,
         quantity:economics.quantity,
         unit_price:economics.unit_price,
         amount:economics.amount,
         layoutEvidenceVerified:true,
-        economicEvidenceVerified:!!economics.verified,
+        economicEvidenceVerified:true,
         parserV2PhysicalRow:true,
-        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:group.map(r=>r.rowIndex),rawText:raw}
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:group.flatMap(r=>r.sourceRowIndexes||[]),rawText:raw}
       });
     }
     return rows;
@@ -113,5 +138,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.0-shadow',parseNumericTokens,strictQuantity,strictMoney,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.1-shadow',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
