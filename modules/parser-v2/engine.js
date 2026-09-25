@@ -280,7 +280,14 @@
     const supportSkeletons=typeof B.buildSkeletonRows==='function'?supportTables.flatMap(t=>B.buildSkeletonRows(t)):[];
     const skeletons=typeof B.buildSkeletonRows==='function'?tables.flatMap(t=>B.buildSkeletonRows(t)):[];
     const reconciledSkeletons=reconcileSupportingEconomics(skeletons,supportPhysical.rows,supportSkeletons);
-    const physicalCandidates=physical.tables.map(t=>({origin:'v2-physical:'+t.id,items:t.rows}));
+    const skeletonTableIds=new Set(reconciledSkeletons.map(r=>clean(r?.provenance?.tableId||'')).filter(Boolean));
+    const physicalCandidates=physical.tables.map(t=>{
+      const rows=(t.rows||[]).filter(row=>{
+        const placeholder=String(row?.classification?.type||'').toLowerCase()==='unknown'&&!Number.isFinite(Number(row?.quantity))&&!Number.isFinite(Number(row?.unit_price))&&!Number.isFinite(Number(row?.amount));
+        return !(placeholder&&skeletonTableIds.has(t.id));
+      });
+      return {origin:'v2-physical:'+t.id,items:rows};
+    }).filter(x=>x.items.length);
     if(reconciledSkeletons.length)physicalCandidates.push({origin:'v2-invoice-skeleton-recovery',items:reconciledSkeletons});
     const rowLedger=R.buildLedger(physicalCandidates);
     const completeness=R.summarize(rowLedger);
@@ -321,7 +328,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.7-partial-economics-consensus',
+      version:'2.8-skeleton-placeholder-supersession',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -393,7 +400,7 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.7-partial-economics-consensus',
+    version:'2.8-skeleton-placeholder-supersession',
     analyze,
     partialSupportRecovery,
     normalizeCrossOcrSkeletonModels,
