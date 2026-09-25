@@ -4370,7 +4370,41 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     const resolve=(canEdit()&&x.type==='Possible duplicate SKU')?'<button class="secondary small-btn" data-health-resolve="'+esc(x.key)+'">Resolve</button>':'';
     return '<div class="attention-row '+esc(x.severity)+'"><span class="attention-severity"><i data-lucide="'+(x.severity==='high'?'triangle-alert':x.severity==='medium'?'circle-alert':'info')+'"></i></span><div><strong>'+esc(x.type)+' · '+esc(x.title)+'</strong><p>'+esc(x.detail)+'</p></div><div style="display:flex;gap:8px;align-items:center">'+review+resolve+'</div></div>';
   };
-  const v703314xBaseRenderAutomationCentre=renderAutomationCentre;
+  function issueActions14x(x){
+    if(x?.type==='Possible duplicate SKU'&&x?.entity_type==='master_items_pair'){
+      const review=issueReviewButton(x);
+      const resolve=canEdit()?'<button class="secondary small-btn" type="button" data-health-resolve="'+esc(x.key)+'">Resolve</button>':'';
+      return '<div class="health-actions">'+review+resolve+'</div>';
+    }
+    const open='<button class="secondary small-btn" type="button" data-health-open="'+esc(x.key)+'">Open</button>';
+    const reviewed=x?.review?'<span class="health-review-state reviewed">Reviewed</span>':'';
+    const review=canEdit()&&!x?.review?'<button class="secondary small-btn" type="button" data-health-review="'+esc(x.key)+'">Mark reviewed</button>':'';
+    const resolve=canEdit()?'<button class="secondary small-btn" type="button" data-health-resolve="'+esc(x.key)+'">Resolve</button>':'';
+    return '<div class="health-actions">'+reviewed+open+review+resolve+'</div>';
+  }
+  function issueRow14x(x){
+    return '<div class="attention-row '+esc(x.severity)+'"><span class="attention-severity"><i data-lucide="'+(x.severity==='high'?'triangle-alert':x.severity==='medium'?'circle-alert':'info')+'"></i></span><div><strong>'+esc(x.type)+' · '+esc(x.title)+'</strong><p>'+esc(x.detail)+'</p></div>'+issueActions14x(x)+'</div>';
+  }
+  function renderNeedsAttention14x(openDialog=false){
+    const issues=unresolvedHealthIssues14x(),score=healthScore(issues),high=issues.filter(x=>x.severity==='high').length;
+    if($('needsAttentionCount'))$('needsAttentionCount').textContent=issues.length;
+    if($('needsAttentionSummary'))$('needsAttentionSummary').textContent=issues.length?`${high?high+' important · ':''}${issues.length} record${issues.length===1?'':'s'} to review`:'No issues detected';
+    if($('dataHealthScore')){$('dataHealthScore').textContent=`${score}% ${healthLabel(score)}`;$('dataHealthScore').classList.toggle('warn',score<85);}
+    if($('attentionSummary'))$('attentionSummary').innerHTML='<strong>'+issues.length+' item'+(issues.length===1?'':'s')+' need review</strong><span>Data health score: '+score+'%</span>';
+    if($('attentionList'))$('attentionList').innerHTML=issues.length?issues.map(issueRow14x).join(''):'<div class="empty">No active findings. Your records look healthy.</div>';
+    if(openDialog&&$('attentionDialog')&&!$('attentionDialog').open)$('attentionDialog').showModal();
+    window.lucide?.createIcons();
+    return issues;
+  }
+  renderAutomationCentre=function(){renderNeedsAttention14x(false);if($('importRuleSummary'))$('importRuleSummary').textContent='Loud + AV Media rules active';};
+  openAttention=function(){renderNeedsAttention14x(true);};
+  function retireCorrectionMemoryUi14x(){
+    const panel=document.getElementById('parserQualityDashboard14o');if(!panel)return;
+    for(const node of [...panel.querySelectorAll('details,.metric')])if(/Correction Memory/i.test(node.textContent||''))node.remove();
+  }
+  const v703314xBaseRenderQuality=renderQualityDashboard14o;
+  renderQualityDashboard14o=function(){const r=v703314xBaseRenderQuality.apply(this,arguments);retireCorrectionMemoryUi14x();return r;};
+
   renderAutomationCentre=function(){
     const issues=unresolvedHealthIssues14x(),score=healthScore(issues),high=issues.filter(x=>x.severity==='high').length;
     if($('needsAttentionCount'))$('needsAttentionCount').textContent=issues.length;
