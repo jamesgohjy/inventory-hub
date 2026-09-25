@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.14u evidence-ranked parser + accuracy regression patch
+/* AV Inventory Hub v7.03.3.14v canonical parser + compact UI patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14u';
+  const VERSION='7.03.3.14v';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -1205,11 +1205,11 @@
   }
 
   const RELEASE_NOTES=[
-    'Improved invoice parsing accuracy and verification.',
-    'Added safer review for uncertain invoice details.',
-    'Improved item matching, duplicate detection and data saving.'
+    'Unified invoice parsing through one canonical result.',
+    'Restored compact company grouping and consistent filter sizing.',
+    'Made shared controls and the PDF upload area more compact.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14v';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14w';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
