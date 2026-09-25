@@ -58,6 +58,10 @@ jobs:
           node --check app.js
           node --check runtime-v7.03.3.14x.js
           node --check modules/parser-evidence-engine.js
+          node --check modules/parser-v2/evidence-model.js
+          node --check modules/parser-v2/header-resolver.js
+          node --check modules/parser-v2/row-accounting.js
+          node --check modules/parser-v2/engine.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
           node --check modules/backup-verification-ui.js
