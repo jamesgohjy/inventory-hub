@@ -37,8 +37,13 @@
     const n=Number(m[1]);return n>0&&n<=100000?n:null;
   }
   function strictMoney(text=''){
-    const t=clean(text).replace(/(?:SGD|S\$|\$)/ig,'').trim();if(!t)return null;
+    let t=clean(text).replace(/(?:SGD|S\$|\$)/ig,'').trim();if(!t)return null;
+    // OCR may turn a decimal separator into comma/colon while retaining exactly two decimal digits.
+    t=t.replace(/(\d),(\d{2})(?![\d.])/g,'$1.$2').replace(/(\d):(\d{2})(?!\d)/g,'$1.$2');
     const vals=parseNumericTokens(t);if(vals.length!==1)return null;
+    const match=t.match(/-?\d[\d,]*(?:\.\d{1,2})?/);if(!match)return null;
+    const residue=clean(t.replace(match[0],'').replace(/[|_~"':;,.()\[\]{}<>\-]/g,' '));
+    if(residue&&!(residue.length===1&&/^[A-Za-z]$/.test(residue)))return null;
     return vals[0]>=0?round2(vals[0]):null;
   }
   function numericCellCandidates(row,bounds,parser){
@@ -64,9 +69,19 @@
       if(delta<=tol)triples.push({quantity:q.value,unit_price:p.value,amount:a.value,delta:round2(delta),rowDistance:Math.abs(Number(q.row.y)-Number(a.row.y))+Math.abs(Number(p.row.y)-Number(a.row.y))});
     }
     triples.sort((a,b)=>a.delta-b.delta||a.rowDistance-b.rowDistance);
-    if(triples[0])return {...triples[0],verified:true};
-    // Do not manufacture a coherent triple from conflicting numbers.
-    return {quantity:null,unit_price:null,amount:null,verified:false};
+    if(triples[0])return {...triples[0],verified:true,derived:false};
+
+    // Conservative recovery: derive only Amount from a unique Qty + Unit Price pair.
+    // Never derive price from a possibly corrupted OCR amount.
+    const uq=[...new Set(qs.map(x=>x.value))],up=[...new Set(ps.map(x=>x.value))];
+    if(uq.length===1&&up.length===1&&uq[0]>0&&up[0]>=0){
+      const amount=round2(uq[0]*up[0]),explicit=[...new Set(as.map(x=>x.value))];
+      const compatible=explicit.filter(v=>Math.abs(v-amount)<=Math.max(.03,Math.abs(amount)*.003));
+      if(!explicit.length||compatible.length){
+        return {quantity:uq[0],unit_price:up[0],amount,delta:0,rowDistance:0,verified:true,derived:true,derivedField:'amount',evidencePair:['quantity','unit_price']};
+      }
+    }
+    return {quantity:null,unit_price:null,amount:null,verified:false,derived:false};
   }
   function codeFromRow(row,columns){
     if(!columns.hasCode)return '';
@@ -212,5 +227,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.6-contained-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.7-conservative-derived-amount',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
