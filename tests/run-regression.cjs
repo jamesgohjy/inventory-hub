@@ -395,6 +395,42 @@ assert(aerospaceRawV2.promotionRows.some(x=>x.sku==='60100-SALES'&&/Abtus Active
 assert(!aerospaceRawV2.promotionRows.some(x=>/INSTALLATION/i.test(String(x.sku||''))),'Raw Aerospace installation row must remain excluded from promotion');
 assert(aerospaceRawV2.safeToPromote===true&&aerospaceRawV2.completeness.unexplainedRows===0,'Raw Aerospace evidence must be complete and safely promotable');
 
+const aerospaceThinLinesBoth=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'aero-mut-psm6',kind:'ocr',text:'Invoice No: ENH7-032365\nVSO17-021642/V17-035189/V I17- +2408/22-'},
+    {source:'aero-mut-psm11',kind:'ocr',text:'Invoice No:\nDATE\nP/O NO.\nSALESMAN\nTERMS'},
+    {source:'aero-mut-psm3',kind:'ocr',text:'Invoice No:\nRef. No. P/O NO. SALESMAN TERMS'}
+  ]})
+);
+assert(aerospaceThinLinesBoth.invoice_number===''&&aerospaceThinLinesBoth.decisions.invoice_number.reason==='single-source-ocr-unconfirmed','Crossed-line mutation must not auto-save ENH7-032365');
+
+const aerospaceCombinedHard=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'aero-hard-psm6',kind:'ocr',text:'Invoice No: -VING932365-\nVSO17-021642/V17-035189/V 1i7- +2488?'},
+    {source:'aero-hard-psm11',kind:'ocr',text:'Invoice No:\nSALESMAN\nTERMS'},
+    {source:'aero-hard-psm3',kind:'ocr',text:'Customer Code: R2002'}
+  ]})
+);
+assert(aerospaceCombinedHard.invoice_number===''&&aerospaceCombinedHard.decisions.invoice_number.reason==='single-source-ocr-unconfirmed','Combined damaged-header mutation must not auto-save VING932365');
+
+const aerospaceHomoglyphSingle=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'aero-5s-psm6',kind:'ocr',text:'Invoice No: VIN17-03236S\nDATE\n12/08/22'},
+    {source:'aero-5s-psm11',kind:'ocr',text:'Invoice No:\nDATE\n12/08/22'},
+    {source:'aero-5s-psm3',kind:'ocr',text:'Invoice No:'}
+  ]})
+);
+assert(aerospaceHomoglyphSingle.invoice_number===''&&aerospaceHomoglyphSingle.invoice_date==='2022-08-12','Single 5/S OCR guess must fail closed while a proven date may resolve');
+
+const aerospaceHomoglyphMajority=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'aero-5s-mix-psm6',kind:'ocr',text:'Invoice No: VIN17-03236S\nDATE 12/08/22'},
+    {source:'aero-5s-mix-psm11',kind:'ocr',text:'Invoice No: VIN17-032365\nDATE 12/08/22'},
+    {source:'aero-5s-mix-psm3',kind:'ocr',text:'Invoice No: VIN17-032365'}
+  ]})
+);
+assert(aerospaceHomoglyphMajority.invoice_number==='VIN17-032365','Two corroborating invoice OCR reads must beat one 5/S homoglyph misread');
+
 const multiTableLayout=[{page:1,width:595,height:842,yTolerance:3,rows:[
   {y:100,text:'Description Quantity Unit Price Amount',items:[
     {text:'Description',x:36,width:48},{text:'Quantity',x:252,width:36},{text:'Unit Price',x:341,width:42},{text:'Amount',x:523,width:34}
