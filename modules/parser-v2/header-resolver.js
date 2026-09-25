@@ -7,8 +7,8 @@
   const companySuffix=/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i;
   const rejectParty=/\b(?:SOLD\s+TO|BILL\s+TO|SHIP\s+TO|DELIVERED\s+TO|CUSTOMER|ATTN|ATTENTION)\b/i;
   const valueToken=/^[A-Z0-9][A-Z0-9._\/-]{2,}$/i;
-  const refLabel=/\b(?:REFERENCE(?:\s*(?:NO\.?|NUMBER|#))?|REF\.?\s*(?:NO\.?|NUMBER|#)?)\b/i;
-  const invoiceLabel=/\b(?:INVOICE\s*(?:NO\.?|NUMBER|#)|INV\s*(?:NO\.?|#))\b/i;
+  const refLabel=/(?:\bREFERENCE(?:\s*(?:NO\.?|NUMBER|#))?|\bREF\.?\s*(?:NO\.?|NUMBER|#)?)(?=\s*[:#.-]|\s|$)/i;
+  const invoiceLabel=/(?:\bINVOICE\s*(?:NO\.?|NUMBER|#)|\bINV\s*(?:NO\.?|#))(?=\s*[:#.-]|\s|$)/i;
   const dateLabel=/\b(?:INVOICE\s+DATE|DATE)\b/i;
 
   function parseDateStrict(v=''){
@@ -25,7 +25,7 @@
   }
   function lineValueAfterLabel(line,label){
     const m=String(line||'').match(new RegExp(label.source,'i'));if(!m)return '';
-    return clean(String(line).slice(m.index+m[0].length).replace(/^\s*[:#.-]?\s*/,''));
+    return clean(String(line).slice(m.index+m[0].length).replace(/^[\s:#.\-]+/,''));
   }
   function identifierFromTail(value=''){
     const tail=clean(value),m=tail.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})(?=\s|$)/i);
