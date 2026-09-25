@@ -7,10 +7,9 @@ window.__AV_DIRECT_RUNTIME_READY__=(async function InventoryHubDirectRuntime14s(
 // AV Inventory Hub V7.00 — Structured parser core + regression-safe migration
 const APP_VERSION='7.03.3.14y';
 const RELEASE_CURRENT_NOTES=[
-  'Restored equipment line-item recovery for previously supported multi-page invoice layouts.',
-  'Improved equipment verification and manual-line Confirm & Save handling.',
-  'Rebuilt PDF review controls with page-aware zoom, fit-width and drag panning.',
-  'Added AI disclaimers across login, dashboard, import and OCR progress screens.'
+  'Improved line-item price recovery using independent table geometry with fail-closed verification.',
+  'Legacy parser rows are replaced only when the independent equipment set is complete and conflict-free.',
+  'Service, accessory and warranty rows remain excluded from Inventory promotion.'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
@@ -19,7 +18,7 @@ const RELEASE_UPCOMING_NOTES=[
   'Improve automatic item matching and consolidation.',
   'Simplify review messages and workflow.'
 ];
-const RELEASE_UPCOMING_VERSION='7.03.3.14y';
+const RELEASE_UPCOMING_VERSION='7.03.3.14z';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const authUrlParams=()=>{
   const search=new URLSearchParams(location.search||'');
