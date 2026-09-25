@@ -6,6 +6,10 @@
   const compact=v=>clean(v).toUpperCase().replace(/\s+/g,'');
   const companySuffix=/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i;
   const rejectParty=/\b(?:SOLD\s+TO|BILL\s+TO|SHIP\s+TO|DELIVERED\s+TO|CUSTOMER|ATTN|ATTENTION)\b/i;
+  const rejectFinancialParty=/\b(?:ACCOUNT\s+NAME|BANK\s+ACCOUNT|PAYNOW|REMITTANCE|CHEQUE|BENEFICIARY|SWIFT\s+CODE|BRANCH\s+CODE)\b/i;
+  const INVOICE_PAGE_RE=/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)\b/i;
+  const NONINVOICE_PAGE_RE=/\b(?:DELIVERY\s+ORDER|PURCHASE\s+ORDER|QUOTATION|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?)\b/i;
+  const MONTHS=Object.freeze({JAN:1,JANUARY:1,FEB:2,FEBRUARY:2,MAR:3,MARCH:3,APR:4,APRIL:4,MAY:5,JUN:6,JUNE:6,JUL:7,JULY:7,AUG:8,AUGUST:8,SEP:9,SEPT:9,SEPTEMBER:9,OCT:10,OCTOBER:10,NOV:11,NOVEMBER:11,DEC:12,DECEMBER:12});
   const valueToken=/^[A-Z0-9][A-Z0-9._\/-]{2,}$/i;
   const refLabel=/(?:\bREFERENCE(?:\s*(?:NO\.?|NUMBER|#))?|\bREF\.?\s*(?:NO\.?|NUMBER|#)?)(?=\s*[:#.-]|\s|$)/i;
   const invoiceLabel=/(?:\bINVOICE\s*(?:NO\.?|NUMBER|#)|\bINV\s*(?:NO\.?|#))(?=\s*[:#.-]|\s|$)/i;
@@ -43,7 +47,7 @@
   }
   function geometryValues(evidence,labelRe,field){
     const out=[];
-    for(const src of evidence.sources||[])for(const pg of src.layout||[])for(const row of pg.rows||[]){
+    for(const src of evidence.sources||[])for(const pg of relevantLayoutPages(src))for(const row of pg.rows||[]){
       const items=row.items||[];if(!items.length)continue;
       const labelItems=items.filter(it=>labelRe.test(clean(it.text)));if(!labelItems.length&&!labelRe.test(row.text||''))continue;
       const lx=labelItems.length?Math.min(...labelItems.map(it=>Number(it.x)||0)):Math.min(...items.map(it=>Number(it.x)||0));
@@ -80,7 +84,7 @@
       for(const m of allText.matchAll(/[A-Z0-9._%+-]+@([a-z0-9][a-z0-9-]{2,})\.[a-z]{2,}(?:\.[a-z]{2,})?/gi))domainStems.add(String(m[1]||'').toUpperCase());
 
       const addLine=(line,kind,index)=>{
-        const v=clean(line);if(!v||rejectParty.test(v))return;
+        const v=clean(line);if(!v||rejectParty.test(v)||rejectFinancialParty.test(v))return;
         const labelled=v.match(/^\s*(?:SUPPLIER|VENDOR|FROM|ISSUED\s+BY)\s*[:#.-]?\s*(.+)$/i);
         if(labelled&&clean(labelled[1]))pushCandidate(out,'supplier_name',labelled[1],{source:src.id,kind,score:Math.max(100,145-index),evidence:v});
         if(companySuffix.test(v)){
@@ -91,14 +95,15 @@
         }
       };
       lines.forEach((line,i)=>addLine(line,src.kind,i));
-      for(const pg of src.layout||[])(pg.rows||[]).slice(0,60).forEach((row,i)=>addLine(row.text,'geometry',i));
+      for(const pg of relevantLayoutPages(src))(pg.rows||[]).slice(0,60).forEach((row,i)=>addLine(row.text,'geometry',i));
     }
     return out;
   }
   function invoiceCandidates(evidence){
     const out=[...geometryValues(evidence,invoiceLabel,'invoice_number')];
     for(const src of evidence.sources||[]){
-      const lines=clean(src.text).split(/\n+/).filter(Boolean);
+      const hasInvoiceLayout=(src.layout||[]).some(pg=>pageRole(pg)==='invoice');
+      const lines=hasInvoiceLayout?[]:clean(src.text).split(/\n+/).filter(Boolean);
       for(let i=0;i<lines.length;i++){
         const line=lines[i],v=lineValueAfterLabel(line,invoiceLabel);
         if(v)pushCandidate(out,'invoice_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
@@ -128,7 +133,8 @@
   function dateCandidates(evidence){
     const out=[...geometryValues(evidence,dateLabel,'invoice_date')];
     for(const src of evidence.sources||[]){
-      const lines=clean(src.text).split(/\n+/).filter(Boolean);
+      const hasInvoiceLayout=(src.layout||[]).some(pg=>pageRole(pg)==='invoice');
+      const lines=hasInvoiceLayout?[]:clean(src.text).split(/\n+/).filter(Boolean);
       for(let i=0;i<lines.length;i++){
         const line=lines[i];
         if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
@@ -200,5 +206,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.5-ocr-corroboration',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.6-mixed-document-headers',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
