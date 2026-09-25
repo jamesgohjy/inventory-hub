@@ -25,6 +25,9 @@ declare
   v_actor_role text := '';
   v_app_confirmed boolean := false;
   v_requested_sku text := '';
+  v_target_sku_key text := '';
+  v_source_sku_key text := '';
+  v_source_text_key text := '';
 
   v_expected_total_purchased numeric := 0;
   v_expected_total_adjusted numeric := 0;
@@ -110,6 +113,21 @@ begin
      regexp_replace(upper(v_target.sku),'[^A-Z0-9]','','g') then
     raise exception using errcode='22023',
       message='Target SKU no longer matches the requested SKU identity. Reload Inventory and try again.';
+  end if;
+
+  v_target_sku_key := regexp_replace(upper(coalesce(v_target.sku,'')),'[^A-Z0-9]','','g');
+  v_source_sku_key := regexp_replace(upper(coalesce(v_source.sku,'')),'[^A-Z0-9]','','g');
+  v_source_text_key := regexp_replace(upper(coalesce(v_source.item_name,'')||' '||coalesce(v_source.description,'')),'[^A-Z0-9]','','g');
+
+  -- A no-SKU legacy record may be merged only when its own stored item text
+  -- explicitly contains the surviving SKU/model. A conflicting nonblank SKU is blocked.
+  if v_source_sku_key<>'' and v_source_sku_key<>v_target_sku_key then
+    raise exception using errcode='22023',
+      message='Source SKU conflicts with the surviving SKU identity. Merge was blocked.';
+  end if;
+  if v_source_sku_key='' and (v_target_sku_key='' or position(v_target_sku_key in v_source_text_key)=0) then
+    raise exception using errcode='22023',
+      message='No-SKU source does not contain the surviving SKU/model in its item evidence. Merge was blocked.';
   end if;
 
   -- Refuse an FK shape this generic routine cannot safely rewrite.
