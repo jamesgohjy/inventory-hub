@@ -121,15 +121,22 @@
       const anchorInfo=anchors[ai],group=body.slice(previousAnchor+1,anchorInfo.index+1),anchor=body[anchorInfo.index],economics=anchorInfo.econ;
       previousAnchor=anchorInfo.index;
 
+      let sku='';
+      // Prefer a printed code from the same segment, nearest the economic anchor.
+      for(let gi=group.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(group[gi],table.columns);
       // If the economic anchor itself already contains the product description,
       // prefer it. This prevents specification/warranty text belonging to the previous priced row
       // from being pulled forward into the next product when OCR emits continuation lines after price.
       const anchorDescription=clean(cellText(anchor,table.columns.boundaries.description));
-      const description=(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))
+      const anchorCodeText=table.columns.hasCode?clean(cellText(anchor,table.columns.boundaries.code)):'';
+      let codeSpill='';
+      if(sku&&anchorCodeText&&anchorCodeText.toUpperCase().startsWith(String(sku).toUpperCase())){
+        codeSpill=clean(anchorCodeText.slice(String(sku).length));
+        if(codeSpill&&(/\d/.test(codeSpill)||codeSpill.length>60))codeSpill='';
+      }
+      const baseDescription=(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))
         ?anchorDescription:descriptionFromGroup(group,table.columns);
-      let sku='';
-      // Prefer a printed code from the same segment, nearest the economic anchor.
-      for(let gi=group.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(group[gi],table.columns);
+      const description=clean([codeSpill,baseDescription].filter(Boolean).join(' '));
       const raw=clean(group.map(r=>r.text).join(' '));
       if(!sku&&!description&&!/[0-9]/.test(raw))continue;
 
@@ -158,5 +165,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.3-anchor-description',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.4-code-spill-description',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
