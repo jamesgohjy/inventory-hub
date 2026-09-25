@@ -101,19 +101,22 @@
     return clean(v).replace(/^\d+(?:\.\d+)?\s+/, '').trim();
   }
   function modelEvidenceFromRows(rows=[],columns={}){
-    let printed='',replacement='';
+    let printed='',replacement='',labelSeen=false;
     for(const row of rows||[]){
       const t=clean(cellText(row,columns.boundaries?.description)||row.text);
       const m=t.match(/\bMODEL\s*:\s*(.+)$/i);
-      if(m&&!printed){
-        const tail=clean(m[1]),tokens=tail.match(/[A-Z0-9][A-Z0-9+._\/-]{2,}/gi)||[];
-        const ids=tokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
-        printed=ids.length?ids[ids.length-1]:'';
+      if(m){
+        labelSeen=true;
+        if(!printed){
+          const tail=clean(m[1]),tokens=tail.match(/[A-Z0-9][A-Z0-9+._\/-]{2,}/gi)||[];
+          const ids=tokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+          printed=ids.length?ids[ids.length-1]:'';
+        }
       }
       const r=t.match(/\bREPLACED\s+WITH\s+([A-Z0-9][A-Z0-9+._\/-]{2,})\b/i);
-      if(r&&/[A-Za-z]/.test(r[1])&&/\d/.test(r[1]))replacement=r[1];
+      if(r){labelSeen=true;if(/[A-Za-z]/.test(r[1])&&/\d/.test(r[1]))replacement=r[1];}
     }
-    return {printed,replacement,selected:replacement||printed,replacementExplicit:!!replacement};
+    return {printed,replacement,selected:replacement||printed,replacementExplicit:!!replacement,labelSeen};
   }
   function continuationDescription(rows=[],columns={}){
     const parts=[];
@@ -171,10 +174,12 @@
       const preDescription=stripItemOrdinal(descriptionFromGroup(preGroup,table.columns));
       let baseDescription='';
       if(genericAnchorDescription(anchorDescription)&&postDescription)baseDescription=postDescription;
-      else if(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))baseDescription=anchorDescription;
+      else if(anchorDescription&&!META_RE.test(anchor.text||''))baseDescription=anchorDescription;
       else baseDescription=postDescription||preDescription;
 
-      const modelEvidence=modelEvidenceFromRows([...postGroup,...preGroup],table.columns);
+      const postModelEvidence=modelEvidenceFromRows(postGroup,table.columns);
+      const preModelEvidence=modelEvidenceFromRows(preGroup,table.columns);
+      const modelEvidence=postModelEvidence.labelSeen?postModelEvidence:preModelEvidence;
       if(!sku&&modelEvidence.selected)sku=modelEvidence.selected;
       const description=clean([codeSpill,baseDescription].filter(Boolean).join(' '));
       const evidenceGroup=[...new Set([...preGroup,...postGroup])];
@@ -207,5 +212,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.5-post-anchor-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.6-contained-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
