@@ -144,6 +144,12 @@
 
 @media(max-width:1050px){#auditView .audit-toolbar{grid-template-columns:1fr 1fr}}
 @media(max-width:650px){#auditView .audit-toolbar{grid-template-columns:1fr}}
+
+/* Option 3 — persistent AI disclaimer across all main views */
+.ai-dashboard-disclaimer{display:flex;align-items:center;gap:9px;width:fit-content;max-width:calc(100% - 32px);margin:10px 16px 4px;padding:9px 18px;border:1px solid #d8b4fe;border-radius:999px;background:linear-gradient(90deg,#faf5ff 0%,#f3e8ff 52%,#f5f3ff 100%);box-shadow:0 2px 8px rgba(124,58,237,.08);color:#6d28d9;font-size:12.5px;line-height:1.35}
+.ai-dashboard-disclaimer svg{width:16px;height:16px;flex:0 0 16px;color:#7c3aed}
+.ai-dashboard-disclaimer strong{color:#6d28d9;font-weight:800}
+@media(max-width:760px){.ai-dashboard-disclaimer{width:auto;max-width:none;margin:8px 10px 4px;border-radius:14px;padding:8px 12px;font-size:11.5px;align-items:flex-start}}
 </style>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
@@ -217,6 +223,10 @@
     </aside>
     <main class="main">
       <header class="topbar topbar-user-only"><div class="top-actions"><button id="feedbackBellBtn" class="feedback-bell hidden" type="button" aria-label="Feedback notifications" title="Feedback notifications"><i data-lucide="bell"></i><span id="feedbackBadge" class="feedback-badge hidden">0</span></button><button id="feedbackOpenBtn" class="feedback-open-btn hidden" type="button"><i data-lucide="message-square-plus"></i> Feedback</button><div class="user-menu-wrap"><button id="userMenuBtn" class="user-chip user-chip-btn" type="button" aria-expanded="false"><div id="userAvatar" class="avatar">AV</div><div class="user-copy"><strong id="userName">Team Member</strong><span id="userEmail">AV Inventory</span><small id="userRole" class="user-role">Viewer</small></div><i data-lucide="chevron-down"></i></button><div id="userMenu" class="user-menu hidden"><button id="accountBtn" type="button"><i data-lucide="user-round"></i> Account</button><button id="manageRolesBtn" class="hidden" type="button"><i data-lucide="users-round"></i> Team roles</button><button id="userSignOutBtn" type="button"><i data-lucide="log-out"></i> Sign out</button></div></div></div></header>
+      <div id="aiDashboardDisclaimer" class="ai-dashboard-disclaimer" role="note" aria-label="AI content disclaimer">
+        <i data-lucide="sparkles" aria-hidden="true"></i>
+        <span><strong>Disclaimer:</strong> Content and visualizations within this dashboard are created using AI tools and are provided for informational purposes.</span>
+      </div>
       <div class="page-header"><div><h1 id="pageTitle">Dashboard</h1><p id="pageSubtitle">Overview of purchased and current inventory.</p></div></div>
       <section id="dashboardView" class="view active dashboard-view">
         <section class="hero"><div class="hero-content"><div class="eyebrow">AV INVENTORY HUB</div><h1>Manage Your<br>Assets with Confidence</h1><p>Track. Organize. Keep your AV operations moving.</p><div class="hero-actions"><button id="importBtn" class="hero-primary"><i data-lucide="cloud-upload"></i> Import Invoice</button><button class="hero-secondary" data-go="inventory">View Inventory <i data-lucide="arrow-right"></i></button></div></div><div class="hero-visual hero-photo" aria-hidden="true"><img class="hero-projector-img" src="./hero-av-equipment-wide.png?v=6840" alt="" /></div></section>
