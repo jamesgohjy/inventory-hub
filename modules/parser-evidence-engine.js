@@ -174,7 +174,7 @@
     const amountSum=round2(accepted.reduce((n,r)=>n+(finite(r.amount)?Number(r.amount):0),0));
     const subtotalDelta=subtotal===null?null:round2(Math.abs(amountSum-subtotal));
     const subtotalOk=subtotal===null||subtotalDelta<=Math.max(.06,Math.abs(subtotal)*.002);
-    return {accepted,review,subtotal,amountSum,subtotalDelta,subtotalOk,assessments,duplicateRowsRemoved:consolidation.removed.length};
+    return {rows,accepted,review,subtotal,amountSum,subtotalDelta,subtotalOk,assessments,duplicateRowsRemoved:consolidation.removed.length};
   }
 
   function runPipeline(candidates=[],options={}){
@@ -187,8 +187,41 @@
     if(!reconciliation.subtotalOk)review.push({reason:'subtotal-mismatch',delta:reconciliation.subtotalDelta});
     if(confidence<threshold)review.push({reason:'low-confidence',confidence,threshold});
     const status=review.length?'review':'accepted';
-    const items=status==='accepted'?reconciliation.accepted:[];
+    // Review is a presentation/safety state, not a data-destruction state.
+    // Keep evidence-backed rows visible so Level 3 can correct/approve them.
+    const rowReviewReasons=new Map();
+    for(const entry of reconciliation.review||[]){
+      if(!Number.isInteger(entry?.index))continue;
+      if(!rowReviewReasons.has(entry.index))rowReviewReasons.set(entry.index,[]);
+      rowReviewReasons.get(entry.index).push(entry.reason||'review-required');
+    }
+    const globalReviewReasons=review.filter(x=>!Number.isInteger(x?.index)).map(x=>x.reason||'review-required');
+    const items=status==='accepted'
+      ? reconciliation.accepted
+      : (reconciliation.rows||[]).map((row,index)=>({
+          ...row,
+          humanReviewRequired:true,
+          needsReview:true,
+          parserReviewRequired:true,
+          parserReviewReasons:[...(rowReviewReasons.get(index)||[]),...globalReviewReasons]
+        }));
     return {ok:status==='accepted',status,items,review,ranking,reconciliation,confidence,winnerOrigin:winner.origin||'unknown'};
+  }
+
+  function runReviewPreservationRegressionCheck(){
+    const failures=[],cases=[];
+    const run=(name,candidates,options,expect)=>{
+      const result=runPipeline(candidates,options);
+      const actual={status:result.status,itemCount:(result.items||[]).length,reviewRequired:!!result.items?.[0]?.humanReviewRequired};
+      cases.push({name,actual});
+      if(actual.status!==expect.status)failures.push(name+': expected status '+expect.status+', got '+actual.status);
+      if(actual.itemCount!==expect.itemCount)failures.push(name+': expected '+expect.itemCount+' visible item(s), got '+actual.itemCount);
+      if(expect.reviewRequired!==undefined&&actual.reviewRequired!==expect.reviewRequired)failures.push(name+': review flag mismatch');
+    };
+    run('accepted-row',[{origin:'self-test',items:[{sku:'TEST-100',item_name:'Test projector',quantity:1,unit_price:100,amount:100}]}],{subtotal:100,confidenceThreshold:0},{status:'accepted',itemCount:1,reviewRequired:false});
+    run('level3-row-preserved',[{origin:'self-test',items:[{sku:'TEST-200',item_name:'Test controller',quantity:1,unit_price:200,amount:200,humanReviewRequired:true}]}],{subtotal:200,confidenceThreshold:0},{status:'review',itemCount:1,reviewRequired:true});
+    run('low-confidence-row-preserved',[{origin:'self-test',items:[{sku:'TEST-300',item_name:'Test display',quantity:1,unit_price:300,amount:300}]}],{subtotal:300,confidenceThreshold:1},{status:'review',itemCount:1,reviewRequired:true});
+    return {ok:failures.length===0,failures,cases};
   }
 
   function validateRows(rows=[]){
@@ -210,6 +243,7 @@
     rankCandidateSets,
     reconcileCandidate,
     runPipeline,
+    runReviewPreservationRegressionCheck,
     validateRows,
     consolidateRows,
     duplicateRowPair,
