@@ -655,6 +655,7 @@ function friendlyError(err,context='operation'){
   if(raw.includes('network')||raw.includes('fetch'))return 'Connection problem. Check your internet connection and try again.';
   if(context==='import'&&(raw.includes('database migration is required')||raw.includes('confirm_and_save_invoice_v703314v')||raw.includes('pgrst202')||raw.includes('42883')))return 'Confirm & Save database function is not available. The v7.03.3.14v database migration must be applied before this invoice can be saved.';
   if(context==='import'&&raw.includes('canonical parser review must be resolved'))return 'Level 3 review is still unresolved. Verify the highlighted invoice values, approve the review, then save again.';
+  if(context==='import'&&raw.includes('possible duplicate'))return 'Possible duplicate invoice detected. Review the duplicate warning and choose View existing or Continue anyway.';
   if(context==='import'){
     if(raw.includes('canonical parser')||raw.includes('prepare'))return 'Invoice review validation could not complete. Re-check the highlighted fields and try again.';
     if(raw.includes('storage')||raw.includes('object')&&raw.includes('exist'))return 'The PDF could not be prepared in document storage. No inventory changes were committed.';
@@ -2237,27 +2238,24 @@ function prepareInventoryLinesForSave(items=[]){
 }
 function recoverSupplierFromEvidence14x(doc={},sources=[]){
   if(String(doc.supplier_name||'').trim())return doc;
+  const resolver=window.InventoryHubParserEvidenceEngine?.extractSupplierHeaderCandidate;
   const candidates=[];
-  const company=/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i;
-  const reject=/\b(?:SOLD\s+TO|BILL\s+TO|SHIP\s+TO|DELIVERED\s+TO|CUSTOMER|ATTN|ATTENTION|ADDRESS|GST\s+REG|CO\.\s*REG|TAX\s+INVOICE|INVOICE\s+NO|PAGE\s+\d+)\b/i;
-  const push=(value,sourceRank=0,lineRank=0)=>{
-    let x=String(value||'').replace(/\s+/g,' ').trim().replace(/^[|,:;\-\s]+|[|,:;\-\s]+$/g,'');
-    if(!x||x.length<5||x.length>120||!company.test(x)||reject.test(x))return;
-    const upper=(x.match(/[A-Z]/g)||[]).length,lower=(x.match(/[a-z]/g)||[]).length;
-    const score=120-sourceRank*8-lineRank+Math.min(24,upper)-Math.min(10,lower/3);
-    candidates.push({value:x,score});
+  const add=(text,sourceRank=0,kind='text')=>{
+    const hit=typeof resolver==='function'?resolver(String(text||'')):null;
+    if(hit?.value)candidates.push({...hit,score:Number(hit.score||0)-sourceRank*6+(kind==='layout'?4:0)});
   };
   for(let si=0;si<(sources||[]).length;si++){
-    const src=sources[si]||{},lines=normalizePdfText(src.text||'').split('\n').map(x=>x.trim()).filter(Boolean);
-    lines.slice(0,28).forEach((line,i)=>push(line,si,i));
+    const src=sources[si]||{};
+    add(src.text||'',si,'text');
     for(const page of src.layout||[]){
       const rows=Array.isArray(page?.rows)?page.rows:[];
-      rows.slice(0,18).forEach((row,i)=>push(row?.text||'',si,i));
+      add(rows.slice(0,24).map(r=>String(r?.text||'')).filter(Boolean).join('\n'),si,'layout');
     }
   }
   if(candidates.length){
     candidates.sort((a,b)=>b.score-a.score);
     doc.supplier_name=canonicalSupplier(candidates[0].value);
+    doc.supplierRecovery={method:'header-evidence',score:candidates[0].score,line:candidates[0].line||null};
   }
   return doc;
 }
@@ -2334,11 +2332,22 @@ function applyParsedReviewToForm(){
   if($('rawText'))$('rawText').textContent=state.parsed?.raw||state.parsed?.rawText||'';
   renderParsedItems();
 }
-async function refreshDuplicateWarning(){
-  const d=state.parsed?.doc||{};if(!$('duplicateWarning'))return;
-  const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;state.allowDuplicate=false;
-  $('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';
-  if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}
+function renderDuplicateImportWarning14x(dupe,{focus=false}={}){
+  const box=$('duplicateWarning');state.possibleDuplicate=dupe||null;if(!box)return;
+  box.classList.toggle('hidden',!dupe);
+  if(!dupe){box.innerHTML='';return;}
+  box.innerHTML=`<strong>Possible duplicate invoice detected.</strong> An existing purchase has the same Supplier, Invoice Number and Invoice Date. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`;
+  const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');
+  if(v)v.onclick=()=>showView('documents');
+  if(c)c.onclick=()=>{state.allowDuplicate=true;box.innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue for this invoice.';toast('Duplicate override enabled for this import only.');};
+  if(focus){box.setAttribute('tabindex','-1');box.scrollIntoView?.({behavior:'smooth',block:'center'});setTimeout(()=>box.focus?.({preventScroll:true}),80);}
+}
+async function refreshDuplicateWarning({resetOverride=true,focus=false}={}){
+  const d=state.parsed?.doc||{};if(!$('duplicateWarning'))return null;
+  if(resetOverride)state.allowDuplicate=false;
+  const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;
+  renderDuplicateImportWarning14x(dupe,{focus});
+  return dupe;
 }
 function v703314sHeaderAlignedLayoutItems(sourceText=''){
   return window.InventoryHubParserTable.parseHeaderAlignedLayout({
@@ -2557,10 +2566,32 @@ async function forceOcrRecovery(file){
   const recovered=modes.map(m=>{const text=m.texts.join('\n\f\n').trim();return{source:m.key,label:m.label,text,layout:m.layouts,score:ocrTextQuality(text)+m.layouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0)};}).filter(x=>x.text);
   const headerRecovered=[];
   try{
-    const existingHeader=recovered.some(x=>globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},x.text)?.invoice_number);
-    if(!existingHeader&&canvases[0]?.c){
-      const pageCanvas=canvases[0].c,specs=[{key:'recovery-header-right',x:.52,y:0,w:.48,h:.30},{key:'recovery-header-top',x:0,y:0,w:1,h:.36}],hw=await T.createWorker('eng');
-      try{outer:for(const spec of specs){const sx=Math.round(pageCanvas.width*spec.x),sy=Math.round(pageCanvas.height*spec.y),sw=Math.max(1,Math.round(pageCanvas.width*spec.w)),sh=Math.max(1,Math.round(pageCanvas.height*spec.h)),c=document.createElement('canvas');c.width=sw;c.height=sh;c.getContext('2d',{willReadFrequently:true}).drawImage(pageCanvas,sx,sy,sw,sh,0,0,sw,sh);for(const psm of [T.PSM?.AUTO??'3',T.PSM?.SINGLE_BLOCK??'6']){await hw.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1',user_defined_dpi:'240'});const rr=await hw.recognize(c,{},{text:true}),tx=String(rr.data?.text||'').trim(),hit=globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},tx);if(hit?.invoice_number){headerRecovered.push({source:spec.key,label:'HEADER',text:tx,layout:[],score:1200+ocrTextQuality(tx)});break outer;}}}}finally{await hw.terminate();}
+    const supplierResolver=window.InventoryHubParserEvidenceEngine?.extractSupplierHeaderCandidate;
+    const existingInvoice=recovered.some(x=>globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},x.text)?.invoice_number);
+    const existingSupplier=recovered.some(x=>typeof supplierResolver==='function'&&supplierResolver(x.text)?.value);
+    if((!existingInvoice||!existingSupplier)&&canvases[0]?.c){
+      const pageCanvas=canvases[0].c,specs=[
+        {key:'recovery-header-left',x:0,y:0,w:.68,h:.30},
+        {key:'recovery-header-top',x:0,y:0,w:1,h:.36},
+        {key:'recovery-header-right',x:.45,y:0,w:.55,h:.38}
+      ],hw=await T.createWorker('eng');
+      let gotInvoice=existingInvoice,gotSupplier=existingSupplier;
+      try{outer:for(const spec of specs){
+        const sx=Math.round(pageCanvas.width*spec.x),sy=Math.round(pageCanvas.height*spec.y),sw=Math.max(1,Math.round(pageCanvas.width*spec.w)),sh=Math.max(1,Math.round(pageCanvas.height*spec.h)),c=document.createElement('canvas');
+        c.width=sw;c.height=sh;c.getContext('2d',{willReadFrequently:true}).drawImage(pageCanvas,sx,sy,sw,sh,0,0,sw,sh);
+        for(const psm of [T.PSM?.SPARSE_TEXT??'11',T.PSM?.AUTO??'3',T.PSM?.SINGLE_BLOCK??'6']){
+          await hw.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
+          const rr=await hw.recognize(c,{},{text:true}),tx=String(rr.data?.text||'').trim();
+          if(!tx)continue;
+          const invoiceHit=globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},tx),supplierHit=typeof supplierResolver==='function'?supplierResolver(tx):null;
+          const useful=(!gotInvoice&&!!invoiceHit?.invoice_number)||(!gotSupplier&&!!supplierHit?.value);
+          if(useful){
+            headerRecovered.push({source:spec.key,label:'HEADER',text:tx,layout:[],score:1400+ocrTextQuality(tx)});
+            gotInvoice=gotInvoice||!!invoiceHit?.invoice_number;gotSupplier=gotSupplier||!!supplierHit?.value;
+          }
+          if(gotInvoice&&gotSupplier)break outer;
+        }
+      }}finally{await hw.terminate();}
     }
   }catch(headerErr){console.warn('Automatic targeted invoice-header OCR could not complete.',headerErr);}
   const allRecovered=[...recovered,...headerRecovered];state.ocrCandidates=[...(state.ocrCandidates||[]),...allRecovered].sort((a,b)=>b.score-a.score);return allRecovered.length>0;
@@ -2696,7 +2727,7 @@ function setPdfZoom(value){
   else state.pdfPreviewZoom=Math.max(.5,Math.min(3,Number(value)||1));
   updatePdfPreview().catch(err=>console.error('PDF preview zoom failed',err));
 }
-async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importHumanReviewApproved=false;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);if(v662FileKind(file)==='pdf'&&/AVs+MEDIA/i.test(text)){try{await addAvMediaTargetedOcr(file);}catch(targetErr){console.warn('AV Media targeted OCR skipped',targetErr);}}await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed=window.InventoryHubCanonicalParser.fromPipeline(state.parsed,{raw:state.parsed.raw||state.parsed.rawText||text});applyParsedReviewToForm();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
+async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importHumanReviewApproved=false;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed=window.InventoryHubCanonicalParser.fromPipeline(state.parsed,{raw:state.parsed.raw||state.parsed.rawText||text});applyParsedReviewToForm();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userRole'))$('userRole').textContent=currentRole().replace(/^./,c=>c.toUpperCase());if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();applyRoleUI();}
 function applyRoleUI(){const editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();for(const id of ['sidebarImportBtn','importBtn','addMaintenanceBtn'])$(id)?.classList.toggle('role-hidden',!editable);$('manageRolesBtn')?.classList.toggle('hidden',!admin);document.body.dataset.role=currentRole();}
@@ -3131,7 +3162,17 @@ $('parsedItems').addEventListener('input',e=>{
   const calculated=window.InventoryHubCanonicalParser.calculateAmount(qty.value,price.value);if(calculated===null)return;
   amount.value=calculated.toFixed(2);amount.dataset.autoCalculated='true';
 },true);
-$('saveImportBtn').onclick=async()=>{if(state.importSaving)return;if(CFG.mode==='supabase'&&state.session?.user?.id&&state.db?.profileForUser){try{const freshProfile=await state.db.profileForUser(state.session.user.id);if(freshProfile){state.profile=freshProfile;setUserIdentity(state.session);}}catch(roleErr){console.warn('Could not refresh role before import save',roleErr);}}if(!requireEdit())return;collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{state.importSaving=true;const saveBtn=$('saveImportBtn');saveBtn.disabled=true;saveBtn.textContent='Saving…';setProgress(96,'Saving invoice and inventory…');d.invoice_date=d.invoice_date||null;const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date);if(dupe&&!state.allowDuplicate)throw new Error('Possible duplicate detected. Choose View existing or Continue anyway before saving.');const allSerials=state.parsed.items.flatMap(x=>parseSerials(x.serials));const repeated=allSerials.filter((x,i,a)=>a.findIndex(y=>norm(y)===norm(x))!==i);if(repeated.length)throw new Error('Duplicate serial number in this invoice: '+repeated[0]);if(state.db.duplicateSerials){const existing=await state.db.duplicateSerials(allSerials.join(','));if(existing.length)throw new Error('Serial number already exists in inventory: '+existing[0]);}if($('importSteps'))$('importSteps').dataset.step='save';const namedFile=await autoNamedPdf(state.file,d);await state.db.importPurchase({file_name:namedFile.name,mime_type:namedFile.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;state.lastImportFilename=namedFile.name;cleanupPdfPreview();$('importDialog').close();state.file=null;state.parsed=null;state.allowDuplicate=false;state.importHumanReviewApproved=false;await reload();if($('documentSearch'))$('documentSearch').value='';renderDocuments();showView('inventory');toast(`Invoice saved. ${state.lastImportCount||0} inventory item${state.lastImportCount===1?'':'s'} updated. PDF: ${state.lastImportFilename||'saved'}.`);}catch(err){console.error(err);toast(friendlyError(err,'import'));}finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}};
+let duplicateHeaderRefreshTimer14x=null;
+for(const id of ['pSupplier','pInvoice','pDate'])$(id)?.addEventListener('input',()=>{
+  state.importHumanReviewApproved=false;state.allowDuplicate=false;
+  clearTimeout(duplicateHeaderRefreshTimer14x);
+  duplicateHeaderRefreshTimer14x=setTimeout(()=>{
+    try{collectParsed();refreshDuplicateWarning({resetOverride:true,focus:false}).catch(err=>console.warn('Duplicate warning refresh failed',err));}
+    catch(err){console.warn('Header review capture failed',err);}
+  },220);
+},true);
+
+$('saveImportBtn').onclick=async()=>{if(state.importSaving)return;if(CFG.mode==='supabase'&&state.session?.user?.id&&state.db?.profileForUser){try{const freshProfile=await state.db.profileForUser(state.session.user.id);if(freshProfile){state.profile=freshProfile;setUserIdentity(state.session);}}catch(roleErr){console.warn('Could not refresh role before import save',roleErr);}}if(!requireEdit())return;collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{state.importSaving=true;const saveBtn=$('saveImportBtn');saveBtn.disabled=true;saveBtn.textContent='Saving…';setProgress(96,'Saving invoice and inventory…');d.invoice_date=d.invoice_date||null;const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date);if(dupe&&!state.allowDuplicate){renderDuplicateImportWarning14x(dupe,{focus:true});toast('Possible duplicate invoice detected. Choose View existing or Continue anyway before saving.');return;}const allSerials=state.parsed.items.flatMap(x=>parseSerials(x.serials));const repeated=allSerials.filter((x,i,a)=>a.findIndex(y=>norm(y)===norm(x))!==i);if(repeated.length)throw new Error('Duplicate serial number in this invoice: '+repeated[0]);if(state.db.duplicateSerials){const existing=await state.db.duplicateSerials(allSerials.join(','));if(existing.length)throw new Error('Serial number already exists in inventory: '+existing[0]);}if($('importSteps'))$('importSteps').dataset.step='save';const namedFile=await autoNamedPdf(state.file,d);await state.db.importPurchase({file_name:namedFile.name,mime_type:namedFile.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;state.lastImportFilename=namedFile.name;cleanupPdfPreview();$('importDialog').close();state.file=null;state.parsed=null;state.allowDuplicate=false;state.importHumanReviewApproved=false;await reload();if($('documentSearch'))$('documentSearch').value='';renderDocuments();showView('inventory');toast(`Invoice saved. ${state.lastImportCount||0} inventory item${state.lastImportCount===1?'':'s'} updated. PDF: ${state.lastImportFilename||'saved'}.`);}catch(err){console.error(err);toast(friendlyError(err,'import'));}finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}};
 
 
 // V7.03 invoice-only + equipment-only + three-layer verification save gate.
