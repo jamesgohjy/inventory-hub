@@ -107,6 +107,10 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
 assert(runtime.includes('independent-geometry-complete')&&runtime.includes('v2Promotion:promotion')&&!runtime.includes('Parser V2 runs in shadow mode only.'),'Production finalizer must use fail-closed Parser V2 evidence promotion instead of shadow-only diagnostics');
+assert(runtime.includes('v2FullDocumentEvidence'),'Production runtime must preserve a V2-only full-document evidence channel');
+assert(runtime.includes("source:'native-pdf-full'")&&runtime.includes("source:'ocr-full-' + m.key")||runtime.includes("source:'ocr-full-'+m.key"),'Production runtime must preserve native and OCR full-document evidence before invoice-only filtering');
+assert(runtime.includes('const v2Extra=Array.isArray(state.v2FullDocumentEvidence)')&&runtime.includes('sources:v2Sources'),'Parser V2 must receive full-document evidence in addition to invoice-only legacy sources');
+assert(runtime.includes("const arr=[{source:'chosen'")&&runtime.includes("for(const c of state.ocrCandidates||[])arr.push"),'Legacy evidence source builder must remain invoice-only and separate from V2 support evidence');
 assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 evidence-promotion gate failed'),'App bootstrap must load and gate Parser V2 before runtime');
 assert(app.includes('modules/parser-v2/table-detector.js')&&app.includes('modules/parser-v2/row-builder.js'),'App bootstrap must load independent Parser V2 table/row modules');
 assert(parserV2Engine.includes("mode:'evidence-first-independent-table'")&&parserV2Engine.includes('T.detectTables(evidence)')&&parserV2Engine.includes('B.buildRows(evidence,tables)')&&parserV2Engine.includes('assessPromotion'),'Parser V2 engine must derive promotion from its own geometry pipeline');
