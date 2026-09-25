@@ -2441,7 +2441,20 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
       if(!String(src?.text||'').trim()&&!Array.isArray(src?.layout))return false;
       if(v2Seen.has(key))return false;v2Seen.add(key);return true;
     });
+    const v2EvidenceText=v2Sources.flatMap(src=>[
+      String(src?.text||''),
+      ...((src?.layout||[]).flatMap(pg=>(pg?.rows||[]).map(r=>String(r?.text||''))))
+    ]).filter(Boolean).join('\n');
     const v2=window.InventoryHubParserV2?.analyze?.({sources:v2Sources,raw:evidence,candidates,legacyResult:normalized});
+    const v2ItemKey=row=>{
+      const sku=String(row?.sku||row?.model||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+      if(sku)return 'sku:'+sku;
+      return 'desc:'+norm(row?.item_name||row?.description||'');
+    };
+    const v2EconomicsOk=row=>{
+      const q=Number(row?.quantity),p=Number(row?.unit_price),a=Number(row?.amount);
+      return q>0&&Number.isFinite(p)&&Number.isFinite(a)&&Math.abs(q*p-a)<=Math.max(.03,Math.abs(a)*.003);
+    };
     let promotion={applied:false,reason:'not-required'};
     if(v2?.safeToPromote&&v2.promotionNeeded&&Array.isArray(v2.promotionRows)&&v2.promotionRows.length){
       const previousItems=Array.isArray(normalized.items)?normalized.items:[],skuKey=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
@@ -2466,8 +2479,8 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
         row.parserV2Promoted=true;row.layoutEvidenceVerified=true;row.economicEvidenceVerified=true;
         return row;
       });
-      promoted=sanitizeParsedInventoryItems(inventoryOnlyItems(promoted),evidence);
-      promoted=v677ValidateInvoiceLines(promoted,evidence);
+      promoted=sanitizeParsedInventoryItems(inventoryOnlyItems(promoted),v2EvidenceText||evidence);
+      promoted=v677ValidateInvoiceLines(promoted,v2EvidenceText||evidence);
       const economicsPreserved=promoted.length===v2.promotionRows.length&&promoted.every((row,i)=>{
         const src=v2.promotionRows[i],q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
         return Number.isFinite(q)&&Number.isFinite(p)&&Number.isFinite(a)&&Math.abs(q*p-a)<=Math.max(.03,Math.abs(a)*.003)&&
@@ -2481,8 +2494,38 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
           promotion={applied:true,reason:'independent-geometry-complete',rowCount:promoted.length,excludedServiceCount:normalized.excludedServiceCount};
         }else promotion={applied:false,reason:'promoted-set-classified-noninventory'};
       }else promotion={applied:false,reason:'post-normalization-economics-changed'};
-    }else if(v2?.promotionDecision?.blockers?.length){
-      promotion={applied:false,reason:'promotion-blocked',blockers:v2.promotionDecision.blockers};
+    }else if(v2){
+      // Global V2 completeness may be blocked by one difficult row. Do not hide independently
+      // verified equipment behind the legacy fallback: surface those rows in Review only.
+      const verifiedReviewRows=[];
+      for(const entry of v2.rowLedger||[]){
+        if(entry?.disposition!=='equipment')continue;
+        const row={...(entry.row||{})};
+        if(!v2EconomicsOk(row)||row.layoutEvidenceVerified!==true||row.economicEvidenceVerified!==true)continue;
+        const variants=(entry.variants||[]).map(v=>v?.row||{}).filter(v2EconomicsOk);
+        const sigs=new Set(variants.map(v=>[Number(v.quantity),Number(v.unit_price).toFixed(2),Number(v.amount).toFixed(2)].join('|')));
+        if(sigs.size>1)continue;
+        verifiedReviewRows.push({...row,parserV2VerifiedReview:true,humanReviewRequired:true,needsReview:true,
+          parserReviewRequired:true,v7033ReviewFields:{...(row.v7033ReviewFields||{}),parser_v2:'Global invoice completeness is unresolved; this individual equipment row is independently verified.'}});
+      }
+      let partial=sanitizeParsedInventoryItems(inventoryOnlyItems(verifiedReviewRows),v2EvidenceText||evidence);
+      partial=v677ValidateInvoiceLines(partial,v2EvidenceText||evidence).filter(v2EconomicsOk);
+      if(partial.length){
+        const merged=[...(normalized.items||[])];
+        for(const row of partial){
+          const key=v2ItemKey(row),idx=merged.findIndex(x=>v2ItemKey(x)===key);
+          if(idx>=0){
+            const prior=merged[idx]||{};
+            merged[idx]={...prior,...row,serials:String(prior.serials||row.serials||''),humanReviewRequired:true,needsReview:true,parserReviewRequired:true};
+          }else merged.push(row);
+        }
+        normalized={...normalized,items:merged,invoiceClassification:{...(normalized.invoiceClassification||{}),type:'equipment'},
+          serviceOnlyInvoice:false,nonInventoryOnlyInvoice:false};
+        promotion={applied:false,reason:'partial-v2-review',reviewRowCount:partial.length,
+          blockers:v2.promotionDecision?.blockers||[]};
+      }else if(v2?.promotionDecision?.blockers?.length){
+        promotion={applied:false,reason:'promotion-blocked',blockers:v2.promotionDecision.blockers};
+      }
     }
     if(v2)normalized={...normalized,parseEvidence:{...(normalized.parseEvidence||{}),v2Evidence:v2,v2Promotion:promotion}};
   }catch(v2Err){console.warn('Parser V2 evidence analysis failed; legacy canonical result preserved.',v2Err);}
