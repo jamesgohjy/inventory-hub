@@ -1622,6 +1622,33 @@ renderParsedItems=function(){
     note.textContent='One or more serial-number characters could not be read confidently. Please verify against the PDF.';
     input.closest('label')?.appendChild(note);
   });
+  const trace=state.parsed?.parseEvidence?.liveParserTrace||state.lastParserTrace;
+  const shouldShowTrace=trace&&((state.parsed?.items||[]).length<=3||trace?.numbered_schedule?.ok!==true||trace?.promotion?.applied!==true);
+  if(shouldShowTrace){
+    const box=document.createElement('div');
+    box.id='liveParserTrace';
+    box.style.cssText='margin-top:14px;padding:12px;border:1px solid #d9a441;border-radius:10px;background:#fffaf0;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;overflow:auto;max-height:460px;color:#3b2f16';
+    const sourceNames=(trace.evidence_sources||[]).map(x=>x.source).join(', ')||'none';
+    const anchorOrdinals=(trace.invoice_anchors||[]).map(x=>x.ordinal+':'+(x.model||'?')).join(', ')||'none';
+    const scheduleOrdinals=(trace.schedule_rows||[]).map(x=>x.source+'#'+x.ordinal+'='+x.amount).join(', ')||'none';
+    const finalRows=(trace.final_rows||[]).map(x=>x.index+':'+(x.sku||'?')+' qty='+x.quantity+' amount='+x.amount).join('\n')||'none';
+    box.textContent=[
+      'PARSER TRACE — automatic diagnostic',
+      'Build: '+String(trace.build||'')+' / '+String(trace.asset_revision||''),
+      'Final Review rows: '+String((state.parsed?.items||[]).length),
+      'OCR trigger: '+JSON.stringify(trace.ocr_trigger||null),
+      'Evidence sources ('+String((trace.evidence_sources||[]).length)+'): '+sourceNames,
+      'Invoice anchors: '+anchorOrdinals,
+      'Schedule rows: '+scheduleOrdinals,
+      'Numbered recovery: '+JSON.stringify(trace.numbered_schedule||null),
+      'Promotion: '+JSON.stringify(trace.promotion||null),
+      'Final rows:',
+      finalRows,
+      trace.trace_error?'Trace error: '+trace.trace_error:'',
+      trace.v2_error?'V2 error: '+trace.v2_error:''
+    ].filter(Boolean).join('\n');
+    wrap.appendChild(box);
+  }
 };
 
 function collectParsed(){const items=(state.parsed?.items||[]).map(x=>({...x}));document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;if(!items[i])items[i]={};row.querySelectorAll('[data-f]').forEach(el=>items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});const doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:'',reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};state.parsed=window.InventoryHubCanonicalParser.applyReviewEdits(state.parsed,{doc,items});}
@@ -2482,6 +2509,34 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
       ...((src?.layout||[]).flatMap(pg=>(pg?.rows||[]).map(r=>String(r?.text||''))))
     ]).filter(Boolean).join('\n');
     const v2=window.InventoryHubParserV2?.analyze?.({sources:v2Sources,raw:evidence,candidates,legacyResult:normalized});
+    let liveParserTrace=null;
+    try{
+      const traceEvidence=window.InventoryHubParserV2Evidence?.buildDocumentEvidence?.({sources:v2Sources,raw:evidence});
+      const traceAnchors=traceEvidence?window.InventoryHubParserV2NumberedSchedule?.invoiceAnchors?.(traceEvidence)||[]:[];
+      const traceSchedule=traceEvidence?window.InventoryHubParserV2NumberedSchedule?.schedules?.(traceEvidence)||[]:[];
+      liveParserTrace={
+        build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',
+        asset_revision:'v703314y-live-trace-20260925-13',
+        ocr_trigger:state.v2OcrTrigger||null,
+        evidence_sources:v2Sources.map(src=>({
+          source:String(src?.source||src?.id||'unknown'),
+          kind:String(src?.kind||''),
+          text_chars:String(src?.text||'').length,
+          layout_pages:Array.isArray(src?.layout)?src.layout.length:0,
+          has_tax_invoice:/\bTAX\s+INVOICE\b/i.test(String(src?.text||'')),
+          has_price_schedule:/\bSCHEDULES?\s+OF\s+PRICES\b/i.test(String(src?.text||''))
+        })),
+        invoice_anchors:traceAnchors.map(x=>({source:x.source,ordinal:x.ordinal,model:x.model||'',quantity:x.quantity??null})),
+        schedule_rows:traceSchedule.map(x=>({source:x.source,ordinal:x.ordinal,quantity:x.quantity??null,unit:x.unit??null,amount:x.amount??null})),
+        numbered_schedule:{ok:!!v2?.numberedSchedule?.ok,reason:v2?.numberedSchedule?.reason||'',row_count:Array.isArray(v2?.numberedSchedule?.rows)?v2.numberedSchedule.rows.length:0,ordinal:v2?.numberedSchedule?.ordinal??null,missing:v2?.numberedSchedule?.missing||[]},
+        safe_to_promote:!!v2?.safeToPromote,
+        promotion_needed:!!v2?.promotionNeeded,
+        promotion_row_count:Array.isArray(v2?.promotionRows)?v2.promotionRows.length:0,
+        review_row_count:Array.isArray(v2?.reviewRows)?v2.reviewRows.length:0
+      };
+    }catch(traceErr){
+      liveParserTrace={build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',asset_revision:'v703314y-live-trace-20260925-13',trace_error:String(traceErr?.message||traceErr)};
+    }
     const v2ItemKey=row=>{
       const sku=String(row?.sku||row?.model||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
       if(sku)return 'sku:'+sku;
@@ -2555,8 +2610,18 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
         promotion={applied:false,reason:'promotion-blocked',blockers:v2.promotionDecision.blockers};
       }
     }
-    if(v2)normalized={...normalized,parseEvidence:{...(normalized.parseEvidence||{}),v2Evidence:v2,v2Promotion:promotion}};
-  }catch(v2Err){console.warn('Parser V2 evidence analysis failed; legacy canonical result preserved.',v2Err);}
+    if(v2){
+      if(liveParserTrace){
+        liveParserTrace.promotion=promotion;
+        liveParserTrace.final_rows=(normalized.items||[]).map((row,index)=>({index:index+1,sku:String(row?.sku||row?.model||''),item_name:String(row?.item_name||row?.description||''),quantity:row?.quantity??null,unit_price:row?.unit_price??null,amount:row?.amount??null}));
+        state.lastParserTrace=liveParserTrace;
+      }
+      normalized={...normalized,parseEvidence:{...(normalized.parseEvidence||{}),v2Evidence:v2,v2Promotion:promotion,liveParserTrace}};
+    }
+  }catch(v2Err){
+    state.lastParserTrace={build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',asset_revision:'v703314y-live-trace-20260925-13',v2_error:String(v2Err?.message||v2Err)};
+    console.warn('Parser V2 evidence analysis failed; legacy canonical result preserved.',v2Err);
+  }
   return window.InventoryHubCanonicalParser.fromPipeline(normalized,{raw:evidence});
 }
 function snapshotImportReview14x(){

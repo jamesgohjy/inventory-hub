@@ -232,6 +232,10 @@ assert(oldStrongNativeGate===false,'Regression fixture must represent a strong n
 assert((oldStrongNativeGate||supportScheduleRe.test(richMixedText))===true,'Attached price schedule must force corroborating OCR even when native invoice structure is strong');
 assert((oldStrongNativeGate||supportScheduleRe.test(['TAX INVOICE','No. Description Qty Unit Price Amount'].join(String.fromCharCode(10))))===false,'Ordinary strong native invoices must not be forced through the expensive support OCR path');
 console.log('live-support-ocr-trigger: strong-native mixed-document corroboration PASS');
+assert(runtime.includes("liveParserTrace")&&runtime.includes("PARSER TRACE — automatic diagnostic"),'Live Parser Trace must be visible in Review without console access');
+assert(runtime.includes("invoice_anchors")&&runtime.includes("schedule_rows")&&runtime.includes("numbered_schedule"),'Live Parser Trace must expose V2 evidence stages');
+assert(runtime.includes("state.lastParserTrace"),'Live Parser Trace fallback state missing');
+console.log('live-parser-trace: Review evidence diagnostics PASS');
 
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
@@ -242,7 +246,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r4'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r5'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
