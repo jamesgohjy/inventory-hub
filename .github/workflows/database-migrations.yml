@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: inventory-hub-database-migrations
@@ -61,3 +62,29 @@ jobs:
           cat /tmp/verify-response.json
           if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then exit 1; fi
           jq -e '.[0].canonical_save == true and .[0].master_merge == true and .[0].health_resolve == true' /tmp/verify-response.json >/dev/null
+
+      - name: Report database migration success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data '{"state":"success","context":"inventory-hub/database-migrations","description":"Required Supabase RPC migrations verified."}'
+
+      - name: Report database migration failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data '{"state":"failure","context":"inventory-hub/database-migrations","description":"Supabase migration or verification failed; inspect Actions logs."}'
