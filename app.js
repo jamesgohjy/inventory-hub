@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14x',ASSET_REV='v703314x-header-duplicate-workflow-20260925-22';
+  const VERSION='7.03.3.14x',ASSET_REV='v703314x-parser-v2-shadow-20260925-23';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -20,6 +20,12 @@
       const evidenceEngine=await loadScript('modules/parser-evidence-engine.js?v='+key,'InventoryHubParserEvidenceEngine');
       const reviewPreservationGate=evidenceEngine.runReviewPreservationRegressionCheck?.();
       if(!reviewPreservationGate?.ok)throw new Error('Parser review-preservation gate failed: '+(reviewPreservationGate?.failures||['self-test unavailable']).join(', '));
+      await loadScript('modules/parser-v2/evidence-model.js?v='+key,'InventoryHubParserV2Evidence');
+      await loadScript('modules/parser-v2/header-resolver.js?v='+key,'InventoryHubParserV2Header');
+      await loadScript('modules/parser-v2/row-accounting.js?v='+key,'InventoryHubParserV2Rows');
+      const parserV2=await loadScript('modules/parser-v2/engine.js?v='+key,'InventoryHubParserV2');
+      const parserV2Gate=parserV2.selfTest?.();
+      if(!parserV2Gate?.ok)throw new Error('Parser V2 shadow gate failed: '+(parserV2Gate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
