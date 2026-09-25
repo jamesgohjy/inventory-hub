@@ -117,6 +117,8 @@ assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Hea
 assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
 assert(runtime.includes("x.type==='Possible duplicate SKU')?'<button class=\"secondary small-btn\" data-health-resolve="),'Possible duplicate SKU alerts must expose Resolve');
 assert(runtime.includes('function renderNeedsAttention14x(openDialog=false)'),'14x must have one authoritative Needs Attention renderer');
+assert(runtime.includes('const hydratePersistedHealthReviews14x=async()=>'),'14x must hydrate persisted Data Health reviews after core init');
+assert(runtime.includes('hydratePersistedHealthReviews14x().then(()=>{')&&runtime.includes('renderNeedsAttention14x(false);'),'14x must reconcile Needs Attention after persisted health hydration');
 const health14xStart=runtime.indexOf('function v703314x');
 const health14xTail=health14xStart>=0?runtime.slice(health14xStart):runtime.slice(runtime.indexOf('function renderNeedsAttention14x')-5000);
 assert(!health14xTail.includes('v703314xBaseRenderQuality=renderQualityDashboard14o'),'14x must not reference closure-local renderQualityDashboard14o');
