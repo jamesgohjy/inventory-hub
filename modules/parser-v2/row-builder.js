@@ -97,6 +97,39 @@
     const desc=clean(cellText(row,columns.boundaries.description));
     return !!(code&&desc)||(econCount>=2&&!!desc)||(econCount===3);
   }
+  function stripItemOrdinal(v=''){
+    return clean(v).replace(/^\d+(?:\.\d+)?\s+/, '').trim();
+  }
+  function modelEvidenceFromRows(rows=[],columns={}){
+    let printed='',replacement='';
+    for(const row of rows||[]){
+      const t=clean(cellText(row,columns.boundaries?.description)||row.text);
+      const m=t.match(/\bMODEL\s*:\s*(.+)$/i);
+      if(m&&!printed){
+        const tail=clean(m[1]),tokens=tail.match(/[A-Z0-9][A-Z0-9+._\/-]{2,}/gi)||[];
+        const ids=tokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+        printed=ids.length?ids[ids.length-1]:'';
+      }
+      const r=t.match(/\bREPLACED\s+WITH\s+([A-Z0-9][A-Z0-9+._\/-]{2,})\b/i);
+      if(r&&/[A-Za-z]/.test(r[1])&&/\d/.test(r[1]))replacement=r[1];
+    }
+    return {printed,replacement,selected:replacement||printed,replacementExplicit:!!replacement};
+  }
+  function continuationDescription(rows=[],columns={}){
+    const parts=[];
+    for(const row of rows||[]){
+      const d=stripItemOrdinal(cellText(row,columns.boundaries?.description));
+      if(!d)continue;
+      if(/^\(?[A-Z]\)?\s*SECTION\b/i.test(d)||/^\(?[A-Z]\)?\s*SCOPE\s+OF\s+WORK\s*:?$/i.test(d))continue;
+      if(/^MODEL\s*:/i.test(d)||/^NOTE\s*:/i.test(d)||META_RE.test(d)||WARRANTY_RE.test(d))continue;
+      if(!parts.includes(d))parts.push(d);
+    }
+    return clean(parts.join(' '));
+  }
+  function genericAnchorDescription(v=''){
+    const t=stripItemOrdinal(v);
+    return !t||/^(?:RE\s*:|REFERENCE\b|\(?[A-Z]\)?\s*SECTION\b|\(?[A-Z]\)?\s*SCOPE\s+OF\s+WORK\s*:?$)/i.test(t);
+  }
   function buildTableRows(table){
     const body=mergeBodyBands(table?.bodyRows||[],table?.yTolerance||3)
       .sort((a,b)=>((Number(a.y)-table.headerY)*table.direction)-((Number(b.y)-table.headerY)*table.direction));
@@ -118,26 +151,34 @@
     const rows=[];
     let previousAnchor=-1;
     for(let ai=0;ai<anchors.length;ai++){
-      const anchorInfo=anchors[ai],group=body.slice(previousAnchor+1,anchorInfo.index+1),anchor=body[anchorInfo.index],economics=anchorInfo.econ;
+      const anchorInfo=anchors[ai],anchor=body[anchorInfo.index],economics=anchorInfo.econ;
+      const nextAnchorIndex=ai+1<anchors.length?anchors[ai+1].index:body.length;
+      const preGroup=body.slice(previousAnchor+1,anchorInfo.index+1);
+      const postGroup=body.slice(anchorInfo.index,nextAnchorIndex);
       previousAnchor=anchorInfo.index;
 
       let sku='';
-      // Prefer a printed code from the same segment, nearest the economic anchor.
-      for(let gi=group.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(group[gi],table.columns);
-      // If the economic anchor itself already contains the product description,
-      // prefer it. This prevents specification/warranty text belonging to the previous priced row
-      // from being pulled forward into the next product when OCR emits continuation lines after price.
-      const anchorDescription=clean(cellText(anchor,table.columns.boundaries.description));
+      for(let gi=preGroup.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(preGroup[gi],table.columns);
+      const anchorDescription=stripItemOrdinal(cellText(anchor,table.columns.boundaries.description));
       const anchorCodeText=table.columns.hasCode?clean(cellText(anchor,table.columns.boundaries.code)):'';
       let codeSpill='';
       if(sku&&anchorCodeText&&anchorCodeText.toUpperCase().startsWith(String(sku).toUpperCase())){
         codeSpill=clean(anchorCodeText.slice(String(sku).length));
         if(codeSpill&&(/\d/.test(codeSpill)||codeSpill.length>60))codeSpill='';
       }
-      const baseDescription=(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))
-        ?anchorDescription:descriptionFromGroup(group,table.columns);
+
+      const postDescription=continuationDescription(postGroup.slice(1),table.columns);
+      const preDescription=stripItemOrdinal(descriptionFromGroup(preGroup,table.columns));
+      let baseDescription='';
+      if(genericAnchorDescription(anchorDescription)&&postDescription)baseDescription=postDescription;
+      else if(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))baseDescription=anchorDescription;
+      else baseDescription=postDescription||preDescription;
+
+      const modelEvidence=modelEvidenceFromRows([...postGroup,...preGroup],table.columns);
+      if(!sku&&modelEvidence.selected)sku=modelEvidence.selected;
       const description=clean([codeSpill,baseDescription].filter(Boolean).join(' '));
-      const raw=clean(group.map(r=>r.text).join(' '));
+      const evidenceGroup=[...new Set([...preGroup,...postGroup])];
+      const raw=clean(evidenceGroup.map(r=>r.text).join(' '));
       if(!sku&&!description&&!/[0-9]/.test(raw))continue;
 
       rows.push({
@@ -148,10 +189,11 @@
         quantity:economics.quantity,
         unit_price:economics.unit_price,
         amount:economics.amount,
+        modelEvidence,
         layoutEvidenceVerified:true,
         economicEvidenceVerified:true,
         parserV2PhysicalRow:true,
-        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:group.flatMap(r=>r.sourceRowIndexes||[]),rawText:raw}
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:evidenceGroup.flatMap(r=>r.sourceRowIndexes||[]),rawText:raw}
       });
     }
     return rows;
@@ -165,5 +207,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.4-code-spill-description',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.5-post-anchor-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
