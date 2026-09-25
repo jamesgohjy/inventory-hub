@@ -7,9 +7,9 @@ window.__AV_DIRECT_RUNTIME_READY__=(async function InventoryHubDirectRuntime14s(
 // AV Inventory Hub V7.00 — Structured parser core + regression-safe migration
 const APP_VERSION='7.03.3.14x';
 const RELEASE_CURRENT_NOTES=[
-  'Improved Reference No. parsing from labelled invoice fields.',
-  'Removed duplicate or fragmented parsed item rows more safely.',
-  'Added automatic Amount calculation when Qty or Unit Price changes.'
+  'Improved invoice parsing, Reference No. handling and automatic Amount calculation.',
+  'Fixed Confirm & Save database deployment and Master Item merge review.',
+  'Added a persistent Resolve option for valid Data Health exceptions.'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
@@ -103,7 +103,7 @@ class SupabaseDB{
   async setMemberDisplayName(userId,displayName){const {error}=await this.sb.rpc('set_inventory_member_display_name',{p_user_id:userId,p_display_name:displayName});if(error)throw error;}
   async load(){
     const [items,purchases,purchaseItems,serials,adjustments,documents,maintenance,audit,profiles,healthReviews]=await Promise.all([
-      this.sb.from('master_items').select('*').order('item_name'),this.sb.from('purchases').select('*').order('invoice_date',{ascending:false}),this.sb.from('purchase_items').select('*'),this.sb.from('serial_numbers').select('*'),this.sb.from('inventory_adjustments').select('*'),this.sb.from('documents').select('*').order('uploaded_at',{ascending:false}),this.sb.from('maintenance_records').select('*').order('maintenance_date',{ascending:false}),this.sb.from('audit_log').select('*').order('changed_at',{ascending:false}).limit(500),this.sb.from('profiles').select('id,email,display_name,role,is_owner'),this.sb.from('health_issue_reviews').select('issue_key,issue_type,entity_type,entity_id,title,detail,reviewed_by,reviewed_at').order('reviewed_at',{ascending:false})
+      this.sb.from('master_items').select('*').order('item_name'),this.sb.from('purchases').select('*').order('invoice_date',{ascending:false}),this.sb.from('purchase_items').select('*'),this.sb.from('serial_numbers').select('*'),this.sb.from('inventory_adjustments').select('*'),this.sb.from('documents').select('*').order('uploaded_at',{ascending:false}),this.sb.from('maintenance_records').select('*').order('maintenance_date',{ascending:false}),this.sb.from('audit_log').select('*').order('changed_at',{ascending:false}).limit(500),this.sb.from('profiles').select('id,email,display_name,role,is_owner'),this.sb.from('health_issue_reviews').select('*').order('reviewed_at',{ascending:false})
     ]);for(const r of [items,purchases,purchaseItems,serials,adjustments,documents,maintenance,audit,profiles])if(r.error)throw r.error;if(healthReviews.error&&!['42P01','PGRST205'].includes(healthReviews.error.code))throw healthReviews.error;return{items:items.data,purchases:purchases.data,purchaseItems:purchaseItems.data,serials:serials.data,adjustments:adjustments.data,documents:documents.data,maintenance:maintenance.data,audit:audit.data,profiles:profiles.data||[],healthReviews:healthReviews.error?[]:(healthReviews.data||[])};
   }
   async addItem(x){const {data,error}=await this.sb.from('master_items').insert(x).select().single();if(error)throw error;return data;}
@@ -3243,7 +3243,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     const analysis=coreApi.analyzeDuplicatePair(source,target,state.data?.items||[]);
     const sourceMetrics=v703314gMetrics(source),targetMetrics=v703314gMetrics(target);
     const blockers=[...(analysis.blockers||[])],warnings=[...(analysis.warnings||[])];
-    if(!analysis.candidate)blockers.unshift('The source and surviving SKU do not resolve to the same normalized SKU identity.');
+    if(!analysis.candidate)blockers.unshift('The source and surviving records do not have enough shared SKU/model evidence for a safe merge.');
     const combined={
       purchased:sourceMetrics.purchased+targetMetrics.purchased,
       adjusted:sourceMetrics.adjusted+targetMetrics.adjusted,
@@ -3304,15 +3304,15 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
           '</div>'+
           '<div class="detail-cards" style="margin-top:14px"><div class="detail-card"><span>Combined purchased</span><strong>'+review.combined.purchased+'</strong></div><div class="detail-card"><span>Combined adjustments</span><strong>-'+review.combined.adjusted+'</strong></div><div class="detail-card"><span>Expected current</span><strong>'+review.combined.current+'</strong></div></div>'+
           issueHtml+
-          '<label style="display:flex;gap:9px;align-items:flex-start;margin-top:16px;padding:12px;border:1px solid #dbe4f0;border-radius:10px"><input id="mergeMasterAcknowledgement" type="checkbox" '+(blockers.length?'disabled':'')+'><span>I checked both records and confirm that <strong>'+esc(source.sku)+'</strong> should be merged into <strong>'+esc(target.sku)+'</strong>.</span></label>'+
+          '<label style="display:flex;gap:9px;align-items:flex-start;margin-top:16px;padding:12px;border:1px solid #dbe4f0;border-radius:10px"><input id="mergeMasterAcknowledgement" type="checkbox" '+(blockers.length?'disabled':'')+'><span>I checked both records and confirm that <strong>'+esc(source.sku||'No SKU')+'</strong> should be merged into <strong>'+esc(target.sku||'No SKU')+'</strong>.</span></label>'+
         '</div>'+
         '<div class="actions" style="justify-content:flex-end"><button type="button" id="mergeMasterCancel">Cancel</button><button type="button" class="primary" id="mergeMasterConfirm" disabled>Merge items</button></div>'+
       '</div>';
       let done=false;
       const confirm=d.querySelector('#mergeMasterConfirm'),ack=d.querySelector('#mergeMasterAcknowledgement');
-      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}resolve(v);};
-      d.querySelector('#mergeMasterClose').onclick=()=>finish(false);
-      d.querySelector('#mergeMasterCancel').onclick=()=>finish(false);
+      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}if(v===false){try{document.getElementById('v703314gDuplicateReviewDialog')?.close();}catch(_e){}queueMicrotask(()=>{if(!d.open)d.innerHTML='';});}resolve(v);};
+      d.querySelector('#mergeMasterClose').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
+      d.querySelector('#mergeMasterCancel').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       ack.onchange=()=>{confirm.disabled=blockers.length>0||!ack.checked;};
       confirm.onclick=()=>finish(true);
       d.oncancel=e=>{e.preventDefault();finish(false);};
@@ -3401,7 +3401,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
         '<label style="display:block">'+(editable?'<input type="radio" name="v703314gKeep" value="'+esc(b.id)+'"> <strong>Keep this item</strong>':'<strong>Record B</strong>')+v703314gMetricCard(b,bm,'Master Item B')+'</label>'+
       '</div>'+
       '<div style="margin-top:14px;padding:12px;border:1px solid '+(analysis.blockers?.length?'#f5c2c0':'#dbe4f0')+';border-radius:10px">'+
-        '<strong>Detection: '+esc(analysis.reason==='exact-sku'?'Exact SKU match':'Same normalized SKU')+'</strong>'+
+        '<strong>Detection: '+esc(analysis.reason==='exact-sku'?'Exact SKU match':analysis.reason==='embedded-sku-alias'?'SKU/model found in item text':'Same normalized SKU')+'</strong>'+
         (analysis.blockers?.length?'<p style="margin:6px 0 0;color:#912018">'+esc(analysis.blockers.join(' '))+'</p>':'<p style="margin:6px 0 0;color:#64748b">Choose which Master Item should survive, then review the final merge before confirming.</p>')+
       '</div>'+
       '<div class="dialog-actions"><button id="v703314gDupCancel" class="secondary" type="button">Close</button>'+(editable?'<button id="v703314gDupNext" class="primary" type="button" disabled>Review merge</button>':'')+'</div>';
@@ -3599,7 +3599,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
       const current=currentIssueMap();
       return [...(state.data?.healthReviews||[])]
         .sort((a,b)=>new Date(b.reviewed_at||0)-new Date(a.reviewed_at||0))
-        .map(r=>({...r,resolution_status:current.has(String(r.issue_key))?'still-detected':'resolved',current_issue:current.get(String(r.issue_key))||null,reviewed_by_name:reviewWho(r)}));
+        .map(r=>({...r,resolution_status:r.resolution_status==='resolved'?'resolved':(current.has(String(r.issue_key))?'still-detected':'resolved'),current_issue:r.resolution_status==='resolved'?null:(current.get(String(r.issue_key))||null),reviewed_by_name:reviewWho(r)}));
     }
 
     // A review is now an acknowledgement/history record, not a permanent suppression.
@@ -3836,7 +3836,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
       const current=currentHealthMap14j();
       return [...(state.data?.healthReviews||[])]
         .sort((a,b)=>new Date(b.reviewed_at||0)-new Date(a.reviewed_at||0))
-        .map(r=>({...r,resolution_status:current.has(String(r.issue_key))?'still-detected':'resolved',current_issue:current.get(String(r.issue_key))||null,reviewed_by_name:healthReviewWho14j(r)}));
+        .map(r=>({...r,resolution_status:r.resolution_status==='resolved'?'resolved':(current.has(String(r.issue_key))?'still-detected':'resolved'),current_issue:r.resolution_status==='resolved'?null:(current.get(String(r.issue_key))||null),reviewed_by_name:healthReviewWho14j(r)}));
     }
     function virtualHealthAudits14j(){
       return healthHistory14j().map(r=>({
@@ -4326,6 +4326,61 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     document.addEventListener('click',e=>{if(e.target.closest?.('[data-v669-doc-layout="company"]'))setTimeout(collapseDocumentGroups14q,0);},true);
     diagnostics.regression=api.runMonetaryConsensusRegressionChecks14q();diagnostics.installed=true;diagnostics.stage=diagnostics.regression.ok?'ready':'regression-failed';diagnostics.reconcileMoney=reconcileMoney14q;diagnostics.enforceGroups=enforceCollapsedGroups14q;
   }catch(err){diagnostics.stage='failed';diagnostics.error=String(err?.message||err);console.warn('V7.03.3.14x money/group hardening failed non-fatally.',err);}
+})();
+
+(function v703314xInstallResolutionAndMergeFlow(){
+  if(window.__V703314X_RESOLUTION_MERGE_FLOW__)return;
+  window.__V703314X_RESOLUTION_MERGE_FLOW__=true;
+
+  if(typeof LocalDB!=='undefined'){
+    LocalDB.prototype.resolveHealthIssue=async function(issue,note=''){
+      const d=this.data();d.healthReviews=d.healthReviews||[];
+      let r=d.healthReviews.find(x=>String(x.issue_key)===String(issue.key));
+      const now=nowIso(),actor=this.user||'Team Member';
+      if(!r){r={issue_key:issue.key,issue_type:issue.type,entity_type:issue.entity_type||null,entity_id:issue.entity_id||null,title:issue.title||'',detail:issue.detail||'',reviewed_by:actor,reviewed_at:now};d.healthReviews.unshift(r);}
+      Object.assign(r,{resolution_status:'resolved',resolution_note:String(note||''),resolved_at:now,resolved_by:actor});
+      this.audit(d,'health_issue_reviews',String(issue.key),'RESOLVE',null,{...r});this.save(d);return r;
+    };
+  }
+  if(typeof SupabaseDB!=='undefined'){
+    SupabaseDB.prototype.resolveHealthIssue=async function(issue,note=''){
+      const {data,error}=await this.sb.rpc('resolve_health_issue_v703314x',{p_issue_key:issue.key,p_issue_type:issue.type,p_entity_type:issue.entity_type||null,p_entity_id:issue.entity_id||null,p_title:issue.title||'',p_detail:issue.detail||'',p_note:String(note||'')});
+      if(error){const msg=String(error.message||error||'');if(/resolve_health_issue_v703314x|PGRST202|42883|schema cache/i.test(msg))throw new Error('Data Health Resolve database migration is not installed yet.');throw error;}
+      return data;
+    };
+  }
+
+  const reviewMap14x=()=>new Map((state.data?.healthReviews||[]).filter(r=>r?.issue_key).map(r=>[String(r.issue_key),r]));
+  buildHealthIssues=function(){
+    const reviews=reviewMap14x();
+    return (buildAllHealthIssues()||[]).filter(x=>reviews.get(String(x.key))?.resolution_status!=='resolved').map(x=>({...x,review:reviews.get(String(x.key))||null}));
+  };
+
+  const previousIssueReviewButton14x=issueReviewButton;
+  issueReviewButton=function(x){
+    if(x?.type==='Possible duplicate SKU'&&x?.entity_type==='master_items_pair')return previousIssueReviewButton14x(x);
+    const open='<button class="secondary small-btn" type="button" data-health-open="'+esc(x.key)+'">Open</button>';
+    const reviewed=x?.review?'<span class="health-review-state reviewed">Reviewed</span>':'';
+    const review=canEdit()&&!x?.review?'<button class="secondary small-btn" type="button" data-health-review="'+esc(x.key)+'">Mark reviewed</button>':'';
+    const resolve=canEdit()?'<button class="secondary small-btn" type="button" data-health-resolve="'+esc(x.key)+'">Resolve</button>':'';
+    return '<div class="health-actions">'+reviewed+open+review+resolve+'</div>';
+  };
+
+  document.addEventListener('click',async e=>{
+    const b=e.target.closest?.('[data-health-resolve]');if(!b)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    const issue=(buildAllHealthIssues()||[]).find(x=>String(x.key)===String(b.dataset.healthResolve||''));
+    if(!issue){toast('This finding is no longer detected.');return;}
+    if(!canEdit()||typeof state.db?.resolveHealthIssue!=='function')return;
+    if(!confirm('Resolve this Data Health finding? Use this when the record is valid as-is, for example equipment that does not have a serial number.'))return;
+    b.disabled=true;
+    try{
+      await state.db.resolveHealthIssue(issue,'Confirmed valid as-is by user.');
+      state.data=await state.db.load();renderAll();
+      if($('healthDialog')?.open){try{openHealth();}catch(_e){}}
+      toast('✓ Data Health finding resolved.');
+    }catch(err){console.error(err);toast(friendlyError(err));b.disabled=false;}
+  },true);
 })();
 
 // Final parser boundary: candidate/enrichment stages may contribute evidence, but only
