@@ -151,7 +151,7 @@ class SupabaseDB{
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
-const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,importHumanReviewApproved:false};
+const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,v2FullDocumentEvidence:null,importHumanReviewApproved:false};
 const prettyEmailName=(email='')=>{const base=String(email||'').split('@')[0];return base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase()).trim()||'Team Member';};
 const currentRole=()=>CFG.mode==='supabase'?String(state.profile?.role||'viewer').trim().toLowerCase():'admin';
 const canEdit=()=>['admin','editor'].includes(currentRole());
@@ -597,6 +597,7 @@ function ocrTextQuality(text=''){
 async function extractPdf(file){
   setProgress(5,'Loading PDF…');
   state.ocrCandidates=null;
+  state.v2FullDocumentEvidence=[];
   const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
   const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;
@@ -606,6 +607,7 @@ async function extractPdf(file){
     const p=await pdf.getPage(i),tc=await p.getTextContent(),layout=textContentToLayout(tc,i);
     layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;
   }
+  state.v2FullDocumentEvidence.push({source:'native-pdf-full',kind:'native',text:pages.join('\n'),layout:layouts});
   const v70338PrimaryGate=globalThis.V7033Patch?.filterInvoicePages(pages,layouts);if(!v70338PrimaryGate)throw new Error('Invoice-only parser gate is unavailable.');if(chars>=80&&!v70338PrimaryGate.texts.length)throw new Error('No Invoice or Tax Invoice page was positively identified. Non-invoice pages were ignored.');let text=(v70338PrimaryGate.texts.length?v70338PrimaryGate.texts:pages).join('\n');state.pdfLayout=v70338PrimaryGate.layouts.length?v70338PrimaryGate.layouts:layouts;state.invoicePageDecisions=v70338PrimaryGate.decisions;state.importDocumentReviewRequired=!!v70338PrimaryGate.reviewRequired;state.importDocumentReviewReason=v70338PrimaryGate.reviewRequired?'One or more invoice pages need document-type verification.':'';
   const nativePdfText=text,nativePdfLayout=state.pdfLayout||[];
   let nativeV2TableCount=0;
@@ -644,6 +646,9 @@ async function extractPdf(file){
         }
       }
     }finally{await worker.terminate();}
+    for(const m of modes){
+      state.v2FullDocumentEvidence.push({source:'ocr-full-'+m.key,kind:'ocr',text:m.texts.join('\n'),layout:m.layouts});
+    }
     const candidates=modes.map(m=>{
       const gated=globalThis.V7033Patch?.filterInvoicePages(m.texts,m.layouts);if(!gated)return {source:m.key,label:m.label,text:'',layout:[],score:-1};const candidateText=gated.text.trim();const candidateLayouts=gated.layouts;
       const score=ocrTextQuality(candidateText)+candidateLayouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0);
@@ -2430,7 +2435,13 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
   // Parser V2 is diagnostic by default. It may replace Review rows only when independent
   // geometry proves a complete, conflict-free equipment set with verified row economics.
   try{
-    const v2=window.InventoryHubParserV2?.analyze?.({sources,raw:evidence,candidates,legacyResult:normalized});
+    const v2Extra=Array.isArray(state.v2FullDocumentEvidence)?state.v2FullDocumentEvidence:[];
+    const v2Seen=new Set(),v2Sources=[...sources,...v2Extra].filter(src=>{
+      const key=String(src?.source||'')+'|'+String(src?.text||'').replace(/\s+/g,' ').slice(0,1800);
+      if(!String(src?.text||'').trim()&&!Array.isArray(src?.layout))return false;
+      if(v2Seen.has(key))return false;v2Seen.add(key);return true;
+    });
+    const v2=window.InventoryHubParserV2?.analyze?.({sources:v2Sources,raw:evidence,candidates,legacyResult:normalized});
     let promotion={applied:false,reason:'not-required'};
     if(v2?.safeToPromote&&v2.promotionNeeded&&Array.isArray(v2.promotionRows)&&v2.promotionRows.length){
       const previousItems=Array.isArray(normalized.items)?normalized.items:[],skuKey=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,'');

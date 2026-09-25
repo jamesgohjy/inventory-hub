@@ -216,6 +216,19 @@
       "focused_retest": "PASS",
       "permanent_regression_lock": "tests/run-regression.cjs — conceptContinuationResult",
       "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-017",
+      "type": "live-import-support-evidence-stripped",
+      "base_document_family": "Concept Systems Technologies / 6-page mixed-document invoice",
+      "mutation": "Production browser pipeline filters every native/OCR candidate to Invoice/Tax Invoice pages before Parser V2 analysis.",
+      "observed_failure": "Test harness could recover 7 equipment rows using quotation support, but the live Review showed only 2 equipment because quotation/support-page evidence never reached Parser V2.",
+      "root_cause": "extractPdf and OCR candidate creation applied filterInvoicePages before evidence storage; v661FinalizeParsedInvoice passed only the filtered sources into Parser V2.",
+      "generalized_fix": "Preserve a separate V2-only full-document evidence channel before filtering. Keep legacy parsing invoice-only. Let Parser V2's own page-role logic exclude PO/DO, use invoice pages as primary evidence, and quotation/spec pages as support-only evidence.",
+      "expected": "Live Parser V2 can see the same support evidence as the validated engine path without allowing supporting documents to create inventory.",
+      "focused_retest": "PENDING_DEPLOYMENT",
+      "permanent_regression_lock": "tests/run-regression.cjs — live V2 full-document handoff assertions",
+      "status": "fix-implemented-awaiting-live-retest"
     }
   ],
   "unresolved": []
