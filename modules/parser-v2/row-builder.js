@@ -81,6 +81,13 @@
         return {quantity:uq[0],unit_price:up[0],amount,delta:0,rowDistance:0,verified:true,derived:true,derivedField:'amount',evidencePair:['quantity','unit_price']};
       }
     }
+    const ua=[...new Set(as.map(x=>x.value))];
+    if(uq.length===1&&up.length===0&&ua.length===1&&uq[0]>0&&ua[0]>0&&!columns?.ignoredColumns?.discount){
+      const unitPrice=round2(ua[0]/uq[0]);
+      if(unitPrice>=0&&Math.abs(unitPrice*uq[0]-ua[0])<=Math.max(.03,Math.abs(ua[0])*.003)){
+        return {quantity:uq[0],unit_price:unitPrice,amount:ua[0],delta:0,rowDistance:0,verified:true,derived:true,derivedField:'unit_price',evidencePair:['quantity','amount']};
+      }
+    }
     return {quantity:null,unit_price:null,amount:null,verified:false,derived:false};
   }
   function codeFromRow(row,columns){
@@ -148,10 +155,54 @@
     const t=stripItemOrdinal(v);
     return !t||/^(?:RE\s*:|REFERENCE\b|\(?[A-Z]\)?\s*SECTION\b|\(?[A-Z]\)?\s*SCOPE\s+OF\s+WORK\s*:?$)/i.test(t);
   }
+  function itemStartRow(row,columns){
+    const t=clean(row?.text||'');
+    if(/^[|)\]}>\s]*\d{1,3}(?:[.)]|\s|\|)/.test(t))return true;
+    const e=economicsFromGroup([row],columns);
+    return e.verified&&!!clean(cellText(row,columns.boundaries.description));
+  }
+  function economicCandidateSummary(group,columns){
+    const q=[],p=[],a=[];
+    for(const row of group||[]){
+      q.push(...numericCellCandidates(row,columns.boundaries.quantity,strictQuantity).map(x=>x.value));
+      p.push(...numericCellCandidates(row,columns.boundaries.unit_price,strictMoney).map(x=>x.value));
+      a.push(...numericCellCandidates(row,columns.boundaries.amount,strictMoney).map(x=>x.value));
+    }
+    return {quantity:[...new Set(q)],unit_price:[...new Set(p)],amount:[...new Set(a)]};
+  }
+  function buildEconomicBandRows(table,body){
+    const starts=[];
+    for(let i=0;i<body.length;i++)if(itemStartRow(body[i],table.columns))starts.push(i);
+    if(!starts.length)return [];
+    const rows=[];
+    for(let si=0;si<starts.length;si++){
+      const start=starts[si],end=si+1<starts.length?starts[si+1]:body.length,group=body.slice(start,end),anchor=group[0];
+      const economics=economicsFromGroup(group,table.columns),economicCandidates=economicCandidateSummary(group,table.columns);
+      const anchorDescription=stripItemOrdinal(cellText(anchor,table.columns.boundaries.description));
+      const continuation=continuationDescription(group.slice(1),table.columns);
+      const baseDescription=genericAnchorDescription(anchorDescription)&&continuation?continuation:(anchorDescription||continuation);
+      const modelEvidence=modelEvidenceFromRows(group,table.columns);
+      const sku=modelEvidence.selected||'';
+      const raw=clean(group.map(r=>r.text).join(' '));
+      const description=clean(baseDescription||raw);
+      if(!description&&!sku)continue;
+      rows.push({
+        sourceRowId:table.id+':r'+(si+1),sku,model:sku,item_name:description,description,
+        quantity:economics.verified?economics.quantity:null,
+        unit_price:economics.verified?economics.unit_price:null,
+        amount:economics.verified?economics.amount:null,
+        economicCandidates,economicDerivation:economics.derived?{derivedField:economics.derivedField,evidencePair:economics.evidencePair}:null,
+        modelEvidence,layoutEvidenceVerified:true,economicEvidenceVerified:economics.verified===true,parserV2PhysicalRow:true,
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:group.flatMap(r=>r.sourceRowIndexes||[]),rawText:raw}
+      });
+    }
+    return rows;
+  }
   function buildTableRows(table){
     const body=mergeBodyBands(table?.bodyRows||[],table?.yTolerance||3)
       .sort((a,b)=>((Number(a.y)-table.headerY)*table.direction)-((Number(b.y)-table.headerY)*table.direction));
     if(!body.length)return [];
+    if(table?.detectionMode==='economic-band')return buildEconomicBandRows(table,body);
 
     // Economic anchors are verified independently. Text preceding an anchor belongs to that priced row;
     // this supports invoices where description wraps across lines before Qty/Price/Amount.
@@ -227,5 +278,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.7-conservative-derived-amount',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.8-economic-band-segments',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
