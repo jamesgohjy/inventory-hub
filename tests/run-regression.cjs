@@ -112,6 +112,28 @@ assert(canonicalResult.items[0].canonical_identity.key==='REMACO::MAS1818','Cano
 const editedCanonical=canonicalApi.applyReviewEdits(canonicalResult,{doc:{invoice_date:'2026-09-25'},items:[{...canonicalResult.items[0],item_name:'Reviewed controller'}]});
 assert(editedCanonical.items[0].item_name==='Reviewed controller','Canonical review edits were not applied');
 assert(editedCanonical.items[0].invoice_evidence.original_description==='Original invoice wording','Canonical review edit overwrote original invoice evidence');
+
+const level3Review=canonicalApi.normalizeResult({
+  doc:{supplier_name:'Example Supplier',invoice_number:'ANON-L3',invoice_date:'2026-09-25',currency:'SGD'},
+  items:[{sku:'CTRL-200',item_name:'Reviewed controller',description:'Reviewed controller',quantity:2,unit_price:350,amount:700}],
+  review:[{index:0,reason:'low-confidence'}],
+  rawText:'anonymized invoice evidence'
+});
+assert(canonicalApi.prepareSave(level3Review).status==='review','Unresolved Level 3 case must require review');
+const level3Approved=canonicalApi.markHumanReviewed(level3Review);
+assert(canonicalApi.prepareSave(level3Approved).ok===true,'Human-approved Level 3 case must become saveable');
+const level3Recollected=canonicalApi.applyReviewEdits(level3Approved,{
+  doc:{...level3Approved.doc},
+  items:level3Approved.items.map(x=>({...x}))
+});
+assert(level3Recollected.humanReviewed===true,'Unchanged form recollection must preserve Level 3 human approval');
+assert(canonicalApi.prepareSave(level3Recollected).ok===true,'Approved Level 3 case must remain saveable after unchanged form recollection');
+const level3Changed=canonicalApi.applyReviewEdits(level3Approved,{
+  doc:{...level3Approved.doc},
+  items:level3Approved.items.map((x,i)=>i===0?{...x,quantity:3,amount:1050}:x)
+});
+assert(level3Changed.humanReviewed===false&&canonicalApi.prepareSave(level3Changed).status==='review','Material post-review edits must invalidate Level 3 approval');
+
 const serialConflict=canonicalApi.normalizeResult({doc:{invoice_number:'ANON-2'},items:[{item_name:'A',quantity:1,serials:'SER-1'},{item_name:'B',quantity:1,serials:'SER-1'}],parseEvidence:{evidenceRanking:{review:[]}}});
 assert(canonicalApi.prepareSave(serialConflict).status==='block','Canonical save validation must block duplicate serial ownership');
 assert(canonicalApi.diagnostics(editedCanonical).canonical===true,'Canonical diagnostics contract failed');
