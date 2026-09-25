@@ -382,7 +382,30 @@ const taxedRows=v2ctx.InventoryHubParserV2RowBuilder.buildRows(taxedWrapped,taxe
 assert(taxedRows.length===2,'V2 Tax-column layout must reconstruct two distinct priced products');
 assert(taxedRows[0].quantity===4&&taxedRows[0].unit_price===340&&taxedRows[0].amount===1360,'V2 Tax-column first product economics failed');
 assert(taxedRows[1].quantity===1&&taxedRows[1].unit_price===480&&taxedRows[1].amount===480,'V2 Tax-column second product economics failed');
-console.log('parser-v2-realworld-locks: noisy headers, headerless scans, metadata rejection and taxed wrapped rows PASS');
+
+// 4) GST-registration metadata above a table header must not reverse table direction.
+// This reproduces a real multi-page invoice class where GST Registration appears in the header block.
+const gstRegistrationAbove=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[{source:'gst-registration-layout',kind:'layout',layout:[{page:1,width:612,height:792,yTolerance:3,rows:[
+  {y:195,text:'GST Registration',items:[{text:'GST',x:281,width:15},{text:'Registration',x:298,width:45}]},
+  {y:243,text:'Description Quantity Unit Price Tax Amount SGD',items:[{text:'Description',x:36,width:48},{text:'Quantity',x:252,width:37},{text:'Unit',x:341,width:18},{text:'Price',x:361,width:21},{text:'Tax',x:437,width:14},{text:'Amount',x:523,width:34},{text:'SGD',x:559,width:18}]},
+  {y:333,text:'XVive U35C Wireless System for Condenser Microphones 5.8GHz',items:[{text:'XVive U35C Wireless System for Condenser Microphones 5.8GHz',x:36,width:210}]},
+  {y:372,text:'4.00 340.00 9% 1,360.00',items:[{text:'4.00',x:272,width:16},{text:'340.00',x:357,width:25},{text:'9%',x:441,width:11},{text:'1,360.00',x:544,width:32}]},
+  {y:427,text:'Shure SLXD2+ Digital Wireless Handheld Microphone',items:[{text:'Shure SLXD2+ Digital Wireless Handheld Microphone',x:36,width:210}]},
+  {y:466,text:'1.00 480.00 9% 480.00',items:[{text:'1.00',x:272,width:16},{text:'480.00',x:357,width:25},{text:'9%',x:441,width:11},{text:'480.00',x:551,width:25}]},
+  {y:520,text:'Gravity CART M 01 B Multifunctional Trolley',items:[{text:'Gravity CART M 01 B Multifunctional Trolley',x:36,width:190}]},
+  {y:543,text:'2.00 170.00 9% 340.00',items:[{text:'2.00',x:272,width:16},{text:'170.00',x:357,width:25},{text:'9%',x:441,width:11},{text:'340.00',x:551,width:25}]},
+  {y:600,text:'SUBTOTAL 2180.00',items:[{text:'SUBTOTAL',x:421,width:35},{text:'2180.00',x:544,width:35}]}
+]}]}]});
+const gstMetaTables=v2ctx.InventoryHubParserV2TableDetector.detectTables(gstRegistrationAbove);
+const gstMetaRows=v2ctx.InventoryHubParserV2RowBuilder.buildRows(gstRegistrationAbove,gstMetaTables).rows;
+assert(gstMetaTables.length===1,'GST Registration metadata must not create/reverse a table boundary');
+assert(gstMetaTables[0].direction===1,'GST Registration above the header must not reverse line-item table direction');
+assert(gstMetaRows.length===3,'GST Registration guard must preserve all three priced line items');
+assert(gstMetaRows[0].quantity===4&&gstMetaRows[0].unit_price===340&&gstMetaRows[0].amount===1360,'GST Registration guard first row economics failed');
+assert(gstMetaRows[2].quantity===2&&gstMetaRows[2].unit_price===170&&gstMetaRows[2].amount===340,'GST Registration guard third row economics failed');
+assert(v2ctx.InventoryHubParserV2TableDetector.isTotalRowText('GST Registration')===false,'GST Registration must never be treated as a total row');
+assert(v2ctx.InventoryHubParserV2TableDetector.isTotalRowText('GST 9% 324.00')===true,'A genuine GST summary row must remain a valid total row');
+console.log('parser-v2-realworld-locks: noisy headers, headerless scans, metadata rejection, taxed wrapped rows and GST-registration direction PASS');
 
 
 console.log('parser-v2-shadow: header independence, strict reference, same-layout variation and row completeness PASS');
