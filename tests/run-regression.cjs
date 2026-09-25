@@ -237,7 +237,7 @@ vm.runInContext(groupModule,mctx,{filename:'modules/grouped-company-ui.js'});
 const host={innerHTML:'',querySelectorAll(){return[];}};
 const groups=new Map([['AV Media Pte Ltd',[{html:'<tr></tr>'},{html:'<tr></tr>'}]],['Loud Technologies Asia Pte Ltd',[{html:'<tr></tr>'}]]]);
 assert(mctx.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head:'<thead></thead>',escapeHtml:v=>String(v)}),'Grouped-company module returned false');
-assert(/v669-doc-group-body hidden/.test(host.innerHTML)&&/2 items ▸/.test(host.innerHTML),'Grouped-company module output regression failed');
+assert(/class="[^"]*v669-doc-group-body[^"]*hidden[^"]*"/.test(host.innerHTML)&&/2 items ▸/.test(host.innerHTML),'Grouped-company module output regression failed');
 
 assert(backupUiModule.includes("version:'7.03.3.14t'"),'Backup UI version marker missing');
 assert(backupUiModule.includes("String(role).toLowerCase()==='admin'"),'Backup UI is not admin-only');
