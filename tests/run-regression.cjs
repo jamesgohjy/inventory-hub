@@ -229,7 +229,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r2'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r3'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -828,6 +828,34 @@ const inconsistentSources=numberedSources.map(s=>({...s,text:s.source==='schedul
 assert(!v2ctx.InventoryHubParserV2NumberedSchedule.recover(v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:inconsistentSources}),{proven:true,value:400}).ok,'Conflicting schedule price must block recovery');
 assert(!v2ctx.InventoryHubParserV2NumberedSchedule.recover(numberedEvidence,{proven:true,value:401}).ok,'Mismatched invoice subtotal must block recovery');
 console.log('numbered-schedule: 3/3 source-anchoring and conflict checks PASS');
+
+// Independent OCR damage: invoice loses row 4's number while schedule loses row 5's number.
+// Ordered physical/model evidence must bridge each bounded gap without promoting services.
+const damagedRows=[{text:'No. Description Qty Unit Price Amount',items:[{text:'No.',x:80},{text:'Description',x:230},{text:'Qty',x:650},{text:'Unit Price',x:760},{text:'Amount',x:870}]}];
+const damagedItems=[[1,'Digital mixer console','MIX-1'],[2,'Power amplifier with DSP','AMP-2'],[3,'Passive loudspeaker system','SPK-3'],[4,'Wireless microphone system','MIC-4'],[5,'Monitor speaker console','MON-5'],[6,'Dual media player playback','PLY-6'],[7,'Outdoor microphone wall receptacle','REC-7']];
+for(const [n,name,model] of damagedItems){
+  damagedRows.push(n===4
+    ?{text:'[a | '+name+' 1 100.00 100.00',items:[{text:'[a',x:80},{text:name,x:230},{text:'1',x:650},{text:'100.00',x:760},{text:'100.00',x:870}]}
+    :{text:n+' '+name+' 1 100.00 100.00',items:[{text:String(n),x:80},{text:name,x:230},{text:'1',x:650},{text:'100.00',x:760},{text:'100.00',x:870}]});
+  damagedRows.push({text:'Model: '+model,items:[{text:'Model: '+model,x:230}]});
+}
+damagedRows.push({text:'8 Scope of Work:',items:[{text:'8',x:80},{text:'Scope of Work:',x:230}]});
+damagedRows.push({text:'Subtotal 700.00',items:[{text:'Subtotal',x:760},{text:'700.00',x:870}]});
+const damagedSchedule=['SCHEDULES OF PRICES AND TECHNICAL DATA',...damagedItems.map(([n,name,model])=>(n===5?'':n+' ')+name+' '+model+' UK 1 $100.00 $100.00'),'Scope of Work','Total Amount = $700.00'].join('\n');
+const damagedSources=[
+  {source:'invoice-gap-a',kind:'ocr',layout:[{page:1,width:1000,rows:[{text:'TAX INVOICE',items:[{text:'TAX INVOICE',x:200}]},...damagedRows]}]},
+  {source:'invoice-gap-b',kind:'ocr',layout:[{page:1,width:1000,rows:[{text:'TAX INVOICE',items:[{text:'TAX INVOICE',x:200}]},...JSON.parse(JSON.stringify(damagedRows))]}]},
+  {source:'schedule-gap-a',kind:'ocr',text:damagedSchedule},
+  {source:'schedule-gap-b',kind:'ocr',text:damagedSchedule}
+];
+const damagedEvidence=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:damagedSources});
+const damagedRecovery=v2ctx.InventoryHubParserV2NumberedSchedule.recover(damagedEvidence,{proven:true,value:700});
+assert(damagedRecovery.ok&&damagedRecovery.rows.length===7,'Independent invoice/schedule ordinal-gap recovery failed');
+assert(damagedRecovery.rows.some(r=>r.provenance?.ordinal===4&&r.model==='MIC-4'),'Damaged invoice row 4 was not reconstructed from bounded physical/model evidence');
+assert(damagedRecovery.rows.some(r=>r.provenance?.ordinal===5&&r.model==='MON-5'),'Damaged schedule row 5 was not reconstructed from bounded priced-row evidence');
+const noPhysicalModel=damagedSources.map(s=>s.source.startsWith('invoice-gap')?{...s,layout:s.layout.map(p=>({...p,rows:p.rows.filter(r=>r.text!=='Model: MIC-4')}))}:s);
+assert(!v2ctx.InventoryHubParserV2NumberedSchedule.recover(v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:noPhysicalModel}),{proven:true,value:700}).ok,'Missing invoice physical/model evidence must fail closed');
+console.log('numbered-schedule: 4/4 independent ordinal-damage checks PASS');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
 console.log('All Inventory Hub v7.03.3.14y regression gates PASS.');
