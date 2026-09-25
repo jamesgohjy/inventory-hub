@@ -3243,7 +3243,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     const analysis=coreApi.analyzeDuplicatePair(source,target,state.data?.items||[]);
     const sourceMetrics=v703314gMetrics(source),targetMetrics=v703314gMetrics(target);
     const blockers=[...(analysis.blockers||[])],warnings=[...(analysis.warnings||[])];
-    if(!analysis.candidate)blockers.unshift('The source and surviving records do not have enough shared SKU/model evidence for a safe merge.');
+    if(!analysis.candidate)warnings.unshift('The source and surviving records do not have enough shared SKU/model evidence for automatic approval. Manual confirmation is required.');
     const combined={
       purchased:sourceMetrics.purchased+targetMetrics.purchased,
       adjusted:sourceMetrics.adjusted+targetMetrics.adjusted,
@@ -3259,7 +3259,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     const sourceSerials=new Set(itemSerials(source.id).map(x=>String(x).trim().toLowerCase()).filter(Boolean));
     const duplicateSerials=itemSerials(target.id).map(x=>String(x).trim().toLowerCase()).filter(x=>x&&sourceSerials.has(x));
     if(duplicateSerials.length)blockers.push('The two Master Items contain overlapping serial numbers. Resolve serial ownership before merging.');
-    return {analysis,sourceMetrics,targetMetrics,combined,blockers:[...new Set(blockers)],warnings:[...new Set(warnings)],allowed:analysis.candidate&&blockers.length===0};
+    return {analysis,sourceMetrics,targetMetrics,combined,blockers:[...new Set(blockers)],warnings:[...new Set(warnings)],allowed:blockers.length===0};
   }
 
   function v703314gMetricCard(item,metrics,label){
@@ -3306,11 +3306,11 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
           issueHtml+
           '<label style="display:flex;gap:9px;align-items:flex-start;margin-top:16px;padding:12px;border:1px solid #dbe4f0;border-radius:10px"><input id="mergeMasterAcknowledgement" type="checkbox" '+(blockers.length?'disabled':'')+'><span>I checked both records and confirm that <strong>'+esc(source.sku||'No SKU')+'</strong> should be merged into <strong>'+esc(target.sku||'No SKU')+'</strong>.</span></label>'+
         '</div>'+
-        '<div class="actions" style="justify-content:flex-end"><button type="button" id="mergeMasterCancel">Cancel</button><button type="button" class="primary" id="mergeMasterConfirm" disabled>Merge items</button></div>'+
+        '<div class="actions" style="justify-content:flex-end"><button type="button" id="mergeMasterCancel">Cancel</button><button type="button" class="primary" id="mergeMasterConfirm" disabled>Merge Items</button></div>'+
       '</div>';
       let done=false;
       const confirm=d.querySelector('#mergeMasterConfirm'),ack=d.querySelector('#mergeMasterAcknowledgement');
-      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}if(v===false){try{document.getElementById('v703314gDuplicateReviewDialog')?.close();}catch(_e){}queueMicrotask(()=>{if(!d.open)d.innerHTML='';});}resolve(v);};
+      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}if(v===false){const parent=document.getElementById('v703314gDuplicateReviewDialog');try{if(parent?.open)parent.close();}catch(_e){}queueMicrotask(()=>{if(!d.open)d.innerHTML='';if(parent&&!parent.open)parent.innerHTML='';});}resolve(v);};
       d.querySelector('#mergeMasterClose').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       d.querySelector('#mergeMasterCancel').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       ack.onchange=()=>{confirm.disabled=blockers.length>0||!ack.checked;};
