@@ -132,17 +132,17 @@
       for(let i=0;i<lines.length;i++){
         const line=lines[i];
         if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
-        const tail=lineValueAfterLabel(line,dateLabel),m=(tail||line).match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/);
-        if(m){pushCandidate(out,'invoice_date',m[1],{source:src.id,kind:src.kind,score:105,evidence:line});continue;}
+        const tail=lineValueAfterLabel(line,dateLabel),token=dateToken(tail||line);
+        if(token){pushCandidate(out,'invoice_date',token,{source:src.id,kind:src.kind,score:105,evidence:line});continue;}
         // Boxed invoice headers often OCR the DATE label and value onto successive rows.
         for(let j=i+1;j<=Math.min(lines.length-1,i+2);j++){
-          const next=clean(lines[j]),nm=next.match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/);
-          if(nm){pushCandidate(out,'invoice_date',nm[1],{source:src.id,kind:src.kind,score:102,evidence:line+' -> '+next});break;}
+          const next=clean(lines[j]),nextToken=dateToken(next);
+          if(nextToken){pushCandidate(out,'invoice_date',nextToken,{source:src.id,kind:src.kind,score:102,evidence:line+' -> '+next});break;}
           if(/^(?:INVOICE|REF(?:ERENCE)?|P\/?O|PURCHASE\s+ORDER|SALESMAN|TERMS|CUSTOMER|ACCOUNT)\b/i.test(next))break;
         }
       }
     }
-    return out.map(x=>({...x,value:parseDateStrict((x.value.match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/)||[])[1]||x.value)})).filter(x=>x.value);
+    return out.map(x=>({...x,value:parseDateStrict(dateToken(x.value)||x.value)})).filter(x=>x.value);
   }
   function referenceCandidates(evidence){
     const out=[...geometryValues(evidence,refLabel,'reference_number')];
