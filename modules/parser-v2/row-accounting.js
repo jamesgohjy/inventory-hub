@@ -33,7 +33,7 @@
     if(/\b(?:serial|s n|shipment no|remarks?|notes?)\b/.test(text)&&!finite(row.amount))return 'metadata';
     if(/\b(?:warranty|extended warranty|support coverage|maintenance coverage)\b/.test(text))return 'warranty';
     const code=norm(row.sku||row.model||'');
-    if(/^\d{4,}\s+(?:sales|installation|labour|labor|service)\b/.test(code))return 'service';
+    if(/^\d{4,}\s+(?:installation|labour|labor|service)\b/.test(code))return 'service';
     if(/\b(?:installation|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery(?: fee| service| services)?|return trip|redelivery|courier|freight|service charge|repair service)\b/.test(text))return 'service';
     if(/\b(?:cable|wire|bracket|mount|lamp kit|cart|trolley|generic stand|power adaptor|adapter)\b/.test(text)&&!/\bmicrophone stand\b/.test(text))return 'accessory';
     const eq=/\b(?:projector|microphone|speaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player|audio tester|signal tester|tester|analyzer|analyser|meter)\b/.test(text);
@@ -94,5 +94,5 @@
     const missingEquipment=equipment.filter(x=>!finalKeys.has(x.key));
     return {expectedEquipmentCount:equipment.length,finalEquipmentCount:(finalItems||[]).length,missingEquipment,complete:missingEquipment.length===0&&equipment.length===(finalItems||[]).length};
   }
-  global.InventoryHubParserV2Rows=Object.freeze({version:'2.1-evidence-promotion',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
+  global.InventoryHubParserV2Rows=Object.freeze({version:'2.2-sales-equipment-evidence',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
 })(typeof window!=='undefined'?window:globalThis);
