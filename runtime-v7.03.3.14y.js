@@ -616,7 +616,13 @@ async function extractPdf(file){
     nativeV2TableCount=ev?Number(window.InventoryHubParserV2TableDetector?.detectTables?.(ev)?.length||0):0;
   }catch(v2TableErr){console.warn('V2 native table quality check unavailable.',v2TableErr);}
   const nativeLayoutScore=nativePdfLayout.reduce((n,l)=>n+(typeof layoutInvoiceQuality==='function'?layoutInvoiceQuality(l):0),0);
-  const needsStructuralOcr=chars<80||(nativeV2TableCount===0&&nativeLayoutScore<20);
+  const nativeFullDocumentText=pages.join('\n');
+  // Mixed PDFs can have a structurally readable invoice but still need independent
+  // OCR witnesses for an attached numbered price schedule. Do not let a strong
+  // native invoice table suppress the corroboration path required by Parser V2.
+  const nativeHasCorroboratingSchedule=/\bSCHEDULES?\s+OF\s+PRICES\b/i.test(nativeFullDocumentText);
+  const needsStructuralOcr=chars<80||(nativeV2TableCount===0&&nativeLayoutScore<20)||nativeHasCorroboratingSchedule;
+  state.v2OcrTrigger={chars,nativeV2TableCount,nativeLayoutScore,nativeHasCorroboratingSchedule,needsStructuralOcr};
   if(needsStructuralOcr){
     if(!window.Tesseract){
       if(chars<80)throw new Error('This PDF appears scanned and OCR could not be loaded.');
@@ -653,11 +659,19 @@ async function extractPdf(file){
     // only those schedule pages at higher resolution; invoice row identity and
     // subtotal remain mandatory before its prices can be used in Review.
     const schedulePages=[];
-    for(let i=0;i<pdf.numPages;i++)if(modes.some(m=>/SCHEDULES?\s+OF\s+PRICES/i.test(m.texts[i]||'')&&!/\bPURCHASE\s+ORDER\b/i.test(m.texts[i]||'')))schedulePages.push(i+1);
+    for(let i=0;i<pdf.numPages;i++){
+      const nativeSchedule=/\bSCHEDULES?\s+OF\s+PRICES\b/i.test(pages[i]||'')&&!/\bPURCHASE\s+ORDER\b/i.test(pages[i]||'');
+      const ocrSchedule=modes.some(m=>/\bSCHEDULES?\s+OF\s+PRICES\b/i.test(m.texts[i]||'')&&!/\bPURCHASE\s+ORDER\b/i.test(m.texts[i]||''));
+      if(nativeSchedule||ocrSchedule)schedulePages.push(i+1);
+    }
     if(schedulePages.length){
       const hiWorker=await Tesseract.createWorker('eng');
       const invoiceModelPages=[];
-      for(let i=0;i<pdf.numPages;i++)if(modes.some(m=>/\bTAX\s+INVOICE\b/i.test(m.texts[i]||'')&&((m.texts[i]||'').match(/\bMODEL\s*:/gi)||[]).length>=4))invoiceModelPages.push(i+1);
+      for(let i=0;i<pdf.numPages;i++){
+        const nativeInvoiceModels=/\bTAX\s+INVOICE\b/i.test(pages[i]||'')&&((pages[i]||'').match(/\bMODEL\s*:/gi)||[]).length>=4;
+        const ocrInvoiceModels=modes.some(m=>/\bTAX\s+INVOICE\b/i.test(m.texts[i]||'')&&((m.texts[i]||'').match(/\bMODEL\s*:/gi)||[]).length>=4);
+        if(nativeInvoiceModels||ocrInvoiceModels)invoiceModelPages.push(i+1);
+      }
       try{for(const pageNo of [...new Set([...schedulePages,...invoiceModelPages])]){
         const page=await pdf.getPage(pageNo),vp=page.getViewport({scale:4.17}),canvas=document.createElement('canvas');
         canvas.width=Math.round(vp.width);canvas.height=Math.round(vp.height);

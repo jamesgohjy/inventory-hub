@@ -220,6 +220,19 @@ assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBacku
 assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14y'"),'14y direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
+// Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
+// when a corroborating numbered price schedule is attached.
+assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
+assert(runtime.includes('const nativeSchedule=')&&runtime.includes('nativeSchedule||ocrSchedule'),'High-resolution schedule discovery lacks native-text fallback');
+assert(runtime.includes('const nativeInvoiceModels=')&&runtime.includes('nativeInvoiceModels||ocrInvoiceModels'),'High-resolution invoice-model discovery lacks native-text fallback');
+const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
+const richMixedText='TAX INVOICE\\nNo. Description Qty Unit Price Amount\\n1 Mixer 1 100.00 100.00\\nSCHEDULES OF PRICES AND TECHNICAL DATA\\n1 Mixer ABC-1 UK 1 $100.00 $100.00';
+const oldStrongNativeGate=5000<80||(1===0&&60<20);
+assert(oldStrongNativeGate===false,'Regression fixture must represent a strong native PDF that previously skipped OCR');
+assert((oldStrongNativeGate||supportScheduleRe.test(richMixedText))===true,'Attached price schedule must force corroborating OCR even when native invoice structure is strong');
+assert((oldStrongNativeGate||supportScheduleRe.test('TAX INVOICE\\nNo. Description Qty Unit Price Amount'))===false,'Ordinary strong native invoices must not be forced through the expensive support OCR path');
+console.log('live-support-ocr-trigger: strong-native mixed-document corroboration PASS');
+
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
 assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
@@ -229,7 +242,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r3'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r4'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
