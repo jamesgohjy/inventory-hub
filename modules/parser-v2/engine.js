@@ -283,7 +283,8 @@
     const skeletonTableIds=new Set(reconciledSkeletons.map(r=>clean(r?.provenance?.tableId||'')).filter(Boolean));
     const physicalCandidates=physical.tables.map(t=>{
       const rows=(t.rows||[]).filter(row=>{
-        const placeholder=String(row?.classification?.type||'').toLowerCase()==='unknown'&&!Number.isFinite(Number(row?.quantity))&&!Number.isFinite(Number(row?.unit_price))&&!Number.isFinite(Number(row?.amount));
+        const missing=v=>v===null||v===undefined||String(v).trim()===''||!Number.isFinite(Number(v));
+        const placeholder=String(row?.classification?.type||'').toLowerCase()==='unknown'&&missing(row?.quantity)&&missing(row?.unit_price)&&missing(row?.amount);
         return !(placeholder&&skeletonTableIds.has(t.id));
       });
       return {origin:'v2-physical:'+t.id,items:rows};
