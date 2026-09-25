@@ -202,13 +202,13 @@
     if(!headers.invoice_date)headerIssues.push({code:'invoice-date-not-proven'});
 
     const promotion=assessPromotion(rowLedger,completeness,finalComparison);
+    const subtotalBlockers=invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false?[{code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta}]:[];
     // Promotion blockers are merged immutably; source evidence must remain complete.
     const promotionBlockers=[
       ...promotion.blockers,
       ...sourceIssues.filter(issue=>!promotion.blockers.some(x=>x.code===issue.code)),
       ...subtotalBlockers
     ];
-    const subtotalBlockers=invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false?[{code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta}]:[];
     const safeToPromote=promotion.safe&&sourceIssues.length===0&&subtotalBlockers.length===0;
     const promotionRows=safeToPromote?promotion.rows:[];
 
