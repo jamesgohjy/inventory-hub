@@ -80,6 +80,85 @@
     const minus=rows.filter(r=>Number(r.y)<headerY&&/\d/.test(r.text||'')).length;
     return plus>=minus?1:-1;
   }
+  function numericTokenValue(text=''){
+    const raw=clean(text).replace(/(?:SGD|S\$|\$)/ig,'').replace(/,/g,'').trim();
+    if(!/^-?\d+(?:\.\d+)?$/.test(raw))return null;
+    const n=Number(raw);return Number.isFinite(n)?n:null;
+  }
+  function moneyLike(text=''){
+    const t=clean(text);
+    return /(?:SGD|S\$|\$)/i.test(t)||/\d[\d,]*\.\d{2}$/.test(t);
+  }
+  function inferEconomicColumns(row){
+    const items=(row?.items||[]).filter(it=>clean(it.text)).sort((a,b)=>center(a)-center(b));
+    if(items.length<4)return null;
+    const numeric=items.map((it,index)=>({it,index,x:center(it),value:numericTokenValue(it.text),money:moneyLike(it.text)})).filter(x=>x.value!==null);
+    const matches=[];
+    for(let qi=0;qi<numeric.length;qi++)for(let pi=qi+1;pi<numeric.length;pi++)for(let ai=pi+1;ai<numeric.length;ai++){
+      const q=numeric[qi],p=numeric[pi],a=numeric[ai];
+      if(!(q.value>0)||q.value>100000||p.value<0||a.value<0)continue;
+      if(!p.money&&!a.money)continue;
+      const delta=Math.abs(q.value*p.value-a.value),tol=Math.max(.03,Math.abs(a.value)*.003);
+      if(delta>tol)continue;
+      const before=items.filter(it=>center(it)<q.x);
+      if(!before.length)continue;
+      matches.push({q,p,a,delta,before});
+    }
+    matches.sort((a,b)=>a.delta-b.delta||a.q.x-b.q.x);
+    const best=matches[0];if(!best)return null;
+
+    const before=best.before.slice().sort((a,b)=>center(a)-center(b));
+    let splitX=Math.min(...before.map(it=>Number(it.x)||center(it))),hasCode=false;
+    if(before.length>=2){
+      let bestGap={gap:-Infinity,index:-1};
+      for(let i=0;i<before.length-1;i++){
+        const right=(Number(before[i].x)||0)+(Number(before[i].width)||0),left=Number(before[i+1].x)||0,gap=left-right;
+        if(gap>bestGap.gap)bestGap={gap,index:i};
+      }
+      const first=clean(before[0].text);
+      const codeish=/^[A-Z0-9][A-Z0-9+._\/-]{2,}$/i.test(first)&&/[A-Z]/i.test(first)&&/\d/.test(first);
+      if(codeish&&bestGap.gap>=Math.max(18,(Number(before[0].width)||0)*.25)){
+        hasCode=true;
+        const right=(Number(before[bestGap.index].x)||0)+(Number(before[bestGap.index].width)||0),left=Number(before[bestGap.index+1].x)||0;
+        splitX=(right+left)/2;
+      }
+    }
+    const leftEdge=Math.max(0,Math.min(...before.map(it=>Number(it.x)||0))-10);
+    const qx=best.q.x,px=best.p.x,ax=best.a.x;
+    const bDescQty=(Math.max(splitX,leftEdge)+qx)/2;
+    const bQtyPrice=(qx+px)/2,bPriceAmount=(px+ax)/2;
+    const amountWidth=Math.max(60,(Number(best.a.it.width)||0)*2,(ax-px)*.9);
+    return {
+      hasCode,
+      x:{description:hasCode?(splitX+bDescQty)/2:(leftEdge+bDescQty)/2,quantity:qx,unit_price:px,amount:ax,code:hasCode?(leftEdge+splitX)/2:null},
+      boundaries:{
+        code:hasCode?[leftEdge,splitX]:[leftEdge,leftEdge],
+        description:[hasCode?splitX:leftEdge,bDescQty],
+        quantity:[bDescQty,bQtyPrice],
+        unit_price:[bQtyPrice,bPriceAmount],
+        amount:[bPriceAmount,ax+amountWidth]
+      },
+      labels:{code:'',description:'',quantity:'',unit_price:'',amount:''},
+      inferredFromEconomics:true,
+      proof:{quantity:best.q.value,unit_price:best.p.value,amount:best.a.value,delta:best.delta}
+    };
+  }
+  function detectHeaderlessTables(source,page){
+    const rows=(page?.rows||[]).filter(r=>Array.isArray(r.items)&&r.items.length&&Number.isFinite(Number(r.y)));
+    const out=[];
+    for(const row of rows){
+      if(TOTAL_RE.test(row.text||''))continue;
+      const columns=inferEconomicColumns(row);if(!columns)continue;
+      out.push({
+        id:[source.id,'p'+page.page,'econ'+Math.round(Number(row.y))].join(':'),
+        source:source.id,sourceKind:source.kind,page:page.page,
+        headerY:Number(row.y)-1,direction:1,yTolerance:Number(page.yTolerance)||3,
+        columns,bodyRows:[row],totalRow:null,confidence:.72,detectionMode:'economic-row'
+      });
+    }
+    return out;
+  }
+
   function detectPageTables(source,page){
     const rows=(page?.rows||[]).filter(r=>Array.isArray(r.items)&&r.items.length&&Number.isFinite(Number(r.y)));
     const out=[],usedHeaderY=[];
@@ -116,8 +195,12 @@
   }
   function detectTables(evidence={}){
     const all=[];
-    for(const source of evidence.sources||[])for(const page of source.layout||[])all.push(...detectPageTables(source,page));
+    for(const source of evidence.sources||[])for(const page of source.layout||[]){
+      const headerTables=detectPageTables(source,page);
+      if(headerTables.length)all.push(...headerTables);
+      else all.push(...detectHeaderlessTables(source,page));
+    }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.0-shadow',HEADER_RULES,TOTAL_RE,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.1-shadow',HEADER_RULES,TOTAL_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
