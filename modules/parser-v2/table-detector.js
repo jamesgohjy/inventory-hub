@@ -14,7 +14,16 @@
     tax:/^(?:TAX|GST|VAT|TAX RATE|GST RATE|VAT RATE)$/,
     discount:/^(?:DISC(?:OUNT)?|DISCOUNT %|DISC %)$/
   });
-  const TOTAL_RE=/\b(?:SUB\s*TOTAL|SUBTOTAL|GST|GRAND\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i;
+  const TOTAL_RE=/\b(?:SUB\s*TOTAL|SUBTOTAL|GRAND\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i;
+  const TAX_SUMMARY_RE=/\b(?:GST|VAT|TAX)\b/i;
+  const TAX_REGISTRATION_RE=/\b(?:GST|VAT|TAX)\s+(?:REG(?:ISTRATION)?|REG\.?\s*(?:NO|NUMBER)?|NO\.?|NUMBER)\b/i;
+  function isTotalRowText(text=''){
+    const t=clean(text);if(!t)return false;
+    if(TAX_REGISTRATION_RE.test(t))return false;
+    if(TOTAL_RE.test(t))return true;
+    if(!TAX_SUMMARY_RE.test(t))return false;
+    return /\d+(?:\.\d+)?\s*%/.test(t)||/(?:SGD|S\$|\$)\s*\d/i.test(t)||/\d[\d,]*\.\d{2}\b/.test(t);
+  }
   const HEADERLESS_META_RE=/\b(?:ACCOUNT\s*(?:NO|NUMBER)?|CUSTOMER\s*(?:NO|NUMBER|CODE)?|INVOICE\s*(?:NO|NUMBER|DATE)?|PURCHASE\s+ORDER|P\/?O\s*(?:NO|NUMBER)?|D\/?O\s*(?:NO|NUMBER)?|ORDERED\s+BY|SALES\s+REP|SALESMAN|TERMS|PAYMENT|DUE\s+DATE|ADDRESS|CONTACT|EMAIL|PHONE|TEL|FAX|GST\s+REG|COMPANY\s+REG|UEN)\b/i;
 
   function mergedHeaderItems(rows=[],seedIndex=0,yTolerance=3){
@@ -72,7 +81,7 @@
   }
   function rowPosition(row,headerY,direction){return (Number(row.y)-headerY)*direction;}
   function detectDirection(rows,headerY){
-    const totals=rows.filter(r=>TOTAL_RE.test(r.text||'')&&Number.isFinite(Number(r.y)));
+    const totals=rows.filter(r=>isTotalRowText(r.text||'')&&Number.isFinite(Number(r.y)));
     if(totals.length){
       const nearest=totals.sort((a,b)=>Math.abs(Number(a.y)-headerY)-Math.abs(Number(b.y)-headerY))[0];
       const d=Math.sign(Number(nearest.y)-headerY);if(d)return d;
@@ -150,7 +159,7 @@
     const rows=(page?.rows||[]).filter(r=>Array.isArray(r.items)&&r.items.length&&Number.isFinite(Number(r.y)));
     const out=[];
     for(const row of rows){
-      if(TOTAL_RE.test(row.text||'')||HEADERLESS_META_RE.test(row.text||''))continue;
+      if(isTotalRowText(row.text||'')||HEADERLESS_META_RE.test(row.text||''))continue;
       const columns=inferEconomicColumns(row);if(!columns)continue;
       out.push({
         id:[source.id,'p'+page.page,'econ'+Math.round(Number(row.y))].join(':'),
@@ -176,7 +185,7 @@
       usedHeaderY.push(headerY);
       const direction=detectDirection(rows,headerY);
       const positions=rows.map(r=>({row:r,pos:rowPosition(r,headerY,direction)})).filter(x=>x.pos>Math.max(2,Number(page.yTolerance)||3));
-      const totalCandidates=positions.filter(x=>TOTAL_RE.test(x.row.text||'')).sort((a,b)=>a.pos-b.pos);
+      const totalCandidates=positions.filter(x=>isTotalRowText(x.row.text||'')).sort((a,b)=>a.pos-b.pos);
       const endPos=totalCandidates[0]?.pos??Infinity;
       const body=positions.filter(x=>x.pos<endPos-Math.max(1,Number(page.yTolerance)||3)).sort((a,b)=>a.pos-b.pos).map(x=>x.row);
       if(!body.length)continue;
@@ -205,5 +214,5 @@
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.2-shadow',HEADER_RULES,TOTAL_RE,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.3-gst-metadata-guard',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
