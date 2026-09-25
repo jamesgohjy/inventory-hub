@@ -169,7 +169,7 @@
         const a=observed(r,'amount');return a!==null&&Math.abs(a-derivedAmount)<=tol&&sourceId(r);
       });
       const sources=[...new Set(corroborating.map(sourceId).filter(Boolean))];
-      if(sources.length>=1){
+      if(sources.length>=2){
         return {
           quantity:invoiceQ,unit_price:invoiceUnit,amount:derivedAmount,
           support:sources.length,sources,
@@ -392,7 +392,7 @@
     const reviewRows=verifiedReviewRows(rowLedger);
 
     return Object.freeze({
-      version:'3.3-authoritative-review-rows',
+      version:'3.4-two-source-amount-corroboration',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -465,7 +465,7 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'3.3-authoritative-review-rows',
+    version:'3.4-two-source-amount-corroboration',
     analyze,
     verifiedReviewRows,
     invoiceArithmeticConsensusRecovery,
