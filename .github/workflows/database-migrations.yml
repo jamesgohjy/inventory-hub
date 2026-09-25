@@ -1,0 +1,63 @@
+name: Inventory Hub Database Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase-v7-03-3-14d-master-item-merge.sql"
+      - "supabase-v7-03-3-14v-canonical-save.sql"
+      - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - ".github/workflows/database-migrations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inventory-hub-database-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_PROJECT_REF: gmqngayhefjaueosvltj
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secure database deployment setup
+        shell: bash
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::Missing SUPABASE_ACCESS_TOKEN GitHub Actions secret."
+            exit 1
+          fi
+
+      - name: Apply idempotent Inventory Hub migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in             supabase-v7-03-3-14d-master-item-merge.sql             supabase-v7-03-3-14v-canonical-save.sql             supabase-v7-03-3-14x-data-health-resolution.sql
+          do
+            echo "Applying $file"
+            jq -n --rawfile query "$file" '{query:$query,read_only:false}' > /tmp/query.json
+            code=$(curl --silent --show-error --output /tmp/response.json --write-out "%{http_code}"               --request POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query"               --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"               --header "Content-Type: application/json"               --data-binary @/tmp/query.json)
+            cat /tmp/response.json
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "::error::Database migration $file failed with HTTP $code."
+              exit 1
+            fi
+          done
+
+      - name: Verify required database functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          SQL="select to_regprocedure('public.confirm_and_save_invoice_v703314v(jsonb,jsonb,jsonb)') is not null as canonical_save, to_regprocedure('public.merge_master_items_v703314d(uuid,uuid,jsonb)') is not null as master_merge, to_regprocedure('public.resolve_health_issue_v703314x(text,text,text,text,text,text,text)') is not null as health_resolve;"
+          jq -n --arg query "$SQL" '{query:$query,read_only:true}' > /tmp/verify.json
+          code=$(curl --silent --show-error --output /tmp/verify-response.json --write-out "%{http_code}"             --request POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query"             --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"             --header "Content-Type: application/json"             --data-binary @/tmp/verify.json)
+          cat /tmp/verify-response.json
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then exit 1; fi
+          jq -e '.[0].canonical_save == true and .[0].master_merge == true and .[0].health_resolve == true' /tmp/verify-response.json >/dev/null
