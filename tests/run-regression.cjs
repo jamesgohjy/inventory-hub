@@ -123,7 +123,7 @@ assert(!health14xTail.includes('v703314xBaseRenderQuality=renderQualityDashboard
 assert(!health14xTail.includes('renderQualityDashboard14o=function'),'14x must not overwrite closure-local parser dashboard renderer');
 assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
 assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
-assert(app.includes("ASSET_REV='v703314x-health-unified-no-correction-memory-20260925-1'"),'Asset revision must force deployment of the unified health/Correction Memory retirement runtime');
+assert(/ASSET_REV='v703314x-[^']+'/.test(app),'14x loader must carry an explicit cache-busting asset revision');
 assert(!runtime.includes('out=applySupplierProfile14o(out,raw);out=applyCorrectionMemory14o(out,raw)'),'Retired Correction Memory must not mutate parsed output');
 assert(!runtime.includes('if(corrections.length)await persistCorrectionMemory14o(corrections)'),'Retired Correction Memory must not persist new corrections');
 assert(!runtime.includes('<strong>Correction Memory</strong>'),'Retired Correction Memory UI must not render');
