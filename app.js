@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14x',ASSET_REV='v703314x-nondestructive-equipment-reparse-20260925-19';
+  const VERSION='7.03.3.14x',ASSET_REV='v703314x-review-preservation-20260925-20';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -17,7 +17,9 @@
       const v7033=await loadScript('v7033-core.js?v='+key,'V7033Patch');
       const gates=[['behavioral',v7033.runRegressionChecks()],['historical',v7033.runHistoricalRegressionChecks()],['quality',v7033.runQualityRegressionChecks14n()],['holdout',v7033.runHoldoutRegressionChecks14n()],['intelligence',v7033.runIntelligenceRegressionChecks14o()],['aerospace',v7033.runAerospaceRegressionChecks14p()],['monetary',v7033.runMonetaryConsensusRegressionChecks14q()],['header-aligned-money',v7033.runHeaderAlignedMoneyRegressionChecks14r()]];
       const failed=gates.filter(([,r])=>!r?.ok).map(([n,r])=>n+': '+(r?.failures||[]).join(', '));if(failed.length)throw new Error('Regression gate failed: '+failed.join(' | '));
-      await loadScript('modules/parser-evidence-engine.js?v='+key,'InventoryHubParserEvidenceEngine');
+      const evidenceEngine=await loadScript('modules/parser-evidence-engine.js?v='+key,'InventoryHubParserEvidenceEngine');
+      const reviewPreservationGate=evidenceEngine.runReviewPreservationRegressionCheck?.();
+      if(!reviewPreservationGate?.ok)throw new Error('Parser review-preservation gate failed: '+(reviewPreservationGate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
