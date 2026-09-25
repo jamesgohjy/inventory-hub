@@ -306,7 +306,7 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.3-support-reconciliation',
+    version:'2.6-continuation-subtotal-guard',
     analyze,
     reconcileSupportingEconomics,
     supportMatchScore,
