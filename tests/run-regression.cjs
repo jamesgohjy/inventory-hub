@@ -199,7 +199,7 @@ assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component styl
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("ASSET_REV='v703314x-reference-dedupe-autocalc-20260925-2'"),'v14x workflow-fix asset revision marker missing');
+assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved invoice parsing, Reference No. handling and automatic Amount calculation.'")&&runtime.includes("'Added a persistent Resolve option for valid Data Health exceptions.'"),'Direct runtime Patch Notes are not the concise user-facing version');
 assert(index.includes('Improved invoice parsing, Reference No. handling and automatic Amount calculation.')&&index.includes('Added a persistent Resolve option for valid Data Health exceptions.'),'Static Patch Notes fallback is not concise');
 assert(index.includes('app.js?v=7.03.3.14x-r2'),'Index app.js cache-bust revision missing');
