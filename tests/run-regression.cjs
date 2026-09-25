@@ -188,7 +188,8 @@ assert(canonicalApi.prepareSave(serialConflict).status==='block','Canonical save
 assert(canonicalApi.diagnostics(editedCanonical).canonical===true,'Canonical diagnostics contract failed');
 console.log('canonical-parser-and-atomic-save: API, identity, evidence and RPC contracts PASS');
 assert(runtime.includes('evidenceEngine.runPipeline(candidates,{subtotal:doc.subtotal,confidenceThreshold:.72})'),'Production finalizer must use candidate -> evidence -> economics -> confidence -> review pipeline');
-assert(runtime.includes("pipeline.status==='accepted'?(pipeline.items||[]):[]"),'Production finalizer must not accept rows when pipeline requires review');
+assert(runtime.includes("let extracted=pipeline.items||[]"),'Production finalizer must preserve evidence-backed rows when pipeline requires review');
+assert(runtime.includes("if(pipeline.status==='review')inventory=inventory.map"),'Production finalizer must mark preserved review rows for human verification');
 assert(!runtime.includes('v687CompletenessReconcile(candidates,inventory,evidence)'),'Post-ranking completeness must not reintroduce weaker candidate rows');
 assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Direct runtime does not call parser module');
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
@@ -206,7 +207,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved invoice parsing, Reference No. handling and automatic Amount calculation.'")&&runtime.includes("'Added a persistent Resolve option for valid Data Health exceptions.'"),'Direct runtime Patch Notes are not the concise user-facing version');
 assert(index.includes('Improved invoice parsing, Reference No. handling and automatic Amount calculation.')&&index.includes('Added a persistent Resolve option for valid Data Health exceptions.'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14x-r2'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14x-r3'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
