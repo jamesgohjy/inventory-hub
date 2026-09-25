@@ -18,6 +18,57 @@
     if(!e.complete||!e.ok)return '';
     return [Number(row.quantity),Number(row.unit_price).toFixed(2),Number(row.amount).toFixed(2)].join('|');
   }
+  const RECOVERY_STOP=new Set(['the','and','with','for','from','into','setup','support','supported','supply','install','system','digital','single','dual','new','equipment','specified','section','model','console']);
+  function recoveryTokens(row={}){
+    return new Set(keyText([row.sku,row.model,row.item_name,row.description].filter(Boolean).join(' '))
+      .split(' ').filter(t=>t.length>=3&&!RECOVERY_STOP.has(t)));
+  }
+  function supportMatchScore(invoiceRow={},supportRow={}){
+    const iq=Number(invoiceRow.quantity),sq=Number(supportRow.quantity),econ=R?.economics?.(supportRow)||{};
+    if(!(iq>0)||iq!==sq||econ.ok!==true)return -1;
+    const a=recoveryTokens(invoiceRow),b=recoveryTokens(supportRow);
+    if(!a.size||!b.size)return -1;
+    let shared=0;for(const t of a)if(b.has(t))shared++;
+    const ratio=shared/Math.max(1,Math.min(a.size,b.size));
+    const sku=keyText(invoiceRow.sku||invoiceRow.model||'').replace(/\s+/g,'');
+    const supportText=keyText([supportRow.sku,supportRow.model,supportRow.item_name,supportRow.description].filter(Boolean).join(' ')).replace(/\s+/g,'');
+    const exactModel=!!sku&&supportText.includes(sku);
+    if(!exactModel&&(shared<3||ratio<.5))return -1;
+    return (exactModel?100:0)+shared*12+ratio*50;
+  }
+  function reconcileSupportingEconomics(skeletons=[],supportRows=[]){
+    const validSupport=(supportRows||[]).filter(r=>(R?.economics?.(r)||{}).ok===true&&r.layoutEvidenceVerified===true&&r.economicEvidenceVerified===true);
+    const used=new Set(),out=[];
+    for(const skeleton of skeletons||[]){
+      const ranked=validSupport.map((row,index)=>({row,index,score:supportMatchScore(skeleton,row)}))
+        .filter(x=>x.score>=0&&!used.has(x.index)).sort((a,b)=>b.score-a.score);
+      const best=ranked[0],second=ranked[1];
+      if(!best){out.push(skeleton);continue;}
+      const bestSig=economicSignature(best.row),secondSig=second?economicSignature(second.row):'';
+      if(second&&Math.abs(best.score-second.score)<8&&bestSig&&secondSig&&bestSig!==secondSig){out.push(skeleton);continue;}
+      used.add(best.index);
+      out.push({
+        ...skeleton,
+        unit_price:Number(best.row.unit_price),
+        amount:Number(best.row.amount),
+        economicEvidenceVerified:true,
+        supportingDocumentEvidenceVerified:true,
+        supportRecoveryPending:false,
+        provenance:{
+          ...(skeleton.provenance||{}),
+          supportingDocument:{
+            source:best.row?.provenance?.source||'',
+            page:best.row?.provenance?.page||null,
+            rowId:best.row?.sourceRowId||'',
+            score:Math.round(best.score*100)/100,
+            economics:economicSignature(best.row)
+          }
+        }
+      });
+    }
+    return out;
+  }
+
   function assessPromotion(rowLedger=[],completeness={},finalComparison={}){
     const blockers=[];
     const equipment=(rowLedger||[]).filter(x=>x.disposition==='equipment');
@@ -59,12 +110,19 @@
     const evidence=E.buildDocumentEvidence({sources,raw,layout});
     const headers=H.resolveHeaders(evidence);
 
-    // Independent V2 path: evidence -> geometry -> table -> physical row -> accounting.
+    // Independent V2 path: invoice evidence -> geometry -> table -> physical row -> accounting.
+    // Explicit quotation/support pages may corroborate damaged invoice economics, but can never create rows by themselves.
     const tables=T.detectTables(evidence);
     const physical=B.buildRows(evidence,tables);
+    const supportTables=typeof T.detectSupportTables==='function'?T.detectSupportTables(evidence):[];
+    const supportPhysical=supportTables.length?B.buildRows(evidence,supportTables):{rows:[],tables:[]};
+    const skeletons=typeof B.buildSkeletonRows==='function'?tables.flatMap(t=>B.buildSkeletonRows(t)):[];
+    const reconciledSkeletons=reconcileSupportingEconomics(skeletons,supportPhysical.rows);
     const physicalCandidates=physical.tables.map(t=>({origin:'v2-physical:'+t.id,items:t.rows}));
+    if(reconciledSkeletons.length)physicalCandidates.push({origin:'v2-invoice-skeleton-recovery',items:reconciledSkeletons});
     const rowLedger=R.buildLedger(physicalCandidates);
     const completeness=R.summarize(rowLedger);
+    const invoiceRows=[...physical.rows,...reconciledSkeletons];
 
     // Legacy candidates are retained for diagnostic comparison only.
     const legacyCandidateLedger=R.buildLedger(candidates);
@@ -74,7 +132,7 @@
 
     const sourceIssues=[];
     if(!tables.length)sourceIssues.push({code:'no-independent-table-evidence'});
-    if(tables.length&&!physical.rowCount)sourceIssues.push({code:'table-detected-no-physical-rows'});
+    if(tables.length&&!invoiceRows.length)sourceIssues.push({code:'table-detected-no-physical-rows'});
     if(!completeness.complete)sourceIssues.push({code:'unaccounted-source-rows',count:completeness.unexplainedRows});
 
     const comparisonIssues=[];
@@ -98,12 +156,13 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.2-evidence-promotion',
+      version:'2.3-support-reconciliation',
       mode:'evidence-first-independent-table',
       headers,
       tables,
-      physicalRows:physical.rows,
+      physicalRows:invoiceRows,
       rowLedger,
+      supportEvidence:Object.freeze({tableCount:supportTables.length,rowCount:supportPhysical.rows.length,recoveredRowCount:reconciledSkeletons.filter(x=>x.supportingDocumentEvidenceVerified).length,pendingRowCount:reconciledSkeletons.filter(x=>!x.supportingDocumentEvidenceVerified).length}),
       completeness,
       finalComparison,
       headerDiff:Object.fromEntries(['supplier_name','invoice_number','invoice_date','reference_number'].map(field=>{
@@ -168,8 +227,10 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.2-evidence-promotion',
+    version:'2.3-support-reconciliation',
     analyze,
+    reconcileSupportingEconomics,
+    supportMatchScore,
     assessPromotion,
     promotionIdentity,
     economicSignature,
