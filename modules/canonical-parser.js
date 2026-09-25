@@ -1,8 +1,8 @@
-// Inventory Hub canonical parser API — v7.03.3.14v
+// Inventory Hub canonical parser API — v7.03.3.14w
 (function(global){
   'use strict';
   const API_VERSION='1.1';
-  const ENGINE_VERSION='7.03.3.14v';
+  const ENGINE_VERSION='7.03.3.14w';
   const clean=v=>String(v??'').replace(/\s+/g,' ').trim();
   const compact=v=>clean(v).normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const normalizeBrand=v=>clean(v).normalize('NFKC').toUpperCase().replace(/\b(?:PTE|LTD|LIMITED|INC|CORP|CORPORATION)\b/g,' ').replace(/[^A-Z0-9]+/g,' ').trim();
@@ -92,15 +92,36 @@
     return normalizeResult(parsed,context);
   }
 
+  function reviewMaterial(canonical={}){
+    const d=canonical.doc||{};
+    const doc={
+      supplier_name:clean(d.supplier_name),invoice_number:clean(d.invoice_number),invoice_date:clean(d.invoice_date),
+      delivery_order_number:clean(d.delivery_order_number),reference_number:clean(d.reference_number),currency:clean(d.currency),
+      subtotal:d.subtotal??null,gst:d.gst??null,total_amount:d.total_amount??null
+    };
+    const items=(canonical.items||[]).map(row=>({
+      sku:clean(row.sku),model:clean(row.model),brand:clean(row.brand),item_name:clean(row.item_name),description:clean(row.description),
+      category:clean(row.category),unit:clean(row.unit),quantity:row.quantity??null,unit_price:row.unit_price??null,amount:row.amount??null,
+      warranty:clean(row.warranty),serials:serials(row.serials).join(', ')
+    }));
+    return JSON.stringify({doc,items});
+  }
+
   function applyReviewEdits(canonical={},edits={}){
     if(!isCanonicalResult(canonical))throw new Error('Canonical parser result is required before applying review edits.');
+    const before=reviewMaterial(canonical);
     const next={
       ...canonical,
       doc:{...canonical.doc,...(edits.doc||{})},
       items:Array.isArray(edits.items)?edits.items.map((row,index)=>({...canonical.items[index],...row,invoice_evidence:canonical.items[index]?.invoice_evidence||row.invoice_evidence})):canonical.items,
-      humanReviewed:false
+      humanReviewed:!!canonical.humanReviewed
     };
-    return normalizeResult(next,{raw:canonical.rawEvidence});
+    let normalized=normalizeResult(next,{raw:canonical.rawEvidence});
+    const materiallyChanged=reviewMaterial(normalized)!==before;
+    if(materiallyChanged&&canonical.humanReviewed){
+      normalized=normalizeResult({...normalized,humanReviewed:false},{raw:canonical.rawEvidence});
+    }
+    return normalized;
   }
 
   function markHumanReviewed(canonical={}){

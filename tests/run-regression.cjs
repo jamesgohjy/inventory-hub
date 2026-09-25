@@ -5,7 +5,7 @@ const read=p=>fs.readFileSync(p,'utf8');
 
 const core=read('v7033-core.js');
 const app=read('app.js');
-const runtime=read('runtime-v7.03.3.14v.js');
+const runtime=read('runtime-v7.03.3.14w.js');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
@@ -72,10 +72,10 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14v','Core version must be 7.03.3.14v');
+assert(cv==='7.03.3.14w','Core version must be 7.03.3.14w');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.14w','Upcoming version must be 7.03.3.14w');
+assert(uv==='7.03.3.14x','Upcoming version must be 7.03.3.14x');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
@@ -92,6 +92,7 @@ assert(!runtime.includes('sanitizeParsedInventoryItems(state.parsed'),'Review re
 assert(runtime.includes('InventoryHubCanonicalParser.applyReviewEdits'),'Review edits do not route through the canonical parser API');
 assert(runtime.includes('__canonicalAuthorityV11'),'Final canonical parser authority boundary is missing');
 assert(runtime.includes("this.sb.rpc('confirm_and_save_invoice_v703314v'"),'Confirm & Save does not use canonical PostgreSQL RPC');
+assert(runtime.includes('database migration must be applied before this invoice can be saved'),'Confirm & Save must surface a specific missing-RPC/database-migration error');
 assert(!runtime.includes("this.sb.rpc('import_invoice_atomic'"),'Legacy import_invoice_atomic remains in production Confirm & Save path');
 assert(canonicalSaveSql.includes('create or replace function public.confirm_and_save_invoice_v703314v'),'Canonical Confirm & Save RPC missing');
 for(const table of ['public.documents','public.purchases','public.master_items','public.purchase_items','public.serial_numbers'])assert(canonicalSaveSql.includes(table),'Atomic save RPC/schema missing '+table);
@@ -112,6 +113,28 @@ assert(canonicalResult.items[0].canonical_identity.key==='REMACO::MAS1818','Cano
 const editedCanonical=canonicalApi.applyReviewEdits(canonicalResult,{doc:{invoice_date:'2026-09-25'},items:[{...canonicalResult.items[0],item_name:'Reviewed controller'}]});
 assert(editedCanonical.items[0].item_name==='Reviewed controller','Canonical review edits were not applied');
 assert(editedCanonical.items[0].invoice_evidence.original_description==='Original invoice wording','Canonical review edit overwrote original invoice evidence');
+
+const level3Review=canonicalApi.normalizeResult({
+  doc:{supplier_name:'Example Supplier',invoice_number:'ANON-L3',invoice_date:'2026-09-25',currency:'SGD'},
+  items:[{sku:'CTRL-200',item_name:'Reviewed controller',description:'Reviewed controller',quantity:2,unit_price:350,amount:700}],
+  review:[{index:0,reason:'low-confidence'}],
+  rawText:'anonymized invoice evidence'
+});
+assert(canonicalApi.prepareSave(level3Review).status==='review','Unresolved Level 3 case must require review');
+const level3Approved=canonicalApi.markHumanReviewed(level3Review);
+assert(canonicalApi.prepareSave(level3Approved).ok===true,'Human-approved Level 3 case must become saveable');
+const level3Recollected=canonicalApi.applyReviewEdits(level3Approved,{
+  doc:{...level3Approved.doc},
+  items:level3Approved.items.map(x=>({...x}))
+});
+assert(level3Recollected.humanReviewed===true,'Unchanged form recollection must preserve Level 3 human approval');
+assert(canonicalApi.prepareSave(level3Recollected).ok===true,'Approved Level 3 case must remain saveable after unchanged form recollection');
+const level3Changed=canonicalApi.applyReviewEdits(level3Approved,{
+  doc:{...level3Approved.doc},
+  items:level3Approved.items.map((x,i)=>i===0?{...x,quantity:3,amount:1050}:x)
+});
+assert(level3Changed.humanReviewed===false&&canonicalApi.prepareSave(level3Changed).status==='review','Material post-review edits must invalidate Level 3 approval');
+
 const serialConflict=canonicalApi.normalizeResult({doc:{invoice_number:'ANON-2'},items:[{item_name:'A',quantity:1,serials:'SER-1'},{item_name:'B',quantity:1,serials:'SER-1'}],parseEvidence:{evidenceRanking:{review:[]}}});
 assert(canonicalApi.prepareSave(serialConflict).status==='block','Canonical save validation must block duplicate serial ownership');
 assert(canonicalApi.diagnostics(editedCanonical).canonical===true,'Canonical diagnostics contract failed');
@@ -123,20 +146,20 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14v'"),'14v direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14w'"),'14w direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
-assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14v.js'),'14v bootstrap direct module references missing');
+assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14w.js'),'14w bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
 assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("ASSET_REV='v703314v-compact-audit-import-20260925-3'"),'v14v compact UI asset revision marker missing');
-assert(runtime.includes("'Unified invoice parsing through one canonical result.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
-assert(index.includes('<li>Unified invoice parsing through one canonical result.</li>')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14v-r1'),'Index app.js cache-bust revision missing');
-assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14v bootstrap still references an older runtime/baseline');
+assert(app.includes("ASSET_REV='v703314w-level3-save-20260925-1'"),'v14w Level 3 save asset revision marker missing');
+assert(runtime.includes("'Fixed Confirm & Save after completed Level 3 review.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
+assert(index.includes('Fixed Confirm &amp; Save after completed Level 3 review.')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
+assert(index.includes('app.js?v=7.03.3.14w-r1'),'Index app.js cache-bust revision missing');
+assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14w bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
@@ -286,4 +309,4 @@ const frozen=JSON.parse(read('tests/known-good-releases.json'));
 assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.14v regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.14w regression gates PASS.');
