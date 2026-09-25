@@ -2497,17 +2497,9 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
     }else if(v2){
       // Global V2 completeness may be blocked by one difficult row. Do not hide independently
       // verified equipment behind the legacy fallback: surface those rows in Review only.
-      const verifiedReviewRows=[];
-      for(const entry of v2.rowLedger||[]){
-        if(entry?.disposition!=='equipment')continue;
-        const row={...(entry.row||{})};
-        if(!v2EconomicsOk(row)||row.layoutEvidenceVerified!==true||row.economicEvidenceVerified!==true)continue;
-        const variants=(entry.variants||[]).map(v=>v?.row||{}).filter(v2EconomicsOk);
-        const sigs=new Set(variants.map(v=>[Number(v.quantity),Number(v.unit_price).toFixed(2),Number(v.amount).toFixed(2)].join('|')));
-        if(sigs.size>1)continue;
-        verifiedReviewRows.push({...row,parserV2VerifiedReview:true,humanReviewRequired:true,needsReview:true,
-          parserReviewRequired:true,v7033ReviewFields:{...(row.v7033ReviewFields||{}),parser_v2:'Global invoice completeness is unresolved; this individual equipment row is independently verified.'}});
-      }
+      const verifiedReviewRows=(Array.isArray(v2.reviewRows)?v2.reviewRows:[]).map(row=>({...row,
+        parserV2VerifiedReview:true,humanReviewRequired:true,needsReview:true,parserReviewRequired:true,
+        v7033ReviewFields:{...(row.v7033ReviewFields||{}),parser_v2:'Global invoice completeness is unresolved; this individual equipment row is independently verified.'}}));
       let partial=sanitizeParsedInventoryItems(inventoryOnlyItems(verifiedReviewRows),v2EvidenceText||evidence);
       partial=v677ValidateInvoiceLines(partial,v2EvidenceText||evidence).filter(v2EconomicsOk);
       if(partial.length){
