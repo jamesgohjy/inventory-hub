@@ -3242,7 +3242,8 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
   function v703314gEvaluateDirection(source,target){
     const analysis=coreApi.analyzeDuplicatePair(source,target,state.data?.items||[]);
     const sourceMetrics=v703314gMetrics(source),targetMetrics=v703314gMetrics(target);
-    const blockers=[...(analysis.blockers||[])],warnings=[...(analysis.warnings||[])];
+    const blockers=[...(analysis.blockers||[])].filter(x=>!(analysis.candidate&&analysis.reason==='embedded-sku-alias'&&/normalized SKU identity/i.test(String(x))));
+    const warnings=[...(analysis.warnings||[])];
     if(!analysis.candidate)blockers.unshift('The source and surviving records do not have enough shared SKU/model evidence for a safe merge.');
     const combined={
       purchased:sourceMetrics.purchased+targetMetrics.purchased,
@@ -3310,7 +3311,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
       '</div>';
       let done=false;
       const confirm=d.querySelector('#mergeMasterConfirm'),ack=d.querySelector('#mergeMasterAcknowledgement');
-      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}if(v===false){try{document.getElementById('v703314gDuplicateReviewDialog')?.close();}catch(_e){}queueMicrotask(()=>{if(!d.open)d.innerHTML='';});}resolve(v);};
+      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}if(v===false){const parent=document.getElementById('v703314gDuplicateReviewDialog');try{parent?.close();}catch(_e){}queueMicrotask(()=>{if(!d.open)d.innerHTML='';if(parent&&!parent.open)parent.innerHTML='';});}resolve(v);};
       d.querySelector('#mergeMasterClose').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       d.querySelector('#mergeMasterCancel').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       ack.onchange=()=>{confirm.disabled=blockers.length>0||!ack.checked;};
