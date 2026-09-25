@@ -1549,7 +1549,7 @@ renderParsedItems=function(){
   });
 };
 
-function collectParsed(){document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;row.querySelectorAll('[data-f]').forEach(el=>state.parsed.items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});state.parsed.doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:'',reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};}
+function collectParsed(){const items=(state.parsed?.items||[]).map(x=>({...x}));document.querySelectorAll('.parsed-row').forEach(row=>{const i=+row.dataset.pi;if(!items[i])items[i]={};row.querySelectorAll('[data-f]').forEach(el=>items[i][el.dataset.f]=el.type==='number'?num(el.value):el.value)});const doc={supplier_name:canonicalSupplier($('pSupplier').value),invoice_number:$('pInvoice').value.trim(),invoice_date:String($('pDate').value||'').trim(),delivery_order_number:$('pDo').value.trim(),purchase_order_number:'',reference_number:$('pRef').value.trim(),currency:$('pCurrency').value.trim()||'SGD',subtotal:num($('pSubtotal').value),gst:num($('pGst').value),total_amount:num($('pTotal').value)};state.parsed=window.InventoryHubCanonicalParser.applyReviewEdits(state.parsed,{doc,items});}
 async function ensureUniqueFilename(file){
   let name=file.name.trim();
   while(await state.db.duplicateFilename(name)){
@@ -2213,14 +2213,10 @@ function sanitizeParsedInventoryItems(items=[],sourceText=''){
   return v676ValidateAndRectifyItems(items,sourceText);
 }
 function prepareInventoryLinesForSave(items=[]){
-  const source=state.parsed?.raw||state.parsed?.rawText||'';
-  const lines=v676ValidateAndRectifyItems(items,source).filter(line=>!isExcludedInventoryAccessoryLine(line)&&!v676IsSupportCoverageLine(line));
-  // V6.90: SKU/model and serial numbers are optional. Never fabricate either merely to satisfy save validation.
-  // AUTO-* remains forbidden; a missing SKU is preserved as blank and the item name/description remains authoritative.
-  return lines.map(line=>{
-    const rawSku=String(line.sku||'').trim();
-    return {...line,sku:v676IsForbiddenAutoSku(rawSku)?'':rawSku.slice(0,28),serials:String(line.serials||'').trim(),item_name:String(line.item_name||line.description||'').replace(/\s+/g,' ').trim(),description:cleanInventoryDescription(line.description||line.item_name||'')};
-  }).filter(line=>String(line.item_name||line.description||'').trim()&&Number(line.quantity)>0);
+  const canonical=state.parsed;
+  const prepared=window.InventoryHubCanonicalParser.prepareSave(canonical);
+  if(!prepared.ok)throw new Error(prepared.status==='review'?'Canonical parser review must be resolved before saving.':(prepared.errors?.[0]?.message||'Canonical parser validation prevents saving.'));
+  return prepared.rows.map(line=>({...line}));
 }
 function recoverAvMediaHeader(doc={},rawText=''){
   const sources=v661EvidenceSources(rawText),all=sources.map(x=>x.text).join('\n'),isAv=/\bAV\s+MEDIA\b/i.test(all)||/av\s+media/i.test(String(doc.supplier_name||''));
@@ -2345,7 +2341,7 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
   doc=v662RecoverMoneyFromText(doc,evidence);
   const classification=classifyInvoiceDocument(evidence,withSerials,inventory);
   const finalItems=['service','noninventory'].includes(classification.type)?[]:inventory;
-  const finalized={...parsed,doc,items:finalItems,excludedServiceCount:Math.max(0,withSerials.length-finalItems.length),invoiceClassification:classification,serviceOnlyInvoice:classification.type==='service',nonInventoryOnlyInvoice:classification.type==='noninventory',dateReviewRequired:!doc.invoice_date,rawText:evidence,parseEvidence:{...(parsed.parseEvidence||{}),itemSource:chosen?.origin||'none',candidateCounts:candidates.map(c=>({origin:c.origin,count:c.items.length,legacyScore:c.score,evidenceScore:c.evidence14u?.score??null,verifiedRows:c.verifiedRows,badRows:c.badRows,subtotalDelta:c.evidence14u?.subtotalDelta??null})),evidenceRanking:{confidence:evidenceRanking.confidence,margin:evidenceRanking.margin,status:pipeline.status,review:pipeline.review,winnerOrigin:pipeline.winnerOrigin},completeness:{expectedEquipmentCount:completeness.expectedEquipmentCount,candidateExpectedCount:completeness.candidateExpectedCount,sourceEvidenceCount:completeness.sourceEvidenceCount,finalEquipmentCount:finalItems.length,recoveredCount:completeness.recoveredCount,recheckRequired:completeness.expectedEquipmentCount!==finalItems.length},file_sha256:state.importFileHash||'',file_kind:state.importFileKind||''}};const normalized=v682AttachNormalization(finalized,evidence);return window.InventoryHubCanonicalParser.normalizeResult(normalized,{raw:evidence});
+  const finalized={...parsed,doc,items:finalItems,excludedServiceCount:Math.max(0,withSerials.length-finalItems.length),invoiceClassification:classification,serviceOnlyInvoice:classification.type==='service',nonInventoryOnlyInvoice:classification.type==='noninventory',dateReviewRequired:!doc.invoice_date,rawText:evidence,parseEvidence:{...(parsed.parseEvidence||{}),itemSource:chosen?.origin||'none',candidateCounts:candidates.map(c=>({origin:c.origin,count:c.items.length,legacyScore:c.score,evidenceScore:c.evidence14u?.score??null,verifiedRows:c.verifiedRows,badRows:c.badRows,subtotalDelta:c.evidence14u?.subtotalDelta??null})),evidenceRanking:{confidence:evidenceRanking.confidence,margin:evidenceRanking.margin,status:pipeline.status,review:pipeline.review,winnerOrigin:pipeline.winnerOrigin},completeness:{expectedEquipmentCount:completeness.expectedEquipmentCount,candidateExpectedCount:completeness.candidateExpectedCount,sourceEvidenceCount:completeness.sourceEvidenceCount,finalEquipmentCount:finalItems.length,recoveredCount:completeness.recoveredCount,recheckRequired:completeness.expectedEquipmentCount!==finalItems.length},file_sha256:state.importFileHash||'',file_kind:state.importFileKind||''}};const normalized=v682AttachNormalization(finalized,evidence);return window.InventoryHubCanonicalParser.fromPipeline(normalized,{raw:evidence});
 }
 async function reprocessConfirmedEquipmentInvoice(){
   if(!state.parsed)return;state.importClassificationChoice='equipment';
@@ -2573,7 +2569,7 @@ function v665StoredDocumentFilename(doc={},file=null){
 function cleanupPdfPreview(){if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}state.pdfLayout=null;state.ocrCandidates=null;if($('invoicePdfFrame'))$('invoicePdfFrame').src='about:blank';}
 function updatePdfPreview(){const frame=$('invoicePdfFrame');if(!frame||!state.pdfPreviewUrl)return;frame.src=`${state.pdfPreviewUrl}#page=${Math.max(1,state.pdfPreviewPage||1)}&zoom=${encodeURIComponent(state.pdfPreviewZoom||'page-width')}`;if($('pdfPageLabel'))$('pdfPageLabel').textContent=`Page ${Math.max(1,state.pdfPreviewPage||1)}`;}
 function setPdfZoom(value){state.pdfPreviewZoom=value;updatePdfPreview();}
-async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);if(v662FileKind(file)==='pdf'&&/AVs+MEDIA/i.test(text)){try{await addAvMediaTargetedOcr(file);}catch(targetErr){console.warn('AV Media targeted OCR skipped',targetErr);}}await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed.items=sanitizeParsedInventoryItems(state.parsed.items||[],state.parsed.raw||text);renderParsedItems();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
+async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);if(v662FileKind(file)==='pdf'&&/AVs+MEDIA/i.test(text)){try{await addAvMediaTargetedOcr(file);}catch(targetErr){console.warn('AV Media targeted OCR skipped',targetErr);}}await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed=window.InventoryHubCanonicalParser.fromPipeline(state.parsed,{raw:state.parsed.raw||state.parsed.rawText||text});renderParsedItems();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userRole'))$('userRole').textContent=currentRole().replace(/^./,c=>c.toUpperCase());if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();applyRoleUI();}
 function applyRoleUI(){const editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();for(const id of ['sidebarImportBtn','importBtn','addMaintenanceBtn'])$(id)?.classList.toggle('role-hidden',!editable);$('manageRolesBtn')?.classList.toggle('hidden',!admin);document.body.dataset.role=currentRole();}
@@ -2998,7 +2994,6 @@ $('saveImportBtn').addEventListener('click',e=>{
   const detected=state.parsed.invoiceClassification?.type||'uncertain';
   const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;
   if(effective!=='equipment'){e.preventDefault();e.stopImmediatePropagation();renderImportEligibility();toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':effective==='noninventory'?'No tracked equipment found. Excluded accessory-only invoices cannot be imported.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');return;}
-  state.parsed.items=v689SerialIntegrityGate(state.parsed.items||[],state.parsed.raw||state.parsed.rawText||'');
   if(!(state.parsed.items||[]).length){e.preventDefault();e.stopImmediatePropagation();toast('No verified physical inventory line item is available to save.');return;}
   try{
     let prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:false});
@@ -3006,7 +3001,7 @@ $('saveImportBtn').addEventListener('click',e=>{
     if(prep.status==='review'){
       const accepted=window.confirm('Level 3 — Please verify this item.\n\nThe canonical parser requires human review. Compare the highlighted values with the original invoice evidence, including quantity, unit price, amount and serial number(s).\n\nSelect OK only after checking the source invoice.');
       if(!accepted){e.preventDefault();e.stopImmediatePropagation();toast('Save paused for human review.');v703RenderVerificationNotice();return;}
-      prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:true});
+      state.parsed=window.InventoryHubCanonicalParser.markHumanReviewed(state.parsed);prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed);
       if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'Canonical parser validation prevents saving.');return;}
     }
   }catch(canonicalSaveErr){console.warn('Canonical save validation error',canonicalSaveErr);e.preventDefault();e.stopImmediatePropagation();toast('Canonical parser validation could not complete. Save has been stopped for safety.');return;}
@@ -3022,9 +3017,6 @@ $('saveImportBtn').addEventListener('click',e=>{
     toast('Invoice date is required. It could not be confirmed after two scans, so please enter it manually.');
     return;
   }
-  const before=state.parsed.items.length;
-  state.parsed.items=inventoryOnlyItems(state.parsed.items);
-  if(state.parsed.items.length!==before)renderParsedItems();
   if(!v70339IsVaultDate(state.parsed.doc.invoice_date)&&!state.parsed.items.length){
     e.preventDefault();e.stopImmediatePropagation();
     toast('No physical inventory items were detected. Labour, installation and service lines are excluded.');
@@ -3096,36 +3088,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
 },true);
 
 
-// V7.03.3.14f — hard runtime parser gate inside the REAL application scope.
-(function v703312lInstallRuntimeParserGate(){
-  if(window.__V703312L_RUNTIME_PARSER_GATE__)return;
-  if(typeof renderParsedItems!=='function'||typeof state==='undefined'){
-    console.error('V7.03.3.14f runtime parser gate could not bind to the real review runtime.');
-    return;
-  }
-  window.__V703312L_RUNTIME_PARSER_GATE__=true;
-  const originalRenderParsedItems=renderParsedItems;
-  function applyRuntimeParserGate(){
-    if(!state.parsed||state.parsed.__v703312lRuntimeGateApplied)return state.parsed;
-    const raw=String(state.parsed.raw||state.parsed.rawText||'');
-    const evidence=(typeof v661EvidenceSources==='function'?v661EvidenceSources(raw):[]).map((x,i)=>({source:String(x?.source||('runtime-'+(i+1))),text:String(x?.text||''),page:1}));
-    const before=(state.parsed.items||[]).map(x=>({sku:x.sku||'',item_name:x.item_name||'',quantity:x.quantity,unit_price:x.unit_price,amount:x.amount}));
-    const fixed=globalThis.V7033Patch?.applyParsedFixes(state.parsed,raw,evidence)||state.parsed;
-    if(state.importDocumentReviewRequired){fixed.v7=fixed.v7||{};fixed.v7.documentReviewRequired=true;fixed.v7.documentReviewReason=String(state.importDocumentReviewReason||'Verify this file is an Invoice / Tax Invoice.');fixed.v7.humanReviewRequired=true;fixed.documentReviewRequired=true;fixed.documentReviewReason=fixed.v7.documentReviewReason;}
-    fixed.__v703312lRuntimeGateApplied=true;
-    fixed.__v703312lRuntimeGateDiagnostics={version:'7.03.3.14f',evidenceCount:evidence.length,before,after:(fixed.items||[]).map(x=>({sku:x.sku||'',item_name:x.item_name||'',quantity:x.quantity,unit_price:x.unit_price,amount:x.amount})),level1:fixed.v703312kVerification?.level1||[],level2:fixed.v703312kVerification?.level2||[],level3Required:!!fixed.v703312kVerification?.level3Required};
-    state.parsed=fixed;
-    const d=fixed.doc||{};
-    if(document.getElementById('pSupplier'))document.getElementById('pSupplier').value=d.supplier_name||'';
-    if(document.getElementById('pInvoice'))document.getElementById('pInvoice').value=d.invoice_number||'';
-    if(document.getElementById('pDate'))document.getElementById('pDate').value=d.invoice_date||'';
-    return fixed;
-  }
-  renderParsedItems=function(){applyRuntimeParserGate();return originalRenderParsedItems();};
-  window.__AV_PARSER_RUNTIME_DIAGNOSTICS__={version:'7.03.3.14f',runtime:'inner-application',installed:true,apply:applyRuntimeParserGate,status:()=>({applied:!!state.parsed?.__v703312lRuntimeGateApplied,diagnostics:state.parsed?.__v703312lRuntimeGateDiagnostics||null,items:(state.parsed?.items||[]).map(x=>({sku:x.sku||'',item_name:x.item_name||'',quantity:x.quantity,unit_price:x.unit_price,amount:x.amount}))})};
-})();
-
-// V7.03.3.14f — Subtract Line runs inside the REAL application runtime.
+// Canonical parser v1.1 is the sole normalized-result authority. Review UI consumes state.parsed without re-running correction layers.\n\n// V7.03.3.14f — Subtract Line runs inside the REAL application runtime.
 (function v703312hInstallSubtractLine(){
   if(window.__V703312H_SUBTRACT_INSTALLED__)return;
   const add=document.getElementById('addParsedItemBtn'),box=document.getElementById('parsedItems');
@@ -4275,7 +4238,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
       const previousFinalizer=v661FinalizeParsedInvoice,wrapped=function(){let out=previousFinalizer.apply(this,arguments),raw=String(arguments[1]||out?.raw||out?.rawText||''),sources=typeof v661EvidenceSources==='function'?v661EvidenceSources(raw):[{source:'primary',text:raw,layout:[]}];out={...out,doc:api.v703314pReconcileHeader(out?.doc||{},sources)};
         if(!(out.items||[]).length){const recovered=collectRecovered14p(sources);if(recovered.length)out={...out,items:recovered,excludedServiceCount:Number(out.excludedServiceCount)||0};}
         const combined=sources.map(x=>String(x?.text||'')).filter(Boolean).join('\n'),strong=api.v703314pStrongEquipmentInvoice(combined);if(strong.strong&&!['service','noninventory'].includes(out?.invoiceClassification?.type||'')){out.invoiceClassification={...(out.invoiceClassification||{}),type:'equipment',reason:strong.reason,v703314pAutoEquipment:true};out.serviceOnlyInvoice=false;out.nonInventoryOnlyInvoice=false;}
-        try{out=api.applyParsedFixes(out,raw,sources.map(x=>({source:x.source||'evidence',text:x.text||'',page:1})));}catch(err){console.warn('14p deterministic final pass skipped',err);}return out;};wrapped.__v703314p=true;v661FinalizeParsedInvoice=wrapped;
+        return window.InventoryHubCanonicalParser.fromPipeline(out,{raw});};wrapped.__v703314p=true;v661FinalizeParsedInvoice=wrapped;
     }
     if(typeof renderImportEligibility==='function'&&!renderImportEligibility.__v703314p){
       const previousEligibility=renderImportEligibility,wrapped=function(){const parsed=state?.parsed,raw=String(parsed?.raw||parsed?.rawText||''),strong=parsed?.invoiceClassification?.type==='equipment'||api.v703314pStrongEquipmentInvoice(raw).strong;if(strong&&parsed&&!['service','noninventory'].includes(parsed?.invoiceClassification?.type||'')){parsed.invoiceClassification={...(parsed.invoiceClassification||{}),type:'equipment',reason:parsed.invoiceClassification?.reason||'Strong physical equipment evidence.',v703314pAutoEquipment:true};state.importClassificationChoice='equipment';}
@@ -4328,7 +4291,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
       return out;
     }
     if(typeof v661FinalizeParsedInvoice==='function'&&!v661FinalizeParsedInvoice.__v703314q){
-      const previous=v661FinalizeParsedInvoice,wrapped=function(){let out=previous.apply(this,arguments);const raw=String(arguments[1]||out?.raw||out?.rawText||'');out=reconcileMoney14q(out,raw);try{out=api.applyParsedFixes(out,raw,(typeof v661EvidenceSources==='function'?v661EvidenceSources(raw):[]).map(x=>({source:x.source||'evidence',text:x.text||'',page:1})));}catch(err){console.warn('14q deterministic validation refresh skipped',err);}return out;};wrapped.__v703314q=true;v661FinalizeParsedInvoice=wrapped;
+      const previous=v661FinalizeParsedInvoice,wrapped=function(){let out=previous.apply(this,arguments);const raw=String(arguments[1]||out?.raw||out?.rawText||'');out=reconcileMoney14q(out,raw);return window.InventoryHubCanonicalParser.fromPipeline(out,{raw});};wrapped.__v703314q=true;v661FinalizeParsedInvoice=wrapped;
     }
     function collapseDocumentGroups14q(root=document){
       root.querySelectorAll?.('.v669-doc-group').forEach(section=>{if(section.dataset.v703314qCollapsed==='1')return;const toggle=section.querySelector('.v669-doc-group-toggle'),body=section.querySelector('.v669-doc-group-body');if(!toggle||!body)return;body.classList.add('hidden');toggle.setAttribute('aria-expanded','false');const span=toggle.querySelector('span');if(span)span.textContent=span.textContent.replace(/[▾▸]\s*$/,'').trim()+' ▸';section.dataset.v703314qCollapsed='1';});
@@ -4345,6 +4308,18 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     diagnostics.regression=api.runMonetaryConsensusRegressionChecks14q();diagnostics.installed=true;diagnostics.stage=diagnostics.regression.ok?'ready':'regression-failed';diagnostics.reconcileMoney=reconcileMoney14q;diagnostics.enforceGroups=enforceCollapsedGroups14q;
   }catch(err){diagnostics.stage='failed';diagnostics.error=String(err?.message||err);console.warn('V7.03.3.14u money/group hardening failed non-fatally.',err);}
 })();
+
+// Final parser boundary: candidate/enrichment stages may contribute evidence, but only
+// InventoryHubCanonicalParser publishes the normalized result consumed by UI/save code.
+if(typeof v661FinalizeParsedInvoice==='function'&&!v661FinalizeParsedInvoice.__canonicalAuthorityV11){
+  const candidateFinalizer=v661FinalizeParsedInvoice;
+  v661FinalizeParsedInvoice=function(){
+    const candidate=candidateFinalizer.apply(this,arguments);
+    const raw=String(arguments[1]||candidate?.rawEvidence||candidate?.raw||candidate?.rawText||'');
+    return window.InventoryHubCanonicalParser.fromPipeline(candidate,{raw});
+  };
+  v661FinalizeParsedInvoice.__canonicalAuthorityV11=true;
+}
 
 try{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn('V6.69 optional audit/file-input setup skipped',e);}
 
