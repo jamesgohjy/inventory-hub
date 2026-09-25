@@ -10,6 +10,7 @@ const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
+const healthResolutionSql=read('supabase-v7-03-3-14x-health-resolution.sql');
 const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
 const healthResolutionSql=read('supabase-v7-03-3-14x-data-health-resolution.sql');
 const databaseMigrationWorkflow=read('.github/workflows/database-migrations.yml');
@@ -96,6 +97,13 @@ assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
 assert(uv==='7.03.3.14y','Upcoming version must be 7.03.3.14y');
 
+assert(runtime.includes('referenceNumberFromLabel'),'Runtime is missing labelled Reference No. extraction');
+assert(runtime.includes('data-f="quantity"],[data-f="unit_price"'),'Review Qty/Unit Price amount auto-calculation binding is missing');
+assert(runtime.includes("analysis.reason==='embedded-sku-alias'"),'Embedded-SKU Master Item merge exception is missing');
+assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is missing');
+assert(runtime.includes('resolve_health_issue_v703314x'),'Runtime does not persist Data Health resolution');
+assert(healthResolutionSql.includes('resolution_status'),'Data Health resolution migration is missing durable status');
+assert(healthResolutionSql.includes('resolve_health_issue_v703314x'),'Data Health resolution RPC migration is missing');
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
