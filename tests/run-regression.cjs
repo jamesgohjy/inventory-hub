@@ -128,24 +128,29 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14u.js'),'14u bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
-assert(index.includes('components.css?v=7.03.3.14v-r1'),'Reusable component stylesheet is not loaded');
+assert(index.includes('components.css?v=7.03.3.14v-r2'),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("ASSET_REV='v703314v-canonical-components-20260925-1'"),'Canonical/components asset revision marker missing');
+assert(app.includes("ASSET_REV='v703314v-compact-grouping-20260925-2'"),'Compact grouping asset revision marker missing');
 assert(runtime.includes("'Improved invoice parsing accuracy and verification.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
 assert(index.includes('<li>Improved invoice parsing accuracy and verification.</li>')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14u-r4'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14u-r5'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14u bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,160}<option value="none">No Grouping<\/option>[\s\S]{0,160}<option value="company">Group by Company<\/option>/.test(index),'Documents grouping must default to No Grouping so selecting Group by Company causes a visible state change');
-assert(index.includes('#documentsView #documentGroup{flex:0 0 210px;width:210px;min-width:210px;max-width:210px;'),'Documents Group by Company dropdown width guard missing');
+assert(index.includes('#documentsView #documentGroup{flex:0 0 230px;width:230px;min-width:230px;max-width:230px;'),'Documents Group by Company dropdown width guard missing');
 assert(runtime.includes("group=$('documentGroup')?.value||'none'"),'Documents renderer fallback must default to No Grouping');
 assert(runtime.includes("\\$('inventoryGroup')?.addEventListener('change',renderInventory)")||runtime.includes("\\$('inventoryGroup').onchange=renderInventory")||runtime.includes("inventoryGroup')?.addEventListener('change',renderInventory"),'Inventory Group by Company event path must remain wired');
 assert(runtime.includes("$('documentGroup')?.addEventListener('change',renderDocuments)"),'Documents Group by Company must use the same change-listener pattern as Inventory');
 assert(runtime.includes("function v703314sRenderDocumentGroups(groups,head)")&&runtime.includes("host:$('documentsTable'),groups,head,escapeHtml:esc"),'Documents Group by Company must use a dedicated wrapper matching Inventory grouping behavior');
+assert(runtime.includes("host:$('documentsTable'),groups,head,escapeHtml:esc,itemLabel:'invoice'"),'Documents grouped view must use invoice count labels');
+assert(runtime.includes("host:$('inventoryTable'),groups,head,escapeHtml:esc,itemLabel:'item'"),'Inventory grouped view must use item count labels');
+assert(componentsCss.includes('#documentsView #documentGroup,#inventoryView #inventoryGroup')&&componentsCss.includes('width:230px'),'Reusable grouped-view controls must preserve full company grouping labels');
+assert(componentsCss.includes('.ui-group__toggle,.v669-doc-group-toggle')&&componentsCss.includes('justify-content:space-between'),'Compact grouped-view accordion styling is missing');
+assert(index.indexOf('id="documentSort"')<index.indexOf('id="documentGroup"'),'Documents toolbar must remain Search → Sort → Group as in the established UI');
 console.log('protected-company-grouping: Inventory + Documents controls/event/render paths PASS');
 assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.14s.js')&&fs.existsSync('runtime-v7.03.3.14r.js')&&fs.existsSync('baseline-v6.55-d452.js'),'Rollback references must remain available');
 
@@ -237,7 +242,10 @@ vm.runInContext(groupModule,mctx,{filename:'modules/grouped-company-ui.js'});
 const host={innerHTML:'',querySelectorAll(){return[];}};
 const groups=new Map([['AV Media Pte Ltd',[{html:'<tr></tr>'},{html:'<tr></tr>'}]],['Loud Technologies Asia Pte Ltd',[{html:'<tr></tr>'}]]]);
 assert(mctx.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head:'<thead></thead>',escapeHtml:v=>String(v)}),'Grouped-company module returned false');
-assert(/class="[^"]*v669-doc-group-body[^"]*hidden[^"]*"/.test(host.innerHTML)&&/2 items ▸/.test(host.innerHTML),'Grouped-company module output regression failed');
+assert(/class="[^"]*v669-doc-group-body[^"]*hidden[^"]*"/.test(host.innerHTML)&&/2 items/.test(host.innerHTML)&&/ui-group__chevron[^>]*>▸</.test(host.innerHTML),'Grouped-company module output regression failed');
+const invoiceHost={innerHTML:'',querySelectorAll(){return[];}};
+assert(mctx.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host:invoiceHost,groups:new Map([['AV Media Pte Ltd',[{html:'<tr></tr>'},{html:'<tr></tr>'}]]]),head:'<thead></thead>',escapeHtml:v=>String(v),itemLabel:'invoice'}),'Documents grouped-company renderer returned false');
+assert(/2 invoices/.test(invoiceHost.innerHTML),'Documents grouped-company count must use invoice label');
 
 assert(backupUiModule.includes("version:'7.03.3.14t'"),'Backup UI version marker missing');
 assert(backupUiModule.includes("String(role).toLowerCase()==='admin'"),'Backup UI is not admin-only');
