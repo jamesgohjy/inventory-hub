@@ -117,6 +117,10 @@ assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Hea
 assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
 assert(runtime.includes("x.type==='Possible duplicate SKU')?'<button class=\"secondary small-btn\" data-health-resolve="),'Possible duplicate SKU alerts must expose Resolve');
 assert(runtime.includes('function renderNeedsAttention14x(openDialog=false)'),'14x must have one authoritative Needs Attention renderer');
+const health14xStart=runtime.indexOf('function v703314x');
+const health14xTail=health14xStart>=0?runtime.slice(health14xStart):runtime.slice(runtime.indexOf('function renderNeedsAttention14x')-5000);
+assert(!health14xTail.includes('v703314xBaseRenderQuality=renderQualityDashboard14o'),'14x must not reference closure-local renderQualityDashboard14o');
+assert(!health14xTail.includes('renderQualityDashboard14o=function'),'14x must not overwrite closure-local parser dashboard renderer');
 assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
 assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
 assert(app.includes("ASSET_REV='v703314x-health-unified-no-correction-memory-20260925-1'"),'Asset revision must force deployment of the unified health/Correction Memory retirement runtime');
