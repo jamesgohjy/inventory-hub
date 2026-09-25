@@ -10,7 +10,9 @@
     description:/^(?:DESCRIPTION|ITEM DESCRIPTION|PRODUCT DESCRIPTION|DETAILS?)$/,
     quantity:/^(?:QTY|QUANTITY|UNITS?|PCS)$/,
     unit_price:/^(?:UNIT PRICE|UNIT RATE|PRICE|RATE|U PRICE)$/,
-    amount:/^(?:AMOUNT|LINE TOTAL|TOTAL PRICE|NET AMOUNT)$/
+    amount:/^(?:AMOUNT|LINE TOTAL|TOTAL PRICE|NET AMOUNT)$/,
+    tax:/^(?:TAX|GST|VAT|TAX RATE|GST RATE|VAT RATE)$/,
+    discount:/^(?:DISC(?:OUNT)?|DISCOUNT %|DISC %)$/
   });
   const TOTAL_RE=/\b(?:SUB\s*TOTAL|SUBTOTAL|GST|GRAND\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i;
 
@@ -23,7 +25,8 @@
   function findHeaderColumns(items=[]){
     const words=items.map(it=>({...it,_token:token(it.text)})).filter(it=>it._token);
     const find=re=>words.filter(it=>re.test(it._token)).sort((a,b)=>center(a)-center(b))[0]||null;
-    let code=find(HEADER_RULES.code),description=find(HEADER_RULES.description),quantity=find(HEADER_RULES.quantity),unit_price=find(HEADER_RULES.unit_price),amount=find(HEADER_RULES.amount);
+    let code=find(HEADER_RULES.code),description=find(HEADER_RULES.description),quantity=find(HEADER_RULES.quantity),unit_price=find(HEADER_RULES.unit_price),amount=find(HEADER_RULES.amount),
+        tax=find(HEADER_RULES.tax),discount=find(HEADER_RULES.discount);
     // Some PDFs split "UNIT" and "PRICE" into separate tokens. Join only geometrically adjacent header tokens.
     if(!unit_price){
       const units=words.filter(it=>/^UNIT$/.test(it._token)),prices=words.filter(it=>/^PRICE$/.test(it._token));
@@ -33,24 +36,37 @@
     }
     if(!description||!quantity||!unit_price||!amount)return null;
     const xs={description:center(description),quantity:center(quantity),unit_price:center(unit_price),amount:center(amount)};
-    if(code)xs.code=center(code);
-    const ordered=code?[xs.code,xs.description,xs.quantity,xs.unit_price,xs.amount]:[xs.description,xs.quantity,xs.unit_price,xs.amount];
-    if(!ordered.every(Number.isFinite)||ordered.some((x,i)=>i&&x<=ordered[i-1]))return null;
+    if(code)xs.code=center(code);if(tax)xs.tax=center(tax);if(discount)xs.discount=center(discount);
+    const semantic=[
+      code&&{name:'code',x:xs.code},description&&{name:'description',x:xs.description},quantity&&{name:'quantity',x:xs.quantity},
+      unit_price&&{name:'unit_price',x:xs.unit_price},tax&&{name:'tax',x:xs.tax},discount&&{name:'discount',x:xs.discount},amount&&{name:'amount',x:xs.amount}
+    ].filter(Boolean).sort((a,b)=>a.x-b.x);
+    if(!semantic.every(x=>Number.isFinite(x.x)))return null;
+    const requiredOrder=['description','quantity','unit_price','amount'].map(name=>semantic.findIndex(x=>x.name===name));
+    if(requiredOrder.some(i=>i<0)||requiredOrder.some((x,i)=>i&&x<=requiredOrder[i-1]))return null;
     const leftEdge=code?Math.min(Number(code.x)||xs.code,Number(description.x)||xs.description):Math.max(0,(Number(description.x)||xs.description)-Math.max(80,(xs.quantity-xs.description)*.75));
-    const bCodeDesc=code?(xs.code+xs.description)/2:leftEdge;
-    const bDescQty=(xs.description+xs.quantity)/2,bQtyPrice=(xs.quantity+xs.unit_price)/2,bPriceAmount=(xs.unit_price+xs.amount)/2;
-    const amountWidth=Math.max(60,(Number(amount.width)||0)*2,(xs.amount-xs.unit_price)*.9);
+    const interval=name=>{
+      const idx=semantic.findIndex(x=>x.name===name),cur=semantic[idx];
+      const lo=idx>0?(semantic[idx-1].x+cur.x)/2:leftEdge;
+      const defaultRight=name==='amount'?cur.x+Math.max(60,(Number(amount.width)||0)*2,(cur.x-xs.unit_price)*.9):cur.x+80;
+      const hi=idx+1<semantic.length?(cur.x+semantic[idx+1].x)/2:defaultRight;
+      return [lo,hi];
+    };
     return {
       hasCode:!!code,
       x:xs,
       boundaries:{
-        code:[leftEdge,bCodeDesc],
-        description:[code?bCodeDesc:leftEdge,bDescQty],
-        quantity:[bDescQty,bQtyPrice],
-        unit_price:[bQtyPrice,bPriceAmount],
-        amount:[bPriceAmount,xs.amount+amountWidth]
+        code:code?interval('code'):[leftEdge,leftEdge],
+        description:interval('description'),
+        quantity:interval('quantity'),
+        unit_price:interval('unit_price'),
+        amount:interval('amount')
       },
-      labels:{code:clean(code?.text),description:clean(description.text),quantity:clean(quantity.text),unit_price:clean(unit_price.text),amount:clean(amount.text)}
+      ignoredColumns:{
+        tax:tax?interval('tax'):null,
+        discount:discount?interval('discount'):null
+      },
+      labels:{code:clean(code?.text),description:clean(description.text),quantity:clean(quantity.text),unit_price:clean(unit_price.text),tax:clean(tax?.text),discount:clean(discount?.text),amount:clean(amount.text)}
     };
   }
   function rowPosition(row,headerY,direction){return (Number(row.y)-headerY)*direction;}
