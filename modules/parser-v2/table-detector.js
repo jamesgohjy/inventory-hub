@@ -8,7 +8,7 @@
   const HEADER_RULES=Object.freeze({
     code:/^(?:PRODUCT(?: NO| NUMBER| CODE)?|ITEM(?: NO| NUMBER| CODE)?|SKU|MODEL|PART(?: NO| NUMBER)?)$/,
     description:/^(?:DESCRIPTION|ITEM DESCRIPTION|PRODUCT DESCRIPTION|DETAILS?)$/,
-    quantity:/^(?:QTY|QUANTITY|UNITS?|PCS)$/,
+    quantity:/^(?:QTY|QUANTITY|UNITS|PCS)$/,
     unit_price:/^(?:UNIT PRICE|UNIT RATE|PRICE|RATE|U PRICE)$/,
     amount:/^(?:AMOUNT|LINE TOTAL|TOTAL PRICE|NET AMOUNT)$/,
     tax:/^(?:TAX|GST|VAT|TAX RATE|GST RATE|VAT RATE)$/,
@@ -283,5 +283,5 @@
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.8-unit-price-quantity-disambiguation',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.9-unambiguous-quantity-header',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
