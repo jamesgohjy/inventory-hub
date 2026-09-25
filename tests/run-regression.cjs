@@ -535,6 +535,35 @@ const modelConsensus=v2ctx.InventoryHubParserV2.normalizeCrossOcrSkeletonModels(
 ]);
 assert(modelConsensus.every(x=>x.sku==='XDP-3001'),'Two-to-one OCR model consensus must preserve the corroborated replacement model');
 
+// Live mixed-invoice hardening: OCR-damaged Qty header must not be confused with "Unit" from "Unit Price".
+const damagedQtyHeaderEvidence=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[{source:'qty-ocr',kind:'ocr',text:'TAX INVOICE',layout:[{page:1,width:1200,height:1400,yTolerance:4,rows:[
+  {y:100,text:'TAX INVOICE',items:[{text:'TAX',x:600,width:40},{text:'INVOICE',x:650,width:70}]},
+  {y:180,text:'No. Description aty Unit Price Amount',items:[{text:'No.',x:80,width:30},{text:'Description',x:250,width:100},{text:'aty',x:720,width:35},{text:'Unit',x:830,width:40},{text:'Price',x:880,width:45},{text:'Amount',x:1040,width:70}]},
+  {y:240,text:'1 Digital mixer 1 100.00 100.00',items:[{text:'1',x:85,width:10},{text:'Digital mixer',x:250,width:180},{text:'1',x:735,width:10},{text:'100.00',x:850,width:60},{text:'100.00',x:1050,width:65}]}
+]}]}]});
+const damagedQtyTables=v2ctx.InventoryHubParserV2TableDetector.detectTables(damagedQtyHeaderEvidence);
+assert(damagedQtyTables.length===1&&damagedQtyTables[0].columns.labels.quantity==='aty','OCR-damaged Qty header must resolve from geometry');
+assert(damagedQtyTables[0].columns.labels.unit_price==='Price','Unit from Unit Price must never occupy the Qty column');
+
+const qtySpillEvidence=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[{source:'support-spill',kind:'ocr',text:'SCHEDULES OF PRICES AND TECHNICAL DATA',layout:[{page:1,width:1400,height:1200,yTolerance:4,rows:[
+  {y:100,text:'SCHEDULES OF PRICES AND TECHNICAL DATA',items:[{text:'SCHEDULES',x:100,width:90},{text:'OF',x:195,width:20},{text:'PRICES',x:220,width:60},{text:'AND',x:285,width:40},{text:'TECHNICAL',x:330,width:90},{text:'DATA',x:425,width:50}]},
+  {y:180,text:'Description Make Model Country Qty Unit Price Amount',items:[{text:'Description',x:300,width:100},{text:'Make',x:760,width:50},{text:'Model',x:880,width:55},{text:'Country',x:1000,width:70},{text:'Qty',x:1085,width:35},{text:'Unit',x:1160,width:40},{text:'Price',x:1205,width:45},{text:'Amount',x:1300,width:70}]},
+  {y:240,text:'Wireless microphone Shure MIC-200 USA 2 850.00 1900.00',items:[{text:'Wireless microphone',x:300,width:220},{text:'Shure',x:760,width:55},{text:'MIC-200',x:880,width:75},{text:'USA',x:1020,width:45},{text:'2',x:1095,width:10},{text:'850.00',x:1180,width:60},{text:'1900.00',x:1310,width:70}]}
+]}]}]});
+const qtySpillTables=v2ctx.InventoryHubParserV2TableDetector.detectSupportTables(qtySpillEvidence);
+const qtySpillSkeletons=qtySpillTables.flatMap(t=>v2ctx.InventoryHubParserV2RowBuilder.buildSkeletonRows(t));
+assert(qtySpillSkeletons.length===1&&qtySpillSkeletons[0].observedEconomics.quantity===2,'Qty recovery must accept a single numeric token despite adjacent country-label spill');
+
+const reviewRowsFixture=[
+  {disposition:'equipment',row:{sku:'EQ-1',item_name:'Digital mixer',quantity:1,unit_price:100,amount:100,layoutEvidenceVerified:true,economicEvidenceVerified:true},variants:[{row:{sku:'EQ-1',quantity:1,unit_price:100,amount:100}}]},
+  {disposition:'unknown',row:{sku:'EQ-2',item_name:'Damaged row',quantity:null,unit_price:null,amount:null,layoutEvidenceVerified:true,economicEvidenceVerified:false},variants:[]}
+];
+const verifiedReview=v2ctx.InventoryHubParserV2.verifiedReviewRows(reviewRowsFixture);
+assert(verifiedReview.length===1&&verifiedReview[0].sku==='EQ-1'&&verifiedReview[0].humanReviewRequired===true,'Individually verified V2 equipment must remain visible in Review even when another row is unresolved');
+assert(runtime.includes('Array.isArray(v2.reviewRows)')&&runtime.includes("reason:'partial-v2-review'"),'Production runtime must consume Parser V2 authoritative Review rows');
+assert(runtime.includes('v2EvidenceText||evidence'),'V2-promoted/review rows must be post-validated against the same full evidence used by Parser V2');
+
+
 
 
 const multiTableLayout=[{page:1,width:595,height:842,yTolerance:3,rows:[

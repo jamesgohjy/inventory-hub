@@ -8,7 +8,7 @@
   const HEADER_RULES=Object.freeze({
     code:/^(?:PRODUCT(?: NO| NUMBER| CODE)?|ITEM(?: NO| NUMBER| CODE)?|SKU|MODEL|PART(?: NO| NUMBER)?)$/,
     description:/^(?:DESCRIPTION|ITEM DESCRIPTION|PRODUCT DESCRIPTION|DETAILS?)$/,
-    quantity:/^(?:QTY|QUANTITY|UNITS?|PCS)$/,
+    quantity:/^(?:QTY|QUANTITY|UNITS|PCS)$/,
     unit_price:/^(?:UNIT PRICE|UNIT RATE|PRICE|RATE|U PRICE)$/,
     amount:/^(?:AMOUNT|LINE TOTAL|TOTAL PRICE|NET AMOUNT)$/,
     tax:/^(?:TAX|GST|VAT|TAX RATE|GST RATE|VAT RATE)$/,
@@ -32,6 +32,30 @@
     const band=rows.filter(r=>Number.isFinite(Number(r.y))&&Number.isFinite(sy)&&Math.abs(Number(r.y)-sy)<=tol);
     return band.flatMap(r=>r.items||[]).filter(it=>clean(it.text));
   }
+  function editDistance(a='',b=''){
+    const x=String(a),y=String(b),prev=Array.from({length:y.length+1},(_,i)=>i),cur=new Array(y.length+1);
+    for(let i=1;i<=x.length;i++){
+      cur[0]=i;
+      for(let j=1;j<=y.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(x[i-1]===y[j-1]?0:1));
+      for(let j=0;j<=y.length;j++)prev[j]=cur[j];
+    }
+    return prev[y.length];
+  }
+  function fuzzyQuantityHeader(words=[],description=null,unitPrice=null){
+    if(!description||!unitPrice)return null;
+    const lo=center(description),hi=center(unitPrice);
+    if(!Number.isFinite(lo)||!Number.isFinite(hi)||hi<=lo)return null;
+    const candidates=words.filter(it=>{
+      const x=center(it),t=String(it._token||'').replace(/\s+/g,'');
+      if(!(x>lo&&x<hi)||!t||!/^[A-Z]+$/.test(t))return false;
+      return (t.length<=4&&editDistance(t,'QTY')<=1)||(t.length>=6&&t.length<=9&&editDistance(t,'QUANTITY')<=2);
+    }).sort((a,b)=>{
+      const da=Math.min(editDistance(String(a._token||'').replace(/\s+/g,''),'QTY'),editDistance(String(a._token||'').replace(/\s+/g,''),'QUANTITY'));
+      const db=Math.min(editDistance(String(b._token||'').replace(/\s+/g,''),'QTY'),editDistance(String(b._token||'').replace(/\s+/g,''),'QUANTITY'));
+      return da-db||center(a)-center(b);
+    });
+    return candidates[0]||null;
+  }
   function findHeaderColumns(items=[]){
     const words=items.map(it=>({...it,_token:token(it.text)})).filter(it=>it._token);
     const find=re=>words.filter(it=>re.test(it._token)).sort((a,b)=>center(a)-center(b))[0]||null;
@@ -41,9 +65,12 @@
     if(!unit_price){
       const units=words.filter(it=>/^UNIT$/.test(it._token)),prices=words.filter(it=>/^PRICE$/.test(it._token));
       outer:for(const u of units)for(const p of prices){
-        if(center(p)>center(u)&&Math.abs(center(p)-center(u))<160){unit_price={text:'UNIT PRICE',x:Number(u.x),width:(Number(p.x)||0)+(Number(p.width)||0)-Number(u.x)};break outer;}
+        if(center(p)>center(u)&&Math.abs(center(p)-center(u))<160){unit_price={text:'UNIT PRICE',x:Number(u.x),width:(Number(p.x)||0)+(Number(p.width)||0)-Number(u.x),_joinedFromUnit:u};break outer;}
       }
     }
+    // "UNIT PRICE" split into two OCR words must not let UNIT masquerade as the Qty column.
+    if(quantity&&unit_price?._joinedFromUnit&&quantity===unit_price._joinedFromUnit)quantity=null;
+    if(!quantity&&description&&unit_price)quantity=fuzzyQuantityHeader(words,description,unit_price);
     if(!description||!quantity||!unit_price||!amount)return null;
     const xs={description:center(description),quantity:center(quantity),unit_price:center(unit_price),amount:center(amount)};
     if(code)xs.code=center(code);if(tax)xs.tax=center(tax);if(discount)xs.discount=center(discount);
@@ -256,5 +283,5 @@
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.6-support-document-evidence',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.9-unambiguous-quantity-header',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);

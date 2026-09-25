@@ -242,6 +242,45 @@
       "focused_retest": "PENDING_CI",
       "permanent_regression_lock": "tests/run-regression.cjs — partialRecoveryResult / partialSingleSupport / modelConsensus",
       "status": "fix-implemented-awaiting-ci"
+    },
+    {
+      "id": "ADV-2026-09-25-019",
+      "type": "ocr-qty-header-unit-price-collision",
+      "base_document_family": "Complex scanned invoice",
+      "mutation": "OCR reads Qty as 'aty' while Unit Price is split into separate Unit and Price words.",
+      "observed_failure": "Table detector treated Unit as the quantity header and shifted the economic columns, causing most equipment rows to disappear.",
+      "root_cause": "Quantity regex accepted singular UNIT before Unit Price disambiguation; fuzzy Qty recovery never ran.",
+      "generalized_fix": "Do not accept singular UNIT as Qty; when Description and Unit Price are geometrically proven, allow a tightly constrained fuzzy Qty header such as aty between them.",
+      "expected": "Description -> aty(Qty) -> Unit Price -> Amount",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — damagedQtyHeaderEvidence",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-020",
+      "type": "quantity-cell-label-spill",
+      "base_document_family": "Quotation/support table OCR",
+      "mutation": "Country text spills into the Qty cell so OCR geometry yields a cell like 'USA 2'.",
+      "observed_failure": "Strict quantity parsing rejected the entire cell and support consensus could not recover the invoice row.",
+      "root_cause": "Qty parser required a purely numeric cell even when exactly one unambiguous number was present.",
+      "generalized_fix": "Accept exactly one numeric token in a Qty cell when no second numeric token exists; ambiguous multi-number cells still fail closed.",
+      "expected": "USA 2 -> Qty 2",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — qtySpillSkeletons",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-021",
+      "type": "global-v2-fallback-hides-verified-rows",
+      "base_document_family": "Complex mixed-document invoice",
+      "mutation": "Six equipment rows are individually verified while one equipment row remains unresolved.",
+      "observed_failure": "Global safeToPromote=false caused the runtime to discard the entire V2 result and show only the legacy parser's two items.",
+      "root_cause": "Production Review path used all-or-nothing V2 promotion.",
+      "generalized_fix": "Parser V2 now exposes authoritative reviewRows containing individually verified equipment. Runtime surfaces these rows as Review-required even when global completeness is blocked.",
+      "expected": "Verified rows remain visible in Review; unresolved rows still require review and cannot silently auto-save.",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — verifiedReview + runtime handoff assertions",
+      "status": "resolved"
     }
   ],
   "unresolved": []

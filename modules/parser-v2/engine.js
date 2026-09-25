@@ -110,7 +110,9 @@
 
   function sourceId(row={}){return clean(row?.provenance?.source||row?.source||'');}
   function observed(row={},field){
-    const v=Number(row?.observedEconomics?.[field]);
+    const raw=row?.observedEconomics?.[field];
+    const fallback=row?.[field];
+    const v=Number(raw===null||raw===undefined||raw===''?fallback:raw);
     return Number.isFinite(v)?Math.round(v*100)/100:null;
   }
   function descriptionMatchScore(a={},b={}){
@@ -156,28 +158,68 @@
     if(!best||best.sources.size<minSupport||best.sources.size===Number(second?.sources?.size||0))return null;
     return {value:Math.round(best.center*100)/100,support:best.sources.size,sources:[...best.sources]};
   }
-  function partialSupportRecovery(skeleton={},supportSkeletons=[]){
-    const q=Number(skeleton.quantity);if(!(q>0))return null;
-    const matches=(supportSkeletons||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
+  function partialSupportRecovery(skeleton={},supportEvidenceRows=[]){
+    const matches=(supportEvidenceRows||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
     if(!matches.length)return null;
+    const invoiceQ=Number(skeleton.quantity);
+    const invoiceUnit=observed(skeleton,'unit_price');
+    if(invoiceQ>0&&invoiceUnit!==null&&invoiceUnit>=0){
+      const derivedAmount=Math.round(invoiceQ*invoiceUnit*100)/100,tol=Math.max(.03,Math.abs(derivedAmount)*.003);
+      const corroborating=matches.filter(r=>{
+        const a=observed(r,'amount');return a!==null&&Math.abs(a-derivedAmount)<=tol&&sourceId(r);
+      });
+      const sources=[...new Set(corroborating.map(sourceId).filter(Boolean))];
+      if(sources.length>=2){
+        return {
+          quantity:invoiceQ,unit_price:invoiceUnit,amount:derivedAmount,
+          support:sources.length,sources,
+          invoiceObserved:{quantity:invoiceQ,unit_price:invoiceUnit,amount:observed(skeleton,'amount')},
+          method:'invoice-arithmetic-support-amount'
+        };
+      }
+    }
+    const qtyConsensus=consensusValue(matches,'quantity',{minSupport:2,tolerance:.01});
+    const q=invoiceQ>0?invoiceQ:Number(qtyConsensus?.value);
+    if(!(q>0)||Math.abs(q-Math.round(q))>.001)return null;
+    // When invoice Qty is unreadable, two independent support OCR sources must agree on it.
+    if(!(invoiceQ>0)&&!qtyConsensus)return null;
     const amountConsensus=consensusValue(matches,'amount',{minSupport:2,tolerance:.02});
     if(!amountConsensus)return null;
     const derivedUnit=Math.round((amountConsensus.value/q)*100)/100;
     if(!(derivedUnit>=0))return null;
-    const invoiceUnit=observed(skeleton,'unit_price');
     const supportUnit=consensusValue(matches,'unit_price',{minSupport:1,tolerance:.12});
     const agrees=v=>v!==null&&Math.abs(v-derivedUnit)<=Math.max(.12,Math.abs(derivedUnit)*.001);
-    if(!agrees(invoiceUnit)&&!agrees(supportUnit?.value??null))return null;
+    // If Qty and Amount are each independently corroborated by >=2 OCR sources,
+    // their arithmetic may determine Unit Price even when the printed price itself is damaged.
+    const derivedFromDualConsensus=!!qtyConsensus&&qtyConsensus.support>=2&&amountConsensus.support>=2;
+    if(!agrees(invoiceUnit)&&!agrees(supportUnit?.value??null)&&!derivedFromDualConsensus)return null;
     const invoiceAmount=observed(skeleton,'amount');
-    // A conflicting damaged invoice amount is allowed only because two independent support OCR
-    // sources agree on the replacement amount and arithmetic is exact. Subtotal validation remains mandatory later.
     const delta=Math.abs(q*derivedUnit-amountConsensus.value),tol=Math.max(.03,Math.abs(amountConsensus.value)*.003);
     if(delta>tol)return null;
     return {
       quantity:q,unit_price:derivedUnit,amount:amountConsensus.value,
-      support:amountConsensus.support,sources:amountConsensus.sources,
-      invoiceObserved:{unit_price:invoiceUnit,amount:invoiceAmount},
+      support:Math.min(Number(qtyConsensus?.support||amountConsensus.support),amountConsensus.support),
+      sources:[...new Set([...(qtyConsensus?.sources||[]),...(amountConsensus.sources||[])])],
+      invoiceObserved:{quantity:invoiceQ>0?invoiceQ:null,unit_price:invoiceUnit,amount:invoiceAmount},
       method:'partial-economics-consensus'
+    };
+  }
+
+  function invoiceArithmeticConsensusRecovery(skeleton={},invoiceSkeletons=[]){
+    const matches=(invoiceSkeletons||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
+    if(matches.length<2)return null;
+    const qty=consensusValue(matches,'quantity',{minSupport:2,tolerance:.01});
+    const unit=consensusValue(matches,'unit_price',{minSupport:2,tolerance:.12});
+    if(!qty||!unit||!(qty.value>0)||unit.value<0||Math.abs(qty.value-Math.round(qty.value))>.001)return null;
+    const amount=Math.round(qty.value*unit.value*100)/100;
+    if(!Number.isFinite(amount))return null;
+    return {
+      quantity:qty.value,unit_price:unit.value,amount,
+      support:Math.min(qty.support,unit.support),
+      sources:[...new Set([...(qty.sources||[]),...(unit.sources||[])])],
+      invoiceObserved:{quantity:observed(skeleton,'quantity'),unit_price:observed(skeleton,'unit_price'),amount:observed(skeleton,'amount')},
+      method:'invoice-multi-ocr-arithmetic',
+      requiresSubtotalEvidence:true
     };
   }
 
@@ -217,12 +259,14 @@
           continue;
         }
       }
-      const partial=partialSupportRecovery(skeleton,supportSkeletons);
+      const partial=partialSupportRecovery(skeleton,[...(supportSkeletons||[]),...(validSupport||[])])||
+        invoiceArithmeticConsensusRecovery(skeleton,normalizedSkeletons);
       if(partial){
         out.push({
           ...skeleton,
-          unit_price:partial.unit_price,amount:partial.amount,
-          economicEvidenceVerified:true,supportingDocumentEvidenceVerified:true,supportRecoveryPending:false,
+          quantity:partial.quantity,unit_price:partial.unit_price,amount:partial.amount,
+          economicEvidenceVerified:true,supportingDocumentEvidenceVerified:partial.method!=='invoice-multi-ocr-arithmetic',supportRecoveryPending:false,
+          requiresSubtotalEvidence:!!partial.requiresSubtotalEvidence,
           provenance:{...(skeleton.provenance||{}),supportingDocument:{method:partial.method,sources:partial.sources,support:partial.support,economics:`${partial.quantity}|${partial.unit_price}|${partial.amount}`,invoiceObserved:partial.invoiceObserved}}
         });
       }else out.push(skeleton);
@@ -264,6 +308,21 @@
       }
     })):[];
     return Object.freeze({safe,needed,rows:Object.freeze(rows),blockers:Object.freeze(blockers)});
+  }
+
+  function verifiedReviewRows(rowLedger=[]){
+    const out=[];
+    for(const entry of rowLedger||[]){
+      if(entry?.disposition!=='equipment')continue;
+      const row={...(entry.row||{})};
+      const econ=R?.economics?.(row)||{};
+      if(econ.ok!==true||row.layoutEvidenceVerified!==true||row.economicEvidenceVerified!==true)continue;
+      const variants=(entry.variants||[]).map(v=>v?.row||{}).filter(v=>(R?.economics?.(v)||{}).ok===true);
+      const sigs=new Set(variants.map(v=>economicSignature(v)).filter(Boolean));
+      if(sigs.size>1)continue;
+      out.push({...row,parserV2VerifiedReview:true,humanReviewRequired:true,needsReview:true,parserReviewRequired:true});
+    }
+    return Object.freeze(out);
   }
 
   function analyze({sources=[],raw='',layout=[],candidates=[],legacyResult=null}={}){
@@ -318,7 +377,10 @@
     if(!headers.invoice_date)headerIssues.push({code:'invoice-date-not-proven'});
 
     const promotion=assessPromotion(rowLedger,completeness,finalComparison);
-    const subtotalBlockers=invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false?[{code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta}]:[];
+    const subtotalRequired=(rowLedger||[]).some(x=>x?.row?.requiresSubtotalEvidence===true);
+    const subtotalBlockers=[];
+    if(invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false)subtotalBlockers.push({code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta});
+    if(subtotalRequired&&(!invoiceSubtotalCheck.proven||invoiceSubtotalCheck.ok!==true))subtotalBlockers.push({code:'subtotal-required-for-ocr-arithmetic-recovery'});
     // Promotion blockers are merged immutably; source evidence must remain complete.
     const promotionBlockers=[
       ...promotion.blockers,
@@ -327,9 +389,10 @@
     ];
     const safeToPromote=promotion.safe&&sourceIssues.length===0&&subtotalBlockers.length===0;
     const promotionRows=safeToPromote?promotion.rows:[];
+    const reviewRows=verifiedReviewRows(rowLedger);
 
     return Object.freeze({
-      version:'2.8-skeleton-placeholder-supersession',
+      version:'3.4-two-source-amount-corroboration',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -352,6 +415,7 @@
       safeToPromote,
       promotionNeeded:promotion.needed,
       promotionRows:Object.freeze(promotionRows),
+      reviewRows,
       promotionDecision:Object.freeze({
         safe:safeToPromote,
         needed:promotion.needed,
@@ -401,8 +465,10 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.8-skeleton-placeholder-supersession',
+    version:'3.4-two-source-amount-corroboration',
     analyze,
+    verifiedReviewRows,
+    invoiceArithmeticConsensusRecovery,
     partialSupportRecovery,
     normalizeCrossOcrSkeletonModels,
     reconcileSupportingEconomics,

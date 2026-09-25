@@ -33,8 +33,13 @@
   }
   function strictQuantity(text=''){
     const t=clean(text);if(!t)return null;
-    const m=t.match(/^(\d+(?:\.\d+)?)\s*(?:PCS?|UNITS?|SETS?)?$/i);if(!m)return null;
-    const n=Number(m[1]);return n>0&&n<=100000?n:null;
+    const direct=t.match(/^(\d+(?:\.\d+)?)\s*(?:PCS?|UNITS?|SETS?)?$/i);
+    if(direct){const n=Number(direct[1]);return n>0&&n<=100000?n:null;}
+    // OCR/table geometry can spill a country/unit label into the Qty cell (e.g. "USA 2").
+    // Recover only when there is exactly one numeric token in the cell; multiple numbers remain ambiguous.
+    const nums=[...t.matchAll(/(?:^|[^\d.])(\d+(?:\.\d+)?)(?=$|[^\d.])/g)].map(m=>m[1]);
+    if(nums.length!==1)return null;
+    const n=Number(nums[0]);return n>0&&n<=100000?n:null;
   }
   function strictMoney(text=''){
     const t=clean(text).replace(/(?:SGD|S\$|\$)/ig,'').trim();if(!t)return null;
@@ -91,7 +96,7 @@
     }
     return clean(parts.join(' '));
   }
-  const EQUIPMENT_HINT_RE=/\b(?:projector|microphone|speaker|loudspeaker|controller|control panel|camera|mixer|monitor|amplifier|receiver|transmitter|player|receptacle|wireless)\b/i;
+  const EQUIPMENT_HINT_RE=/\b(?:projectors?|microphones?|speakers?|loudspeakers?|controllers?|control panels?|cameras?|mixers?|monitors?|amplifiers?|receivers?|transmitters?|players?|receptacles?|wireless)\b/i;
   const GENERIC_DESC_RE=/^(?:RE\s*:|REFERENCE\b|(?:\([A-Z]\)\s*)?SECTION\b|TECHNICAL\s+SPECIFICATIONS\b|SCOPE\s+OF\s+WORK\b|.*\bREPLACEMENT\s+SETUP\b)/i;
   function modelTokenFromValue(v=''){
     const s=clean(v).replace(/[|;,]+$/,'');if(!s)return '';
@@ -129,11 +134,20 @@
     }
     return '';
   }
+  function numberedPhysicalRowStart(row,columns){
+    const desc=clean(cellText(row,columns.boundaries.description));if(!desc)return false;
+    const leftEdge=Number(columns?.boundaries?.description?.[0]);
+    if(!Number.isFinite(leftEdge))return false;
+    return (row?.items||[]).some(it=>{
+      const x=Number(it?.x)+(Number(it?.width)||0)/2,t=clean(it?.text);
+      return Number.isFinite(x)&&x<leftEdge&&/^\d{1,3}$/.test(t);
+    });
+  }
   function rowLooksLikeStart(row,columns){
     const code=codeFromRow(row,columns),q=strictQuantity(cellText(row,columns.boundaries.quantity)),p=strictMoney(cellText(row,columns.boundaries.unit_price)),a=strictMoney(cellText(row,columns.boundaries.amount));
     const econCount=[q,p,a].filter(v=>v!==null).length;
     const desc=clean(cellText(row,columns.boundaries.description));
-    return !!(code&&desc)||(econCount>=2&&!!desc)||(econCount===3);
+    return numberedPhysicalRowStart(row,columns)||!!(code&&desc)||(econCount>=2&&!!desc)||(econCount===3);
   }
   function buildTableRows(table){
     const body=mergeBodyBands(table?.bodyRows||[],table?.yTolerance||3)
@@ -162,7 +176,7 @@
       let nextPhysicalStart=body.length;
       for(let j=anchorInfo.index+1;j<body.length;j++){
         const d=clean(cellText(body[j],table.columns.boundaries.description)),q=strictQuantity(cellText(body[j],table.columns.boundaries.quantity));
-        if(d&&q!==null){nextPhysicalStart=j;break;}
+        if((d&&q!==null)||numberedPhysicalRowStart(body[j],table.columns)){nextPhysicalStart=j;break;}
       }
       const nextAnchorIndex=Math.min(anchors[ai+1]?.index??body.length,nextPhysicalStart),following=body.slice(anchorInfo.index+1,nextAnchorIndex);
       previousAnchor=anchorInfo.index;
@@ -213,18 +227,21 @@
     const out=[];
     for(let i=0;i<body.length;i++){
       const row=body[i],desc0=clean(cellText(row,table.columns.boundaries.description)),q=strictQuantity(cellText(row,table.columns.boundaries.quantity));
-      if(!desc0||q===null||META_RE.test(desc0))continue;
+      if(!desc0||META_RE.test(desc0))continue;
       if(economicsFromGroup([row],table.columns).verified)continue;
       let next=i+1;
       while(next<body.length){
         const nd=clean(cellText(body[next],table.columns.boundaries.description)),nq=strictQuantity(cellText(body[next],table.columns.boundaries.quantity));
-        if(nd&&nq!==null)break;
+        if((nd&&nq!==null)||numberedPhysicalRowStart(body[next],table.columns))break;
         next++;
       }
       const following=body.slice(i+1,next);
       let desc=desc0,continuation=continuationEquipmentDescription(following,table.columns);
       if(continuation&&(GENERIC_DESC_RE.test(desc)||!EQUIPMENT_HINT_RE.test(desc)))desc=continuation;
       const model=printedModelFromRows([row,...following],table.columns);
+      // Missing-Qty recovery is permitted only on an actual numbered physical row.
+      // Standalone Model:/Note/specification continuation lines must never become their own skeleton.
+      if(q===null&&!numberedPhysicalRowStart(row,table.columns))continue;
       const observedUnitPrice=strictMoney(cellText(row,table.columns.boundaries.unit_price));
       const observedAmount=strictMoney(cellText(row,table.columns.boundaries.amount));
       desc=cleanItemDescription(desc);
@@ -248,5 +265,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.9-partial-economic-observations',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'3.2-quantity-label-spill',numberedPhysicalRowStart,buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
