@@ -224,7 +224,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
 assert(runtime.includes("'Restored equipment line-item recovery for previously supported multi-page invoice layouts.'")&&runtime.includes("'Improved equipment verification and manual-line Confirm & Save handling.'"),'Direct runtime Patch Notes are not the current concise user-facing version');
 assert(index.includes('Restored equipment line-item recovery for previously supported multi-page invoice layouts.')&&index.includes('Improved equipment verification and manual-line Confirm &amp; Save handling.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14x-r7'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14x-r8'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -323,6 +323,57 @@ assert(independentV2.mode==='shadow-independent-table'&&independentV2.tables.len
 assert(independentV2.physicalRows.length===5,'Parser V2 physical reconstruction expected 5 source rows, got '+independentV2.physicalRows.length);
 assert(independentV2.completeness.counts.equipment===4&&independentV2.completeness.counts.service===1,'Parser V2 physical ledger must account for 4 equipment + 1 service rows');
 assert(independentV2.finalComparison.missingEquipment.length===2,'Parser V2 must expose the 2 equipment rows omitted by the legacy partial result');
+
+// Real-world failure-class locks derived from historical invoice geometry/OCR.
+// 1) Corroborate supplier/invoice/date across noisy full-page OCR + targeted header OCR.
+const hawkoHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'full-ocr-auto',kind:'ocr',text:'033773\nboa A WKO HAWIKO TRADING CO PTE LTD TAX INVOICE\nSingapore 339159 B 1N-1049266\nCO REG. NO. 197400001W Website: www.hawko.com Email: info@hawko.com DATE: 40/09/2021\nAll payments should be crossed payable to HAWKO TRADING CO PTE LTD\nHAWKO TRADING CO PTE LTD'},
+    {source:'full-ocr-column',kind:'ocr',text:'HAWKO HAWKO TRADING CO PTE LTD TAX INVOICE\nSingapore 339159 NO: IN-1049266\nCO REG. NO. 197400001W Website: www.hawko.com Email: info@hawko.com DATE: 40/09/2021\nHAWKO TRADING CO PTE LTD'},
+    {source:'targeted-header',kind:'ocr',text:'TAX INVOICE\nNO: IN-1049266\nDATE: 10/09/2021\nPG: Page 1 of 1'}
+  ]})
+);
+assert(hawkoHeaders.supplier_name==='HAWKO TRADING CO PTE LTD','V2 noisy supplier reconciliation failed');
+assert(hawkoHeaders.invoice_number==='IN-1049266','V2 contextual invoice-number resolution failed');
+assert(hawkoHeaders.invoice_date==='2021-09-10','V2 targeted 4-digit invoice date failed');
+assert(hawkoHeaders.reference_number==='','V2 must not invent a Reference Number when none is proven');
+
+// 2) Headerless scan table: arithmetic proof may recover a priced row, but account/customer metadata must not.
+const hawkoHeaderless=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[{source:'hawko-ocr',kind:'ocr',layout:[
+  {page:1,width:1503,height:1973,yTolerance:4,rows:[
+    {y:730,text:'786HKOAV-PB97E WYAVC004 ADJUSTABLE METAL TROLLEY W C+S 2 $550.00 $1,100.00',items:[
+      {x:58,text:'786HKOAV-PB97E',width:193},{x:328,text:'WYAVC004',width:120},{x:453,text:'ADJUSTABLE',width:146},
+      {x:606,text:'METAL',width:74},{x:686,text:'TROLLEY',width:103},{x:796,text:'W',width:22},{x:824,text:'C+S',width:43},
+      {x:1009,text:'2',width:12},{x:1115,text:'$550.00',width:81},{x:1319,text:'$1,100.00',width:100}
+    ]}
+  ]},
+  {page:2,width:1000,height:1200,yTolerance:4,rows:[
+    {y:100,text:'ACCOUNT NO 1 550.00 550.00',items:[{x:40,text:'ACCOUNT',width:70},{x:115,text:'NO',width:20},{x:700,text:'1',width:10},{x:800,text:'550.00',width:55},{x:920,text:'550.00',width:55}]},
+    {y:130,text:'CUSTOMER CODE R2002 1 400.00 400.00',items:[{x:40,text:'CUSTOMER',width:80},{x:125,text:'CODE',width:35},{x:170,text:'R2002',width:45},{x:700,text:'1',width:10},{x:800,text:'400.00',width:55},{x:920,text:'400.00',width:55}]}
+  ]}
+]}]});
+const hawkoTables=v2ctx.InventoryHubParserV2TableDetector.detectTables(hawkoHeaderless);
+const hawkoRows=v2ctx.InventoryHubParserV2RowBuilder.buildRows(hawkoHeaderless,hawkoTables).rows;
+assert(hawkoTables.length===1&&hawkoRows.length===1,'V2 headerless scan must accept the proven product row and reject metadata rows');
+assert(hawkoRows[0].sku==='786HKOAV-PB97E'&&hawkoRows[0].item_name==='WYAVC004 ADJUSTABLE METAL TROLLEY W C+S','V2 headerless scan identity/description mismatch');
+assert(hawkoRows[0].quantity===2&&hawkoRows[0].unit_price===550&&hawkoRows[0].amount===1100,'V2 headerless scan economics mismatch');
+
+// 3) Tax-column + serial-overlap regression: numeric tokens in Tax/serial bands must not merge adjacent products.
+const taxedWrapped=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[{source:'taxed-layout',kind:'layout',layout:[{page:1,width:595,height:842,yTolerance:3,rows:[
+  {y:100,text:'Description Quantity Unit Price Tax Amount',items:[{text:'Description',x:36,width:48},{text:'Quantity',x:252,width:37},{text:'Unit',x:341,width:18},{text:'Price',x:361,width:21},{text:'Tax',x:437,width:14},{text:'Amount',x:523,width:34}]},
+  {y:140,text:'XVive U35C Wireless System for Condenser Microphones 5.8GHz',items:[{text:'XVive',x:36,width:22},{text:'U35C',x:58,width:22},{text:'Wireless',x:80,width:33},{text:'System',x:114,width:28},{text:'for',x:142,width:13},{text:'Condenser',x:155,width:46},{text:'Microphones',x:203,width:48},{text:'5.8GHz',x:252,width:32}]},
+  {y:176,text:'S/N: IntlE251100449 4.00 340.00 9% 1,360.00',items:[{text:'S/N:',x:36,width:18},{text:'IntlE251100449',x:58,width:70},{text:'4.00',x:272,width:16},{text:'340.00',x:357,width:25},{text:'9%',x:441,width:11},{text:'1,360.00',x:544,width:32}]},
+  {y:232,text:'Shure SLXD2+ Digital Wireless Handheld Microphone',items:[{text:'Shure',x:36,width:23},{text:'SLXD2+',x:59,width:29},{text:'Digital',x:88,width:25},{text:'Wireless',x:114,width:33},{text:'Handheld',x:147,width:42},{text:'Microphone',x:190,width:45}]},
+  {y:271,text:'1.00 480.00 9% 480.00',items:[{text:'1.00',x:272,width:16},{text:'480.00',x:357,width:25},{text:'9%',x:441,width:11},{text:'480.00',x:551,width:25}]},
+  {y:320,text:'SUBTOTAL 1840.00',items:[{text:'SUBTOTAL',x:421,width:35},{text:'1840.00',x:544,width:35}]}
+]}]}]});
+const taxedTables=v2ctx.InventoryHubParserV2TableDetector.detectTables(taxedWrapped);
+const taxedRows=v2ctx.InventoryHubParserV2RowBuilder.buildRows(taxedWrapped,taxedTables).rows;
+assert(taxedRows.length===2,'V2 Tax-column layout must reconstruct two distinct priced products');
+assert(taxedRows[0].quantity===4&&taxedRows[0].unit_price===340&&taxedRows[0].amount===1360,'V2 Tax-column first product economics failed');
+assert(taxedRows[1].quantity===1&&taxedRows[1].unit_price===480&&taxedRows[1].amount===480,'V2 Tax-column second product economics failed');
+console.log('parser-v2-realworld-locks: noisy headers, headerless scans, metadata rejection and taxed wrapped rows PASS');
+
 
 console.log('parser-v2-shadow: header independence, strict reference, same-layout variation and row completeness PASS');
 
