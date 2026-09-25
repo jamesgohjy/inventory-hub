@@ -13,6 +13,8 @@ on:
       - "index.html"
       - "tests/**"
       - "supabase-v7-03-3-14o-parser-intelligence.sql"
+      - "supabase-v7-03-3-14x-health-resolution.sql"
+      - "supabase-v7-03-3-14x-health-resolution.sql"
       - "supabase-v7-03-3-14d-master-item-merge.sql"
       - "supabase-v7-03-3-14v-canonical-save.sql"
       - "supabase-v7-03-3-14x-data-health-resolution.sql"
