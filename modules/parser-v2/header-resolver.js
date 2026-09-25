@@ -96,7 +96,7 @@
         // Accept this only with local invoice-title context; a generic account/customer NO remains rejected.
         const bare=line.match(/\bNO\.?\s*[:#.-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i);
         const nearby=lines.slice(Math.max(0,i-3),Math.min(lines.length,i+2)).join(' ');
-        const forbiddenBare=/\b(?:REG(?:ISTRATION)?|GST|UEN|ACCOUNT|CUSTOMER|D\/?O|P\/?O|ORDER|PHONE|TEL|FAX)\s*(?:NO\.?|NUMBER)?\b/i.test(line);
+        const forbiddenBare=/\b(?:REG(?:ISTRATION)?|GST|UEN|ACCOUNT|CUSTOMER|REF(?:ERENCE)?|D\/?O|P\/?O|ORDER|PHONE|TEL|FAX)\s*(?:NO\.?|NUMBER)?\b/i.test(line);
         if(bare&&!forbiddenBare&&/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE|INVOICE)\b/i.test(nearby)){
           pushCandidate(out,'invoice_number',bare[1],{source:src.id,kind:src.kind,score:112,evidence:line});
         }
