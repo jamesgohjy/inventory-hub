@@ -4398,21 +4398,6 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
   }
   renderAutomationCentre=function(){renderNeedsAttention14x(false);if($('importRuleSummary'))$('importRuleSummary').textContent='Loud + AV Media rules active';};
   openAttention=function(){renderNeedsAttention14x(true);};
-  function retireCorrectionMemoryUi14x(){
-    const panel=document.getElementById('parserQualityDashboard14o');if(!panel)return;
-    for(const node of [...panel.querySelectorAll('details,.metric')])if(/Correction Memory/i.test(node.textContent||''))node.remove();
-  }
-  const v703314xBaseRenderQuality=renderQualityDashboard14o;
-  renderQualityDashboard14o=function(){const r=v703314xBaseRenderQuality.apply(this,arguments);retireCorrectionMemoryUi14x();return r;};
-
-  renderAutomationCentre=function(){
-    const issues=unresolvedHealthIssues14x(),score=healthScore(issues),high=issues.filter(x=>x.severity==='high').length;
-    if($('needsAttentionCount'))$('needsAttentionCount').textContent=issues.length;
-    if($('needsAttentionSummary'))$('needsAttentionSummary').textContent=issues.length?`${high?high+' important · ':''}${issues.length} record${issues.length===1?'':'s'} to review`:'No issues detected';
-    if($('dataHealthScore')){$('dataHealthScore').textContent=`${score}% ${healthLabel(score)}`;$('dataHealthScore').classList.toggle('warn',score<85);}
-    if($('importRuleSummary'))$('importRuleSummary').textContent='Loud + AV Media rules active';
-  };
-
   const previousIssueReviewButton14x=issueReviewButton;
   issueReviewButton=function(x){
     if(x?.type==='Possible duplicate SKU'&&x?.entity_type==='master_items_pair')return previousIssueReviewButton14x(x);
