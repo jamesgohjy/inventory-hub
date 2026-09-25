@@ -2607,15 +2607,23 @@ async function forceOcrRecovery(file){
   const headerRecovered=[];
   try{
     const supplierResolver=window.InventoryHubParserEvidenceEngine?.extractSupplierHeaderCandidate;
-    const existingInvoice=recovered.some(x=>globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},x.text)?.invoice_number);
-    const existingSupplier=recovered.some(x=>typeof supplierResolver==='function'&&supplierResolver(x.text)?.value);
-    if((!existingInvoice||!existingSupplier)&&canvases[0]?.c){
+    const coreFromText=tx=>{
+      try{
+        const ev=window.InventoryHubParserV2Evidence?.buildDocumentEvidence?.({sources:[{source:'header-check',kind:'ocr',text:String(tx||'')}]});
+        return ev?window.InventoryHubParserV2Header?.resolveHeaders?.(ev):null;
+      }catch(_){return null;}
+    };
+    const existingInvoice=recovered.some(x=>!!coreFromText(x.text)?.invoice_number)||recovered.some(x=>globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},x.text)?.invoice_number);
+    const existingSupplier=recovered.some(x=>!!coreFromText(x.text)?.supplier_name)||recovered.some(x=>typeof supplierResolver==='function'&&supplierResolver(x.text)?.value);
+    const existingDate=recovered.some(x=>!!coreFromText(x.text)?.invoice_date);
+    if((!existingInvoice||!existingSupplier||!existingDate)&&canvases[0]?.c){
       const pageCanvas=canvases[0].c,specs=[
+        {key:'recovery-header-right-tight',x:.60,y:.01,w:.39,h:.20},
         {key:'recovery-header-left',x:0,y:0,w:.68,h:.30},
         {key:'recovery-header-top',x:0,y:0,w:1,h:.36},
         {key:'recovery-header-right',x:.45,y:0,w:.55,h:.38}
       ],hw=await T.createWorker('eng');
-      let gotInvoice=existingInvoice,gotSupplier=existingSupplier;
+      let gotInvoice=existingInvoice,gotSupplier=existingSupplier,gotDate=existingDate;
       try{outer:for(const spec of specs){
         const sx=Math.round(pageCanvas.width*spec.x),sy=Math.round(pageCanvas.height*spec.y),sw=Math.max(1,Math.round(pageCanvas.width*spec.w)),sh=Math.max(1,Math.round(pageCanvas.height*spec.h)),c=document.createElement('canvas');
         c.width=sw;c.height=sh;c.getContext('2d',{willReadFrequently:true}).drawImage(pageCanvas,sx,sy,sw,sh,0,0,sw,sh);
@@ -2623,13 +2631,14 @@ async function forceOcrRecovery(file){
           await hw.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
           const rr=await hw.recognize(c,{},{text:true}),tx=String(rr.data?.text||'').trim();
           if(!tx)continue;
-          const invoiceHit=globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},tx),supplierHit=typeof supplierResolver==='function'?supplierResolver(tx):null;
-          const useful=(!gotInvoice&&!!invoiceHit?.invoice_number)||(!gotSupplier&&!!supplierHit?.value);
+          const v2Hit=coreFromText(tx),invoiceHit=globalThis.V7033Patch?.fixDocumentHeader?.({invoice_number:''},tx),supplierHit=typeof supplierResolver==='function'?supplierResolver(tx):null;
+          const hasInvoice=!!(v2Hit?.invoice_number||invoiceHit?.invoice_number),hasSupplier=!!(v2Hit?.supplier_name||supplierHit?.value),hasDate=!!v2Hit?.invoice_date;
+          const useful=(!gotInvoice&&hasInvoice)||(!gotSupplier&&hasSupplier)||(!gotDate&&hasDate);
           if(useful){
             headerRecovered.push({source:spec.key,label:'HEADER',text:tx,layout:[],score:1400+ocrTextQuality(tx)});
-            gotInvoice=gotInvoice||!!invoiceHit?.invoice_number;gotSupplier=gotSupplier||!!supplierHit?.value;
+            gotInvoice=gotInvoice||hasInvoice;gotSupplier=gotSupplier||hasSupplier;gotDate=gotDate||hasDate;
           }
-          if(gotInvoice&&gotSupplier)break outer;
+          if(gotInvoice&&gotSupplier&&gotDate)break outer;
         }
       }}finally{await hw.terminate();}
     }
