@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "purpose": "Permanent record of adversarial Parser V2 failures discovered from real-invoice-derived mutations. A resolved entry must retain a regression lock so the failure class cannot silently return.",
+  "workflow": [
+    "Record the exact mutation/failure class before changing parser code.",
+    "Fix the generalized root cause; do not hard-code supplier or invoice identifiers.",
+    "Retest the failed variant first.",
+    "Only after the failed variant passes, run the full regression suite.",
+    "If the failed variant still fails, overall status remains NOT READY."
+  ],
+  "cases": [
+    {
+      "id": "ADV-2026-09-25-001",
+      "type": "header-identifier-variant",
+      "base_document_family": "Loud Technologies Asia / INV LTA-00215840",
+      "mutation": "Invoice number represented as a two-token value after the label: 'Invoice Number INV LTA-00215840'.",
+      "observed_failure": "Parser V2 header resolver reduced the tail to the first token and returned the invoice number blank.",
+      "root_cause": "identifierFromTail accepted only one token and required that token itself to contain a digit.",
+      "generalized_fix": "Allow a short alphabetic prefix plus one digit-bearing identifier token while rejecting arbitrary trailing prose.",
+      "expected": "invoice_number = 'INV LTA-00215840'",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — multipartHeaders assertion",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-002",
+      "type": "multiple-tables-same-page",
+      "base_document_family": "Real-invoice-derived AV table geometry",
+      "mutation": "Place an equipment table and a later service table on the same page, with the first table subtotal physically closer to the second table header than the second table subtotal.",
+      "observed_failure": "Parser V2 could infer the later table direction upward and miss the second table body.",
+      "root_cause": "detectDirection preferred the nearest total without proving that table body evidence existed between the header and that total.",
+      "generalized_fix": "When totals exist on both sides of a header, score each side using body evidence between header and total; use distance only as a tie-breaker.",
+      "expected": "Detect both tables; account for 1 equipment row + 1 service row; promote only the equipment row.",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — multiTableV2 assertions",
+      "status": "resolved"
+    }
+  ],
+  "unresolved": []
+}
