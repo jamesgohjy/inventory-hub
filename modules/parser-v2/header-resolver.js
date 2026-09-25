@@ -108,10 +108,10 @@
     const out=[...geometryValues(evidence,dateLabel,'invoice_date')];
     for(const src of evidence.sources||[])for(const line of clean(src.text).split(/\n+/).filter(Boolean)){
       if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
-      const tail=lineValueAfterLabel(line,dateLabel),m=(tail||line).match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{2}|\d{4}))/);
+      const tail=lineValueAfterLabel(line,dateLabel),m=(tail||line).match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/);
       if(m)pushCandidate(out,'invoice_date',m[1],{source:src.id,kind:src.kind,score:105,evidence:line});
     }
-    return out.map(x=>({...x,value:parseDateStrict((x.value.match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{2}|\d{4}))/)||[])[1]||x.value)})).filter(x=>x.value);
+    return out.map(x=>({...x,value:parseDateStrict((x.value.match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/)||[])[1]||x.value)})).filter(x=>x.value);
   }
   function referenceCandidates(evidence){
     const out=[...geometryValues(evidence,refLabel,'reference_number')];
