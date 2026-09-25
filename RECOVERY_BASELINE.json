@@ -1,0 +1,20 @@
+{
+  "schema_version": "v7.03.3.14x",
+  "recovery_baseline": {
+    "version": "v7.03.3.14x",
+    "commit": "a079417dc164e68f878de825022b186afa2f69cb",
+    "promoted_at": "2026-09-25",
+    "policy": "Rollback target is pinned. Do not replace with a moving branch reference."
+  },
+  "database": {
+    "generation": "v7.03.3.14x",
+    "required_migrations": [
+      "inventory_hub_v703314v_canonical_save",
+      "inventory_hub_v703314x_health_resolution",
+      "inventory_hub_v703314x_health_resolution_rls_fix",
+      "inventory_hub_v703314x_health_resolve_rpc_hardening",
+      "inventory_hub_v703314x_clear_correction_memory"
+    ]
+  },
+  "compatibility_note": "Historical 14o RPC/table identifiers remain supported as database contracts; they do not define the recovery baseline."
+}
