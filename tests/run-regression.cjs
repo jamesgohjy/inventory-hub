@@ -10,6 +10,9 @@ const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
+const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
+const healthResolutionSql=read('supabase-v7-03-3-14x-data-health-resolution.sql');
+const databaseMigrationWorkflow=read('.github/workflows/database-migrations.yml');
 const groupModule=read('modules/grouped-company-ui.js');
 const componentsCss=read('components.css');
 const backupUiModule=read('modules/backup-verification-ui.js');
@@ -42,7 +45,7 @@ for(const [name,result] of Object.entries(suites)){
   assert(result.ok,name+' regression suite failed: '+(result.failures||[]).join(', '));
 }
 const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Object.values(suites).reduce((n,r)=>n+r.cases.filter(x=>x.pass).length,0);
-assert(total===78&&passed===78,'Expected 78/78 core regression checks, got '+passed+'/'+total);
+assert(total===80&&passed===80,'Expected 80/80 core regression checks, got '+passed+'/'+total);
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
 const avMediaDedupe=api.consolidateFragmentedParsedLineItems([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
@@ -110,6 +113,15 @@ assert(runtime.includes('__canonicalAuthorityV11'),'Final canonical parser autho
 assert(runtime.includes("this.sb.rpc('confirm_and_save_invoice_v703314v'"),'Confirm & Save does not use canonical PostgreSQL RPC');
 assert(runtime.includes('database migration must be applied before this invoice can be saved'),'Confirm & Save must surface a specific missing-RPC/database-migration error');
 assert(runtime.includes('InventoryHubCanonicalParser.calculateAmount(qty.value,price.value)'),'Review Qty/Unit Price changes are not wired to canonical Amount auto-calculation');
+assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Health Resolve does not persist through its database RPC');
+assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
+assert(runtime.includes("source.sku||'No SKU'"),'No-SKU merge acknowledgement must render a safe label');
+assert(core.includes("reason:'embedded-sku-alias'"),'Evidence-backed no-SKU duplicate merge path is missing');
+assert(masterMergeSql.includes('v_source_text_key')&&masterMergeSql.includes('No-SKU source does not contain the surviving SKU/model'),'Server-side no-SKU merge evidence guard is missing');
+assert(healthResolutionSql.includes('resolve_health_issue_v703314x')&&healthResolutionSql.includes("resolution_status='resolved'"),'Persistent Data Health resolution migration is incomplete');
+assert(databaseMigrationWorkflow.includes('/v1/projects/$SUPABASE_PROJECT_REF/database/query'),'Database migration workflow does not use the verified Supabase Management API query endpoint');
+assert(databaseMigrationWorkflow.includes('secrets.SUPABASE_ACCESS_TOKEN'),'Database migration workflow must use the protected Supabase access token');
+assert(databaseMigrationWorkflow.includes('confirm_and_save_invoice_v703314v')&&databaseMigrationWorkflow.includes('merge_master_items_v703314d')&&databaseMigrationWorkflow.includes('resolve_health_issue_v703314x'),'Database deployment verification does not check all required RPCs');
 assert(!runtime.includes("this.sb.rpc('import_invoice_atomic'"),'Legacy import_invoice_atomic remains in production Confirm & Save path');
 assert(canonicalSaveSql.includes('create or replace function public.confirm_and_save_invoice_v703314v'),'Canonical Confirm & Save RPC missing');
 for(const table of ['public.documents','public.purchases','public.master_items','public.purchase_items','public.serial_numbers'])assert(canonicalSaveSql.includes(table),'Atomic save RPC/schema missing '+table);
@@ -174,10 +186,10 @@ assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component styl
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("ASSET_REV='v703314x-reference-dedupe-autocalc-20260925-1'"),'v14x reference/dedupe/autocalc asset revision marker missing');
-assert(runtime.includes("'Improved Reference No. parsing from labelled invoice fields.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
-assert(index.includes('Improved Reference No. parsing from labelled invoice fields.')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14x-r1'),'Index app.js cache-bust revision missing');
+assert(app.includes("ASSET_REV='v703314x-reference-dedupe-autocalc-20260925-2'"),'v14x workflow-fix asset revision marker missing');
+assert(runtime.includes("'Improved invoice parsing, Reference No. handling and automatic Amount calculation.'")&&runtime.includes("'Added a persistent Resolve option for valid Data Health exceptions.'"),'Direct runtime Patch Notes are not the concise user-facing version');
+assert(index.includes('Improved invoice parsing, Reference No. handling and automatic Amount calculation.')&&index.includes('Added a persistent Resolve option for valid Data Health exceptions.'),'Static Patch Notes fallback is not concise');
+assert(index.includes('app.js?v=7.03.3.14x-r2'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
