@@ -197,8 +197,8 @@
       </nav>
       <section id="patchNotesPanel" class="sidebar-patch-panel hidden" aria-label="Patch notes" aria-live="polite">
         <div class="sidebar-patch-head"><span>Release Notes</span><strong>Patch Notes</strong></div>
-        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14u</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Parser candidate selection now uses supplier-neutral evidence scoring instead of source-specific winner boosts.</li><li>Field-level accuracy tests verify SKU, quantity, unit price and amount, including negative no-invention cases.</li><li>Historical invoice excerpts remain regression inputs while raw-PDF/OCR coverage is reported separately rather than overstated.</li></ul></article>
-        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14v</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Add parser-quality export, retention and long-term trend controls.</li><li>Continue low-risk module separation for audit, maintenance and data-access code.</li><li>Add an optional independent off-site document copy target and restore drill.</li></ul></article>
+        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14u</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Improved invoice parsing accuracy and verification.</li><li>Added safer review for uncertain invoice details.</li><li>Improved item matching and duplicate detection.</li></ul></article>
+        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14v</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Improve parsing across more invoice layouts.</li><li>Improve automatic item matching and consolidation.</li><li>Simplify review messages and workflow.</li></ul></article>
       </section>
       <div class="sidebar-footer"><div class="footer-rule"></div><p>Track today.<br>Empower tomorrow.</p><button id="signOutBtn" class="ghost hidden"><i data-lucide="log-out"></i> Sign out</button></div>
     </aside>
@@ -240,7 +240,7 @@
   <div id="toast" class="toast hidden"></div>
   <script src="config.js"></script>
   <script src="parser-v7-core.js?v=7.03.3.14r-r1"></script>
-  <script src="app.js?v=7.03.3.14u-r1"></script>
+  <script src="app.js?v=7.03.3.14u-r3"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="feedback.js?v=7.03.3.14t-r1"></script>
 </body>

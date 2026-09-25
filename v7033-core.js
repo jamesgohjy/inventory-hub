@@ -1213,7 +1213,7 @@
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
-    {id:'offsite-document-recovery',text:'Strengthen backup and recovery protection.'}
+    {id:'review-workflow',text:'Simplify review messages and workflow.'}
   ];
   const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation','known-good-14m-freeze','automatic-regression-ci','correction-memory','supplier-layout-profiles','pdf-fingerprint-dedupe','admin-parser-quality-dashboard','operational-backups']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);

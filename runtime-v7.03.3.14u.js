@@ -7,23 +7,18 @@ window.__AV_DIRECT_RUNTIME_READY__=(async function InventoryHubDirectRuntime14s(
 // AV Inventory Hub V7.00 — Structured parser core + regression-safe migration
 const APP_VERSION='7.03.3.14u';
 const RELEASE_CURRENT_NOTES=[
-  'Improved invoice item detection',
-  'Improved quantity accuracy',
-  'Improved serial number checks',
-  'Better multi-page invoice verification',
-  'Microphone stands can be tracked as inventory',
-  'Excluded accessories remain excluded',
-  'Stronger checks to prevent incorrect auto-filled fields'
+  'Improved invoice parsing accuracy and verification.',
+  'Added safer review for uncertain invoice details.',
+  'Improved item matching and duplicate detection.'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
 const RELEASE_UPCOMING_NOTES=[
-  'Tweaks to login UI background',
-  'Improving the activity window on Dashboard page',
-  'Backup & Recovery planning for imported invoice PDFs'
+  'Improve parsing across more invoice layouts.',
+  'Improve automatic item matching and consolidation.',
+  'Simplify review messages and workflow.'
 ];
-const nextReleaseVersion=(v)=>{const parts=String(v).split('.').map(Number);const major=parts[0]||0,minor=parts[1]||0;return `${major}.${minor+1}`;};
-const RELEASE_UPCOMING_VERSION=nextReleaseVersion(APP_VERSION);
+const RELEASE_UPCOMING_VERSION='7.03.3.14v';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const authUrlParams=()=>{
   const search=new URLSearchParams(location.search||'');
@@ -153,21 +148,10 @@ class SupabaseDB{
     const storagePath=rpc.data||d.storage_path;
     if(storagePath){const rm=await this.sb.storage.from('inventory-documents').remove([storagePath]);if(rm.error)console.warn('Database records deleted but storage cleanup failed:',rm.error);}
   }
-  async backupVerificationHistory(limit=20){
-    const {data,error}=await this.sb.rpc('admin_backup_verification_history_v703314t',{p_limit:Math.max(1,Math.min(Number(limit)||20,100))});
-    if(error){
-      const message=String(error.message||'');
-      if(['42883','PGRST202','42P01'].includes(String(error.code||''))||/admin_backup_verification_history_v703314t|backup_verification_runs/i.test(message)){
-        return {latest:null,runs:[],setupRequired:true,error:'Run the v7.03.3.14t backup verification SQL migration to enable backup status.'};
-      }
-      throw error;
-    }
-    return data||{latest:null,runs:[],setupRequired:false};
-  }
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
-const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,backupVerification:null,backupVerificationLoading:false};
+const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null};
 const prettyEmailName=(email='')=>{const base=String(email||'').split('@')[0];return base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase()).trim()||'Team Member';};
 const currentRole=()=>CFG.mode==='supabase'?String(state.profile?.role||'viewer').trim().toLowerCase():'admin';
 const canEdit=()=>['admin','editor'].includes(currentRole());
@@ -239,7 +223,6 @@ async function reload(){
     }
     renderAll();
     setHealth('live',CFG.mode==='supabase'?'Live':'Demo mode');
-    if(CFG.mode==='supabase'&&currentRole()==='admin')loadBackupVerification().catch(err=>console.warn('Backup verification status load skipped',err));
   }catch(e){
     setHealth('offline','Offline');
     throw e;
@@ -338,64 +321,7 @@ function friendlyAudit(a){
   if(a.entity_type==='purchase_items')return `${a.action==='INSERT'?'Added':a.action==='DELETE'?'Removed':'Edited'} purchase line item`;
   const verb=a.action==='INSERT'?'Added':a.action==='UPDATE'?'Edited':a.action==='DELETE'?'Deleted':a.action;return `${verb} ${friendlyEntityName(a.entity_type)}`;
 }
-let backupVerificationUiBound=false;
-function ensureBackupVerificationUi(){
-  const ui=window.InventoryHubBackupVerificationUI;
-  if(!ui)return null;
-  ui.ensure();
-  if(!backupVerificationUiBound){
-    $('backupVerificationCard')?.addEventListener('click',()=>openBackupVerification());
-    $('backupVerificationRefreshBtn')?.addEventListener('click',()=>loadBackupVerification({open:true,force:true}));
-    $('backupVerificationCloseBtn')?.addEventListener('click',()=>ui.close());
-    $('backupVerificationCloseX')?.addEventListener('click',()=>ui.close());
-    backupVerificationUiBound=true;
-  }
-  return ui;
-}
-function renderBackupVerification(){
-  const ui=ensureBackupVerificationUi();
-  if(!ui)return;
-  const data=state.backupVerification||{};
-  ui.renderCard({
-    role:currentRole(),
-    latest:data.latest||null,
-    setupRequired:!!data.setupRequired,
-    error:data.error||''
-  });
-}
-async function loadBackupVerification({open=false,force=false}={}){
-  const ui=ensureBackupVerificationUi();
-  if(CFG.mode!=='supabase'||currentRole()!=='admin'){
-    state.backupVerification=null;
-    renderBackupVerification();
-    return null;
-  }
-  if(state.backupVerificationLoading&&!force)return state.backupVerification;
-  state.backupVerificationLoading=true;
-  try{
-    const data=await state.db.backupVerificationHistory(20);
-    state.backupVerification={latest:data?.latest||null,runs:Array.isArray(data?.runs)?data.runs:[],setupRequired:!!data?.setupRequired,error:data?.error||'',schedule:data?.schedule||'',storageNote:data?.storage_note||''};
-  }catch(err){
-    state.backupVerification={latest:null,runs:[],setupRequired:false,error:friendlyError(err),schedule:'',storageNote:''};
-  }finally{
-    state.backupVerificationLoading=false;
-  }
-  renderBackupVerification();
-  if(open&&ui){
-    ui.renderDialog({
-      latest:state.backupVerification?.latest||null,
-      runs:state.backupVerification?.runs||[],
-      setupRequired:!!state.backupVerification?.setupRequired,
-      error:state.backupVerification?.error||'',
-      schedule:state.backupVerification?.schedule||'',
-      storageNote:state.backupVerification?.storageNote||''
-    });
-    ui.open();
-  }
-  return state.backupVerification;
-}
-async function openBackupVerification(){return loadBackupVerification({open:true,force:true});}
-function renderAll(){renderDashboard();renderAutomationCentre();renderBackupVerification();renderInventory();renderDocuments();renderVault();renderMaintenance();renderAudit();renderCategories();window.lucide?.createIcons();}
+function renderAll(){renderDashboard();renderAutomationCentre();renderInventory();renderDocuments();renderVault();renderMaintenance();renderAudit();renderCategories();window.lucide?.createIcons();}
 function renderDashboard(){const sums=state.data.items.map(summary);$('mSku').textContent=state.data.items.length;$('mPurchased').textContent=sums.reduce((a,b)=>a+b.purchased,0);$('mCurrent').textContent=sums.reduce((a,b)=>a+b.current,0);$('mDocs').textContent=state.data.documents.length;const latest=state.data.audit.find(a=>['master_items','purchases','purchase_items','inventory_adjustments','documents'].includes(a.entity_type));if($('dashboardUpdated'))$('dashboardUpdated').textContent='Last updated: '+(latest?fmtDT(latest.changed_at):'—');
   const cards=state.data.items.slice(0,4).map(i=>{const s=summary(i);return `<article class="inventory-card" data-detail="${i.id}"><div class="asset-thumb">${imageForItem(i)?`<img src="${imageForItem(i)}" alt="" loading="lazy">`:`<i data-lucide="${iconForItem(i)}"></i>`}</div><h3 title="${esc(i.item_name)}">${esc(i.item_name)}</h3><div class="sku">${esc(i.sku)}</div><div class="stock-line"><span>Current Stock</span><strong>${s.current}</strong></div><div class="stock-line"><span>Total Purchased</span><strong>${s.purchased}</strong></div></article>`}).join('');$('dashboardInventory').innerHTML=cards||'<div class="empty">No inventory yet. Add an item or import an invoice to get started.</div>';
   $('recentAudit').innerHTML=state.data.audit.slice(0,6).map(a=>{const [icon,cls]=auditIcon(a);return `<div class="activity"><div class="activity-icon ${cls}"><i data-lucide="${icon}"></i></div><div class="activity-body"><strong>${esc(friendlyAudit(a))}</strong><span>${esc(auditWho(a))} · ${fmtDT(a.changed_at)}</span></div></div>`}).join('')||'<div class="empty">No activity yet.</div>';window.lucide?.createIcons();}
@@ -2650,7 +2576,7 @@ function setPdfZoom(value){state.pdfPreviewZoom=value;updatePdfPreview();}
 async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);if(v662FileKind(file)==='pdf'&&/AVs+MEDIA/i.test(text)){try{await addAvMediaTargetedOcr(file);}catch(targetErr){console.warn('AV Media targeted OCR skipped',targetErr);}}await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed.items=sanitizeParsedInventoryItems(state.parsed.items||[],state.parsed.raw||text);renderParsedItems();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userRole'))$('userRole').textContent=currentRole().replace(/^./,c=>c.toUpperCase());if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();applyRoleUI();}
-function applyRoleUI(){const editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();for(const id of ['sidebarImportBtn','importBtn','addMaintenanceBtn'])$(id)?.classList.toggle('role-hidden',!editable);$('manageRolesBtn')?.classList.toggle('hidden',!admin);document.body.dataset.role=currentRole();renderBackupVerification();}
+function applyRoleUI(){const editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();for(const id of ['sidebarImportBtn','importBtn','addMaintenanceBtn'])$(id)?.classList.toggle('role-hidden',!editable);$('manageRolesBtn')?.classList.toggle('hidden',!admin);document.body.dataset.role=currentRole();}
 function renderTeamRoles(){const me=state.session?.user?.id;const rows=(state.data?.profiles||[]).map(p=>{const selfAdmin=p.id===me&&p.role==='admin';const locked=!!p.is_owner||selfAdmin;const roleCell=locked?`<span class="role-locked"><i data-lucide="shield-check"></i> Admin${p.is_owner?' · Owner':''}</span>`:`<select data-role-user="${p.id}"><option value="admin" ${p.role==='admin'?'selected':''}>Admin</option><option value="editor" ${p.role==='editor'?'selected':''}>Editor</option><option value="viewer" ${(!p.role||p.role==='viewer')?'selected':''}>Viewer</option></select>`;const actionCell=`<button class="secondary small-btn" data-save-member="${p.id}">Save</button>${locked?'<span class="muted role-lock-note"> Role protected</span>':''}`;return `<tr><td><input class="team-display-name" data-name-user="${p.id}" value="${esc(p.display_name||'Team Member')}" maxlength="60" aria-label="Display name"><br><span class="muted">${esc(p.email||'—')}</span></td><td>${p.id===me?'<span class="role-you">You</span>':''}</td><td>${roleCell}</td><td>${actionCell}</td></tr>`;}).join('');$('teamRolesTable').innerHTML=rows?`<table><thead><tr><th>Member</th><th></th><th>Role</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No team profiles found.</div>';window.lucide?.createIcons();}
 function openTeamRoles(){if(!canManageRoles()){toast('Only Admins can manage member roles.');return;}renderTeamRoles();$('teamRolesDialog').showModal();}
 function showLoginPanel(message='',kind='success'){

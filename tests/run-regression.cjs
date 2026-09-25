@@ -108,14 +108,17 @@ assert(runtime.includes("pipeline.status==='accepted'?(pipeline.items||[]):[]"),
 assert(!runtime.includes('v687CompletenessReconcile(candidates,inventory,evidence)'),'Post-ranking completeness must not reintroduce weaker candidate rows');
 assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Direct runtime does not call parser module');
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
-assert(runtime.includes('InventoryHubBackupVerificationUI'),'Direct runtime does not call backup UI module');
-assert(runtime.includes('admin_backup_verification_history_v703314t'),'Admin backup history RPC is not staged');
-assert(runtime.includes("currentRole()==='admin'"),'Backup history is not visibly admin-gated in the runtime');
+assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
+assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
 assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14u'"),'14u direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14u.js'),'14u bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
+assert(app.includes("ASSET_REV='v703314u-ui-fix-20260925-2'"),'UI fix asset revision/cache-bust marker missing');
+assert(runtime.includes("'Improved invoice parsing accuracy and verification.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
+assert(index.includes('<li>Improved invoice parsing accuracy and verification.</li>')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
+assert(index.includes('app.js?v=7.03.3.14u-r3'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14u bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
