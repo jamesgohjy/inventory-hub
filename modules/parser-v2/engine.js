@@ -110,7 +110,9 @@
 
   function sourceId(row={}){return clean(row?.provenance?.source||row?.source||'');}
   function observed(row={},field){
-    const v=Number(row?.observedEconomics?.[field]);
+    const raw=row?.observedEconomics?.[field];
+    const fallback=row?.[field];
+    const v=Number(raw===null||raw===undefined||raw===''?fallback:raw);
     return Number.isFinite(v)?Math.round(v*100)/100:null;
   }
   function descriptionMatchScore(a={},b={}){
@@ -156,10 +158,15 @@
     if(!best||best.sources.size<minSupport||best.sources.size===Number(second?.sources?.size||0))return null;
     return {value:Math.round(best.center*100)/100,support:best.sources.size,sources:[...best.sources]};
   }
-  function partialSupportRecovery(skeleton={},supportSkeletons=[]){
-    const q=Number(skeleton.quantity);if(!(q>0))return null;
-    const matches=(supportSkeletons||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
+  function partialSupportRecovery(skeleton={},supportEvidenceRows=[]){
+    const matches=(supportEvidenceRows||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
     if(!matches.length)return null;
+    const invoiceQ=Number(skeleton.quantity);
+    const qtyConsensus=consensusValue(matches,'quantity',{minSupport:2,tolerance:.01});
+    const q=invoiceQ>0?invoiceQ:Number(qtyConsensus?.value);
+    if(!(q>0)||Math.abs(q-Math.round(q))>.001)return null;
+    // When invoice Qty is unreadable, two independent support OCR sources must agree on it.
+    if(!(invoiceQ>0)&&!qtyConsensus)return null;
     const amountConsensus=consensusValue(matches,'amount',{minSupport:2,tolerance:.02});
     if(!amountConsensus)return null;
     const derivedUnit=Math.round((amountConsensus.value/q)*100)/100;
@@ -167,16 +174,18 @@
     const invoiceUnit=observed(skeleton,'unit_price');
     const supportUnit=consensusValue(matches,'unit_price',{minSupport:1,tolerance:.12});
     const agrees=v=>v!==null&&Math.abs(v-derivedUnit)<=Math.max(.12,Math.abs(derivedUnit)*.001);
-    if(!agrees(invoiceUnit)&&!agrees(supportUnit?.value??null))return null;
+    // If Qty and Amount are each independently corroborated by >=2 OCR sources,
+    // their arithmetic may determine Unit Price even when the printed price itself is damaged.
+    const derivedFromDualConsensus=!!qtyConsensus&&qtyConsensus.support>=2&&amountConsensus.support>=2;
+    if(!agrees(invoiceUnit)&&!agrees(supportUnit?.value??null)&&!derivedFromDualConsensus)return null;
     const invoiceAmount=observed(skeleton,'amount');
-    // A conflicting damaged invoice amount is allowed only because two independent support OCR
-    // sources agree on the replacement amount and arithmetic is exact. Subtotal validation remains mandatory later.
     const delta=Math.abs(q*derivedUnit-amountConsensus.value),tol=Math.max(.03,Math.abs(amountConsensus.value)*.003);
     if(delta>tol)return null;
     return {
       quantity:q,unit_price:derivedUnit,amount:amountConsensus.value,
-      support:amountConsensus.support,sources:amountConsensus.sources,
-      invoiceObserved:{unit_price:invoiceUnit,amount:invoiceAmount},
+      support:Math.min(Number(qtyConsensus?.support||amountConsensus.support),amountConsensus.support),
+      sources:[...new Set([...(qtyConsensus?.sources||[]),...(amountConsensus.sources||[])])],
+      invoiceObserved:{quantity:invoiceQ>0?invoiceQ:null,unit_price:invoiceUnit,amount:invoiceAmount},
       method:'partial-economics-consensus'
     };
   }
@@ -217,7 +226,7 @@
           continue;
         }
       }
-      const partial=partialSupportRecovery(skeleton,supportSkeletons);
+      const partial=partialSupportRecovery(skeleton,[...(supportSkeletons||[]),...(validSupport||[])]);
       if(partial){
         out.push({
           ...skeleton,
@@ -329,7 +338,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.8-skeleton-placeholder-supersession',
+      version:'3.0-multi-ocr-missing-qty-recovery',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -401,7 +410,7 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.8-skeleton-placeholder-supersession',
+    version:'3.0-multi-ocr-missing-qty-recovery',
     analyze,
     partialSupportRecovery,
     normalizeCrossOcrSkeletonModels,
