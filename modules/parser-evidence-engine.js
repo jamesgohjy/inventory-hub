@@ -16,6 +16,36 @@
     return name?'name:'+name:'';
   };
 
+
+  function extractSupplierHeaderCandidate(text=''){
+    const raw=String(text||'').replace(/\r/g,'\n');
+    const lines=raw.split(/\n+/).map(x=>clean(x)).filter(Boolean).slice(0,40);
+    const company=/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i;
+    const reject=/\b(?:SOLD\s+TO|BILL\s+TO|SHIP\s+TO|DELIVERED\s+TO|CUSTOMER|ATTN|ATTENTION|INVOICE\s*(?:NO|NUMBER|#)|TAX\s+INVOICE|REF\.?\s*NO|REFERENCE|P\/?O\s*(?:NO|NUMBER)?|SALESMAN|TERMS)\b/i;
+    const contact=/\b(?:GST|UEN|REG(?:ISTRATION)?\.?\s*NO|TEL|PHONE|FAX|E-?MAIL|@|STREET|ROAD|AVE(?:NUE)?|INDUSTRIAL|SINGAPORE|POSTAL)\b/i;
+    const labelled=/^\s*(?:SUPPLIER|VENDOR|FROM|ISSUED\s+BY)\s*[:#.-]?\s*(.+)$/i;
+    const candidates=[];
+    const add=(value,index,labelBoost=0)=>{
+      let v=clean(value).replace(/^[|,:;\-\s]+|[|,:;\-\s]+$/g,'');
+      if(!v||v.length<4||v.length>120||reject.test(v))return;
+      const hasCompany=company.test(v),near=lines.slice(Math.max(0,index-2),Math.min(lines.length,index+4)).join(' ');
+      if(!hasCompany&&!labelBoost)return;
+      const letters=(v.match(/[A-Za-z]/g)||[]).length,uppers=(v.match(/[A-Z]/g)||[]).length;
+      let score=labelBoost+(hasCompany?55:0)+Math.max(0,24-index);
+      if(contact.test(near))score+=12;
+      if(letters&&uppers/letters>.7)score+=8;
+      if(/\b(?:BANK|CUSTOMER|INSTITUTE|SCHOOL|COLLEGE|UNIVERSITY)\b/i.test(v)&&!hasCompany)score-=25;
+      candidates.push({value:v,score,line:index+1});
+    };
+    lines.forEach((line,index)=>{
+      const lm=line.match(labelled);if(lm)add(lm[1],index,70);
+      add(line,index,0);
+      if(index+1<lines.length)add(line+' '+lines[index+1],index,0);
+    });
+    candidates.sort((a,b)=>b.score-a.score||a.line-b.line);
+    return candidates[0]||null;
+  }
+
   function verifyEconomics(row={}){
     const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
     const complete=q>0&&finite(p)&&finite(a);
@@ -249,6 +279,7 @@
     validateRows,
     consolidateRows,
     duplicateRowPair,
-    identityKey
+    identityKey,
+    extractSupplierHeaderCandidate
   });
 })(typeof window!=='undefined'?window:globalThis);
