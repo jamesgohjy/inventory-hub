@@ -1,0 +1,101 @@
+/* Inventory Hub reusable UI components — v7.03.3.14v
+   Shared primitives for operational toolbars, modals, tables, grouped views,
+   parser diagnostics and responsive layouts. Page-specific sizing may extend
+   these classes, but should not reimplement their base behavior. */
+
+:root{
+  --ui-component-gap:12px;
+  --ui-component-radius:10px;
+  --ui-component-border:var(--line,#e5ebf2);
+  --ui-component-surface:#fff;
+  --ui-component-muted:#667085;
+  --ui-component-soft:#f8fafc;
+}
+
+/* Toolbar */
+.ui-toolbar,.toolbar,.vault-toolbar,.maintenance-toolbar{
+  display:flex;
+  align-items:center;
+  gap:var(--ui-component-gap);
+  min-width:0;
+}
+.ui-toolbar{margin-bottom:16px}
+.ui-toolbar--wrap{flex-wrap:wrap}
+.ui-toolbar__grow,.ui-toolbar>.input-icon,.toolbar>.input-icon{min-width:0;flex:1 1 260px}
+.ui-toolbar__control{flex:0 1 210px;min-width:150px;max-width:240px}
+.ui-toolbar__actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+
+/* Modal / dialog */
+.ui-modal,.dialog{
+  width:min(680px,94vw);
+  max-width:94vw;
+  max-height:92vh;
+  border:0;
+  border-radius:16px;
+  padding:22px;
+  overflow:auto;
+  background:var(--ui-component-surface);
+  box-shadow:0 24px 70px rgba(16,24,40,.20);
+}
+.ui-modal--wide,.dialog.wide{width:min(980px,96vw);max-width:96vw}
+.ui-modal::backdrop,.dialog::backdrop{background:rgba(7,26,45,.58);backdrop-filter:blur(3px)}
+.ui-modal__head,.dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
+.ui-modal__head h2,.dialog-head h2{margin:0;font-size:20px}
+.ui-modal__actions,.dialog-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:20px}
+
+/* Table */
+.ui-table-wrap,.table-wrap{width:100%;min-width:0;overflow:auto;border:1px solid var(--ui-component-border);border-radius:var(--ui-component-radius);background:var(--ui-component-surface)}
+.ui-table,.ui-table-wrap>table,.table-wrap>table{width:100%;border-collapse:collapse;background:var(--ui-component-surface)}
+.ui-table th,.ui-table-wrap th,.table-wrap th{white-space:nowrap}
+.ui-table td,.ui-table-wrap td,.table-wrap td{vertical-align:top}
+.ui-table__actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* Grouped view */
+.ui-group,.document-group,.v669-doc-group,.inventory-company-group{border:1px solid var(--ui-component-border);border-radius:var(--ui-component-radius);background:var(--ui-component-surface);overflow:hidden}
+.ui-group__head,.document-group-head{display:flex;align-items:center;gap:12px;min-width:0;padding:11px 12px;background:var(--ui-component-soft)}
+.ui-group__head>strong,.document-group-head>strong{min-width:0;overflow-wrap:anywhere}
+.ui-group__count,.document-group-head>span{color:var(--ui-component-muted);white-space:nowrap}
+.ui-group__body,.v669-doc-group-body{min-width:0}
+.ui-group__toggle,.v669-doc-group-toggle{width:100%;min-width:0;text-align:left}
+
+/* Diagnostics */
+.ui-diagnostic,.parser-diagnostics-14l{margin:14px 0;border:1px solid #d7e1ea;border-radius:12px;background:#fbfdff;overflow:hidden}
+.ui-diagnostic>summary,.parser-diagnostics-14l>summary{display:flex;align-items:center;gap:10px;cursor:pointer;padding:11px 13px;font-size:12px;font-weight:800;color:#243b53;background:#f3f7fb}
+.ui-diagnostic>summary span:first-child,.parser-diagnostics-14l>summary span:first-child{margin-right:auto}
+.ui-diagnostic__status,.parser-diag-status{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:9px;letter-spacing:.04em}
+.ui-diagnostic__status.pass,.parser-diag-status.pass{background:#e7f8ef;color:#087443}
+.ui-diagnostic__status.review,.parser-diag-status.review{background:#fff4d6;color:#8a5a00}
+.ui-diagnostic__status.block,.parser-diag-status.block{background:#ffe8e6;color:#b42318}
+.ui-diagnostic__body,.parser-diag-body{padding:12px}
+.ui-diagnostic__summary,.parser-diag-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.ui-diagnostic__summary>div,.parser-diag-summary>div{display:flex;flex-direction:column;gap:3px;padding:8px 10px;border:1px solid #e5edf4;border-radius:9px;background:#fff;font-size:10px}
+.ui-diagnostic__summary b,.parser-diag-summary b{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#667085}
+.ui-diagnostic__summary span,.parser-diag-summary span{color:#344054;line-height:1.4}
+.ui-diagnostic__table,.parser-diag-table{font-size:10px}
+.ui-diagnostic__table th,.ui-diagnostic__table td,.parser-diag-table th,.parser-diag-table td{vertical-align:top}
+.ui-diagnostic__trace,.parser-diag-trace{margin-top:10px;padding:9px 10px;border:1px solid #e5edf4;border-radius:9px;background:#fff;font-size:10px}
+.ui-diagnostic__trace>p,.parser-diag-trace>p{margin:7px 0 0;color:#52667c;line-height:1.45}
+.ui-diagnostic__chips,.parser-diag-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.ui-diagnostic__chips span,.parser-diag-chips span{padding:3px 7px;border-radius:999px;background:#eef4fb;color:#37526d;font-weight:700}
+.ui-diagnostic__raw,.parser-diag-raw{margin-top:10px}
+.ui-diagnostic__raw summary,.parser-diag-raw summary{cursor:pointer;font-size:10px;font-weight:800;color:#52667c}
+.ui-diagnostic__raw pre,.parser-diag-raw pre{max-height:360px;overflow:auto;margin:8px 0 0;padding:10px;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:9px;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+
+/* Responsive component behavior */
+@media(max-width:1100px){
+  .ui-toolbar--responsive,.toolbar.ui-toolbar--responsive{flex-wrap:wrap}
+  .ui-toolbar--responsive>.ui-toolbar__grow,.toolbar.ui-toolbar--responsive>.input-icon{flex:1 1 100%;width:100%;max-width:none}
+}
+@media(max-width:760px){
+  .ui-toolbar,.toolbar,.vault-toolbar,.maintenance-toolbar{flex-wrap:wrap;align-items:stretch}
+  .ui-toolbar>*{min-width:0}
+  .ui-toolbar__grow,.ui-toolbar__control,.ui-toolbar__actions{width:100%;max-width:none;flex:1 1 100%}
+  .ui-toolbar__actions{margin-left:0}
+  .ui-modal,.dialog,.ui-modal--wide,.dialog.wide{width:96vw;max-width:96vw;padding:18px}
+  .ui-modal__head,.dialog-head{gap:12px}
+  .ui-modal__actions,.dialog-actions{justify-content:stretch}
+  .ui-modal__actions>button,.dialog-actions>button{flex:1 1 auto}
+  .ui-table-wrap,.table-wrap{border-radius:8px}
+  .ui-group__head,.document-group-head{align-items:flex-start;flex-wrap:wrap}
+  .ui-diagnostic__summary,.parser-diag-summary{grid-template-columns:1fr}
+}
