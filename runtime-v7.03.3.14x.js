@@ -757,11 +757,11 @@ function labelledValue(text,labelRe,valueRe=/[^\n]+/){
 }
 function referenceNumberFromLabel(text=''){
   const normalized=normalizePdfText(text);
-  const re=/\\b(?:Reference(?:\\s*(?:No\\.?|Number|#))?|Ref\\.?\\s*(?:No\\.?|Number|#)?)\\s*[:#.-]?\\s*([A-Z0-9][A-Z0-9._\\/-]{2,})/ig;
-  const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
+  const re=/\b(?:Reference(?:\s*(?:No\.?|Number|#))?|Ref\.?\s*(?:No\.?|Number|#)?)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})/ig;
+  const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
   for(const m of normalized.matchAll(re)){
     const value=cleanHeaderValue(m[1]||'');
-    if(value&&/\\d/.test(value)&&!blocked.test(value)&&!parseDate(value))return value;
+    if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDate(value))return value;
   }
   return '';
 }
