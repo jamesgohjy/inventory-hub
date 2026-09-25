@@ -205,6 +205,24 @@
     };
   }
 
+  function invoiceArithmeticConsensusRecovery(skeleton={},invoiceSkeletons=[]){
+    const matches=(invoiceSkeletons||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
+    if(matches.length<2)return null;
+    const qty=consensusValue(matches,'quantity',{minSupport:2,tolerance:.01});
+    const unit=consensusValue(matches,'unit_price',{minSupport:2,tolerance:.12});
+    if(!qty||!unit||!(qty.value>0)||unit.value<0||Math.abs(qty.value-Math.round(qty.value))>.001)return null;
+    const amount=Math.round(qty.value*unit.value*100)/100;
+    if(!Number.isFinite(amount))return null;
+    return {
+      quantity:qty.value,unit_price:unit.value,amount,
+      support:Math.min(qty.support,unit.support),
+      sources:[...new Set([...(qty.sources||[]),...(unit.sources||[])])],
+      invoiceObserved:{quantity:observed(skeleton,'quantity'),unit_price:observed(skeleton,'unit_price'),amount:observed(skeleton,'amount')},
+      method:'invoice-multi-ocr-arithmetic',
+      requiresSubtotalEvidence:true
+    };
+  }
+
   function reconcileSupportingEconomics(skeletons=[],supportRows=[],supportSkeletons=[]){
     const normalizedSkeletons=normalizeCrossOcrSkeletonModels(skeletons);
     const validSupport=(supportRows||[]).filter(r=>(R?.economics?.(r)||{}).ok===true&&r.layoutEvidenceVerified===true&&r.economicEvidenceVerified===true);
@@ -241,12 +259,14 @@
           continue;
         }
       }
-      const partial=partialSupportRecovery(skeleton,[...(supportSkeletons||[]),...(validSupport||[])]);
+      const partial=partialSupportRecovery(skeleton,[...(supportSkeletons||[]),...(validSupport||[])])||
+        invoiceArithmeticConsensusRecovery(skeleton,normalizedSkeletons);
       if(partial){
         out.push({
           ...skeleton,
-          unit_price:partial.unit_price,amount:partial.amount,
-          economicEvidenceVerified:true,supportingDocumentEvidenceVerified:true,supportRecoveryPending:false,
+          quantity:partial.quantity,unit_price:partial.unit_price,amount:partial.amount,
+          economicEvidenceVerified:true,supportingDocumentEvidenceVerified:partial.method!=='invoice-multi-ocr-arithmetic',supportRecoveryPending:false,
+          requiresSubtotalEvidence:!!partial.requiresSubtotalEvidence,
           provenance:{...(skeleton.provenance||{}),supportingDocument:{method:partial.method,sources:partial.sources,support:partial.support,economics:`${partial.quantity}|${partial.unit_price}|${partial.amount}`,invoiceObserved:partial.invoiceObserved}}
         });
       }else out.push(skeleton);
@@ -342,7 +362,10 @@
     if(!headers.invoice_date)headerIssues.push({code:'invoice-date-not-proven'});
 
     const promotion=assessPromotion(rowLedger,completeness,finalComparison);
-    const subtotalBlockers=invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false?[{code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta}]:[];
+    const subtotalRequired=(rowLedger||[]).some(x=>x?.row?.requiresSubtotalEvidence===true);
+    const subtotalBlockers=[];
+    if(invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false)subtotalBlockers.push({code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta});
+    if(subtotalRequired&&(!invoiceSubtotalCheck.proven||invoiceSubtotalCheck.ok!==true))subtotalBlockers.push({code:'subtotal-required-for-ocr-arithmetic-recovery'});
     // Promotion blockers are merged immutably; source evidence must remain complete.
     const promotionBlockers=[
       ...promotion.blockers,
@@ -353,7 +376,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'3.1-invoice-arithmetic-support-corroboration',
+      version:'3.2-multi-ocr-invoice-arithmetic',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -425,8 +448,9 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'3.1-invoice-arithmetic-support-corroboration',
+    version:'3.2-multi-ocr-invoice-arithmetic',
     analyze,
+    invoiceArithmeticConsensusRecovery,
     partialSupportRecovery,
     normalizeCrossOcrSkeletonModels,
     reconcileSupportingEconomics,
