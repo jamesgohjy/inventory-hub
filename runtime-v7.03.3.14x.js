@@ -4365,6 +4365,16 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
     return (buildAllHealthIssues()||[]).filter(x=>String(reviews.get(String(x.key))?.resolution_status||'').toLowerCase()!=='resolved').map(x=>({...x,review:reviews.get(String(x.key))||null}));
   };
   buildHealthIssues=unresolvedHealthIssues14x;
+
+  // Core init() has already completed before this 14x installer runs. Hydrate persisted
+  // health reviews once now so a browser refresh cannot render raw findings as unresolved.
+  const hydratePersistedHealthReviews14x=async()=>{
+    if(CFG.mode!=='supabase'||!state?.db||typeof state.db.load!=='function')return state.data;
+    const hydrated=await state.db.load();
+    state.data=hydrated;
+    return hydrated;
+  };
+
   issueRow=function(x){
     const review=issueReviewButton(x);
     const resolve=(canEdit()&&x.type==='Possible duplicate SKU')?'<button class="secondary small-btn" data-health-resolve="'+esc(x.key)+'">Resolve</button>':'';
@@ -4398,6 +4408,15 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
   }
   renderAutomationCentre=function(){renderNeedsAttention14x(false);if($('importRuleSummary'))$('importRuleSummary').textContent='Loud + AV Media rules active';};
   openAttention=function(){renderNeedsAttention14x(true);};
+
+  // Reconcile the already-rendered dashboard with persisted resolutions after 14x installs.
+  hydratePersistedHealthReviews14x().then(()=>{
+    renderNeedsAttention14x(false);
+    if($('healthDialog')?.open){try{openHealth();}catch(_e){}}
+  }).catch(err=>{
+    console.error('v7.03.3.14x persisted Data Health hydration failed',err);
+  });
+
   const previousIssueReviewButton14x=issueReviewButton;
   issueReviewButton=function(x){
     if(x?.type==='Possible duplicate SKU'&&x?.entity_type==='master_items_pair')return previousIssueReviewButton14x(x);
