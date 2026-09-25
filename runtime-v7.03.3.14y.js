@@ -649,6 +649,28 @@ async function extractPdf(file){
     for(const m of modes){
       state.v2FullDocumentEvidence.push({source:'ocr-full-'+m.key,kind:'ocr',text:m.texts.join('\n'),layout:m.layouts});
     }
+    // A scanned attachment may contain a separate, legible price schedule. OCR
+    // only those schedule pages at higher resolution; invoice row identity and
+    // subtotal remain mandatory before its prices can be used in Review.
+    const schedulePages=[];
+    for(let i=0;i<pdf.numPages;i++)if(modes.some(m=>/SCHEDULES?\s+OF\s+PRICES/i.test(m.texts[i]||'')&&!/\bPURCHASE\s+ORDER\b/i.test(m.texts[i]||'')))schedulePages.push(i+1);
+    if(schedulePages.length){
+      const hiWorker=await Tesseract.createWorker('eng');
+      const invoiceModelPages=[];
+      for(let i=0;i<pdf.numPages;i++)if(modes.some(m=>/\bTAX\s+INVOICE\b/i.test(m.texts[i]||'')&&((m.texts[i]||'').match(/\bMODEL\s*:/gi)||[]).length>=4))invoiceModelPages.push(i+1);
+      try{for(const pageNo of [...new Set([...schedulePages,...invoiceModelPages])]){
+        const page=await pdf.getPage(pageNo),vp=page.getViewport({scale:4.17}),canvas=document.createElement('canvas');
+        canvas.width=Math.round(vp.width);canvas.height=Math.round(vp.height);
+        await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;
+        const isSchedule=schedulePages.includes(pageNo);
+        for(const [label,psm] of isSchedule?[['auto',Tesseract.PSM?.AUTO??'3'],['column',Tesseract.PSM?.SINGLE_COLUMN??'4']]:[['column',Tesseract.PSM?.SINGLE_COLUMN??'4']]){
+          setProgress(83,'Verifying the attached price schedule…');
+          await hiWorker.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
+          const result=await hiWorker.recognize(canvas,{}, {text:true});
+          state.v2FullDocumentEvidence.push({source:(isSchedule?'schedule':'invoice')+'-hires-'+label+'-p'+pageNo,kind:'ocr',text:String(result.data?.text||''),layout:[]});
+        }
+      }}finally{await hiWorker.terminate();}
+    }
     const candidates=modes.map(m=>{
       const gated=globalThis.V7033Patch?.filterInvoicePages(m.texts,m.layouts);if(!gated)return {source:m.key,label:m.label,text:'',layout:[],score:-1};const candidateText=gated.text.trim();const candidateLayouts=gated.layouts;
       const score=ocrTextQuality(candidateText)+candidateLayouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0);

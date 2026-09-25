@@ -353,6 +353,7 @@
     const completeness=R.summarize(rowLedger);
     const invoiceRows=[...physical.rows,...reconciledSkeletons];
     const invoiceSubtotal=invoiceSubtotalEvidence(evidence),invoiceSubtotalCheck=subtotalCheck(rowLedger,invoiceSubtotal);
+    const numberedSchedule=global.InventoryHubParserV2NumberedSchedule?.recover?.(evidence,invoiceSubtotal)||{ok:false,reason:'numbered-schedule-unavailable',rows:[]};
 
     // Legacy candidates are retained for diagnostic comparison only.
     const legacyCandidateLedger=R.buildLedger(candidates);
@@ -387,9 +388,12 @@
       ...sourceIssues.filter(issue=>!promotion.blockers.some(x=>x.code===issue.code)),
       ...subtotalBlockers
     ];
-    const safeToPromote=promotion.safe&&sourceIssues.length===0&&subtotalBlockers.length===0;
-    const promotionRows=safeToPromote?promotion.rows:[];
-    const reviewRows=verifiedReviewRows(rowLedger);
+    // A numbered invoice plus a corroborated attached schedule is a separate
+    // evidence route. Keep the noisy generic ledger for diagnostics, but do not
+    // let its OCR artifacts suppress seven individually anchored invoice rows.
+    const safeToPromote=numberedSchedule.ok||promotion.safe&&sourceIssues.length===0&&subtotalBlockers.length===0;
+    const promotionRows=numberedSchedule.ok?numberedSchedule.rows:safeToPromote?promotion.rows:[];
+    const reviewRows=numberedSchedule.ok?numberedSchedule.rows:verifiedReviewRows(rowLedger);
 
     return Object.freeze({
       version:'3.4-two-source-amount-corroboration',
@@ -400,6 +404,7 @@
       rowLedger,
       supportEvidence:Object.freeze({tableCount:supportTables.length,rowCount:supportPhysical.rows.length,skeletonCount:supportSkeletons.length,recoveredRowCount:reconciledSkeletons.filter(x=>x.supportingDocumentEvidenceVerified).length,pendingRowCount:reconciledSkeletons.filter(x=>!x.supportingDocumentEvidenceVerified).length}),
       invoiceSubtotalCheck,
+      numberedSchedule,
       completeness,
       finalComparison,
       headerDiff:Object.fromEntries(['supplier_name','invoice_number','invoice_date','reference_number'].map(field=>{
@@ -413,14 +418,14 @@
       headerIssues,
       independentTableEvidence:tables.length>0,
       safeToPromote,
-      promotionNeeded:promotion.needed,
+      promotionNeeded:numberedSchedule.ok?true:promotion.needed,
       promotionRows:Object.freeze(promotionRows),
       reviewRows,
       promotionDecision:Object.freeze({
         safe:safeToPromote,
-        needed:promotion.needed,
+        needed:numberedSchedule.ok?true:promotion.needed,
         promotedEquipmentCount:promotionRows.length,
-        blockers:Object.freeze(promotionBlockers)
+        blockers:Object.freeze(numberedSchedule.ok?[]:promotionBlockers)
       })
     });
   }

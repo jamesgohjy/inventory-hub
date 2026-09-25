@@ -14,6 +14,7 @@ const parserV2Header=read('modules/parser-v2/header-resolver.js');
 const parserV2Table=read('modules/parser-v2/table-detector.js');
 const parserV2Builder=read('modules/parser-v2/row-builder.js');
 const parserV2Rows=read('modules/parser-v2/row-accounting.js');
+const parserV2Numbered=read('modules/parser-v2/numbered-schedule.js');
 const parserV2Engine=read('modules/parser-v2/engine.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
@@ -31,7 +32,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Engine);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -228,7 +229,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r1'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r2'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -258,6 +259,7 @@ vm.runInContext(parserV2Header,v2ctx,{filename:'modules/parser-v2/header-resolve
 vm.runInContext(parserV2Table,v2ctx,{filename:'modules/parser-v2/table-detector.js'});
 vm.runInContext(parserV2Builder,v2ctx,{filename:'modules/parser-v2/row-builder.js'});
 vm.runInContext(parserV2Rows,v2ctx,{filename:'modules/parser-v2/row-accounting.js'});
+vm.runInContext(parserV2Numbered,v2ctx,{filename:'modules/parser-v2/numbered-schedule.js'});
 vm.runInContext(parserV2Engine,v2ctx,{filename:'modules/parser-v2/engine.js'});
 assert(v2ctx.InventoryHubParserV2?.selfTest?.().ok,'Parser V2 self-test failed: '+(v2ctx.InventoryHubParserV2?.selfTest?.().failures||[]).join(', '));
 const sameCompanyA=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
@@ -810,6 +812,22 @@ assert(setupDoc.includes('Supabase database backups do **not** contain Storage o
 assert(fs.existsSync('supabase-v7-03-3-14o-parser-intelligence.sql'),'14o Supabase migration missing');
 const frozen=JSON.parse(read('tests/known-good-releases.json'));
 assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
+
+// Numbered invoice anchors must exist independently of an attached schedule.
+const numberedRows=[{text:'No. Description Qty Unit Price Amount',items:[{text:'No.',x:80},{text:'Description',x:250},{text:'Qty',x:650},{text:'Unit Price',x:750},{text:'Amount',x:870}]}];
+for(const [n,name,model] of [[1,'Digital mixer','MIX-1'],[2,'Power amplifier','AMP-2'],[3,'Wireless microphone','MIC-3'],[4,'Monitor speaker','SPK-4']]){
+  numberedRows.push({text:`${n} ${name} 1 100.00 100.00`,items:[{text:String(n),x:80},{text:name,x:230},{text:'1',x:650},{text:'100.00',x:760},{text:'100.00',x:870}]});
+  numberedRows.push({text:`Model: ${model}`,items:[{text:`Model: ${model}`,x:230}]});
+}
+const syntheticSchedule='SCHEDULES OF PRICES AND TECHNICAL DATA\n'+[[1,'Digital mixer','MIX-1'],[2,'Power amplifier','AMP-2'],[3,'Wireless microphone','MIC-3'],[4,'Monitor speaker','SPK-4']].map(([n,name,model])=>`${n} ${name} ${model} UK 1 $100.00 $100.00`).join('\n')+'\nScope of Work\nTotal Amount = $400.00';
+const numberedSources=[{source:'invoice',kind:'ocr',layout:[{page:1,width:1000,rows:[{text:'TAX INVOICE',items:[{text:'TAX INVOICE',x:200}]},...numberedRows]}]},{source:'schedule-auto',kind:'ocr',text:syntheticSchedule},{source:'schedule-column',kind:'ocr',text:syntheticSchedule}];
+const numberedEvidence=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:numberedSources});
+const numberedRecovery=v2ctx.InventoryHubParserV2NumberedSchedule.recover(numberedEvidence,{proven:true,value:400});
+assert(numberedRecovery.ok&&numberedRecovery.rows.length===4&&numberedRecovery.rows.every(r=>r.quantity===1&&r.amount===100),'Numbered invoice + corroborated schedule recovery failed');
+const inconsistentSources=numberedSources.map(s=>({...s,text:s.source==='schedule-column'?s.text?.replace('2 Power amplifier AMP-2 UK 1 $100.00 $100.00','2 Power amplifier AMP-2 UK 1 $120.00 $120.00'):s.text}));
+assert(!v2ctx.InventoryHubParserV2NumberedSchedule.recover(v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:inconsistentSources}),{proven:true,value:400}).ok,'Conflicting schedule price must block recovery');
+assert(!v2ctx.InventoryHubParserV2NumberedSchedule.recover(numberedEvidence,{proven:true,value:401}).ok,'Mismatched invoice subtotal must block recovery');
+console.log('numbered-schedule: 3/3 source-anchoring and conflict checks PASS');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
 console.log('All Inventory Hub v7.03.3.14y regression gates PASS.');
