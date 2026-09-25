@@ -157,7 +157,14 @@
     let previousAnchor=-1;
     for(let ai=0;ai<anchors.length;ai++){
       const anchorInfo=anchors[ai],group=body.slice(previousAnchor+1,anchorInfo.index+1),anchor=body[anchorInfo.index],economics=anchorInfo.econ;
-      const nextAnchorIndex=anchors[ai+1]?.index??body.length,following=body.slice(anchorInfo.index+1,nextAnchorIndex);
+      // A damaged priced row may still have a readable description + quantity. Treat that as a hard
+      // physical-row boundary so its text/model cannot be swallowed by the previous valid anchor.
+      let nextPhysicalStart=body.length;
+      for(let j=anchorInfo.index+1;j<body.length;j++){
+        const d=clean(cellText(body[j],table.columns.boundaries.description)),q=strictQuantity(cellText(body[j],table.columns.boundaries.quantity));
+        if(d&&q!==null){nextPhysicalStart=j;break;}
+      }
+      const nextAnchorIndex=Math.min(anchors[ai+1]?.index??body.length,nextPhysicalStart),following=body.slice(anchorInfo.index+1,nextAnchorIndex);
       previousAnchor=anchorInfo.index;
 
       let sku='';
@@ -238,5 +245,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.7-support-recovery-skeletons',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.8-damaged-row-boundaries',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
