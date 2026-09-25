@@ -1,9 +1,9 @@
-// AV Inventory Hub v7.03.3.14u — evidence-ranked parser architecture
+// AV Inventory Hub v7.03.3.14v — canonical parser + compact UI
 (function(){
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14u',ASSET_REV='v703314v-compact-grouping-20260925-2';
+  const VERSION='7.03.3.14v',ASSET_REV='v703314v-compact-audit-import-20260925-3';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -21,12 +21,12 @@
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
-      await loadScript('runtime-v7.03.3.14u.js?v='+key);
+      await loadScript('runtime-v7.03.3.14v.js?v='+key);
       if(!window.__AV_DIRECT_RUNTIME_READY__?.then)throw new Error('Direct runtime readiness promise was not created.');
       await window.__AV_DIRECT_RUNTIME_READY__;
       if(window.__AV_DIRECT_RUNTIME_LOADED__!==VERSION)throw new Error('Direct runtime did not initialise as '+VERSION+'.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
-      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='direct repository modules v7.03.3.14u';
+      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='direct repository modules v7.03.3.14v';
       console.info('AV Inventory Hub '+VERSION+' loaded with evidence-ranked parsing.',Object.fromEntries(gates));
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
