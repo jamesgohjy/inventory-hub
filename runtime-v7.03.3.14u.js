@@ -410,7 +410,7 @@ function renderDocuments(){
   v703314sRenderDocumentGroups(groups,head);
 }
 function v703314sRenderDocumentGroups(groups,head){
-  return window.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host:$('documentsTable'),groups,head,escapeHtml:esc});
+  return window.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host:$('documentsTable'),groups,head,escapeHtml:esc,itemLabel:'invoice'});
 }
 $('documentGroup')?.addEventListener('change',renderDocuments);
 function maintenanceItem(id){return state.data.items.find(i=>i.id===id);}
@@ -2309,7 +2309,7 @@ function v703314sHeaderAlignedLayoutItems(sourceText=''){
   });
 }
 function v703314sRenderInventoryGroups(groups,head){
-  return window.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host:$('inventoryTable'),groups,head,escapeHtml:esc});
+  return window.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host:$('inventoryTable'),groups,head,escapeHtml:esc,itemLabel:'item'});
 }
 function v661FinalizeParsedInvoice(parsed={},raw=''){
   const sources=v661EvidenceSources(parsed.rawText||raw||''),evidence=sources.map(x=>x.text).join('\n');

@@ -50,13 +50,89 @@
 .ui-table td,.ui-table-wrap td,.table-wrap td{vertical-align:top}
 .ui-table__actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
 
-/* Grouped view */
-.ui-group,.document-group,.v669-doc-group,.inventory-company-group{border:1px solid var(--ui-component-border);border-radius:var(--ui-component-radius);background:var(--ui-component-surface);overflow:hidden}
-.ui-group__head,.document-group-head{display:flex;align-items:center;gap:12px;min-width:0;padding:11px 12px;background:var(--ui-component-soft)}
-.ui-group__head>strong,.document-group-head>strong{min-width:0;overflow-wrap:anywhere}
-.ui-group__count,.document-group-head>span{color:var(--ui-component-muted);white-space:nowrap}
-.ui-group__body,.v669-doc-group-body{min-width:0}
-.ui-group__toggle,.v669-doc-group-toggle{width:100%;min-width:0;text-align:left}
+/* Grouped view — compact accordion matching the established Inventory Hub layout */
+.ui-group-list,.v669-doc-groups{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  width:100%;
+  padding:0;
+}
+.ui-group,.v669-doc-group,.inventory-company-group{
+  width:100%;
+  margin:0;
+  border:1px solid #d8e3ef;
+  border-radius:12px;
+  background:#f5f8fc;
+  overflow:hidden;
+  box-shadow:none;
+}
+.ui-group__toggle,.v669-doc-group-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  width:100%;
+  min-width:0;
+  min-height:43px;
+  padding:10px 14px;
+  border:0;
+  border-radius:0;
+  background:#f5f8fc;
+  color:#101828;
+  text-align:left;
+  cursor:pointer;
+  box-shadow:none;
+}
+.ui-group__toggle:hover,.v669-doc-group-toggle:hover{background:#eef4fa}
+.ui-group__toggle:focus-visible,.v669-doc-group-toggle:focus-visible{outline:2px solid #84adff;outline-offset:-2px}
+.ui-group__name,.v669-doc-group-toggle>strong{
+  min-width:0;
+  flex:1 1 auto;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:14px;
+  font-weight:700;
+  color:#101828;
+}
+.ui-group__count,.v669-doc-group-toggle>.ui-group__count{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:5px;
+  flex:0 0 auto;
+  margin-left:auto;
+  color:#667085;
+  font-size:12px;
+  font-weight:400;
+  white-space:nowrap;
+}
+.ui-group__chevron{display:inline-block;min-width:9px;color:#52667c;font-size:10px;line-height:1;text-align:center}
+.ui-group__body,.v669-doc-group-body{min-width:0;background:#fff;border-top:1px solid #d8e3ef}
+.ui-group__table-scroll{width:100%;overflow:auto}
+.ui-group__body table,.v669-doc-group-body table{width:100%;border-collapse:collapse;background:#fff}
+
+/* Grouped views sit inside the existing table host; remove the host's table framing
+   so each compact company row provides its own border/radius like the previous UI. */
+#documentsTable:has(.ui-group-list),#inventoryTable:has(.ui-group-list){
+  overflow:visible;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+
+/* Group controls: wide enough for the full label on desktop. */
+#documentsView #documentGroup,#inventoryView #inventoryGroup{
+  flex:0 0 230px;
+  width:230px;
+  min-width:230px;
+  max-width:230px;
+  padding-left:12px;
+  padding-right:34px;
+  box-sizing:border-box;
+}
 
 /* Diagnostics */
 .ui-diagnostic,.parser-diagnostics-14l{margin:14px 0;border:1px solid #d7e1ea;border-radius:12px;background:#fbfdff;overflow:hidden}

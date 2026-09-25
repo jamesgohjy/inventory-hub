@@ -8,16 +8,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=7.03.3.14q-r1" />
-  <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14q-r1" />\n  <link rel="stylesheet" href="components.css?v=7.03.3.14v-r1" />
+  <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14q-r1" />
+  <link rel="stylesheet" href="components.css?v=7.03.3.14v-r2" />
   <style>
     /* inherited v7.03.3.9c Vault layout refinement */
     /* v7.03.3.14f: compact maintenance outcome + 30% smaller Vault search. */
     #vaultView .vault-toolbar .input-icon{flex:0 1 calc(70% - 288px);width:calc(70% - 288px);min-width:260px;max-width:none;}
     #vaultView #vaultGroup{flex:0 0 210px;width:210px;min-width:210px;max-width:210px;}
     /* v7.03.3.14f UI hotfix: keep the full Inventory grouping label visible in native select controls. */
-    #inventoryView #inventoryGroup{flex:0 0 200px;width:200px;min-width:200px;max-width:200px;padding-left:10px;padding-right:30px;box-sizing:border-box;}
+    #inventoryView #inventoryGroup{flex:0 0 230px;width:230px;min-width:230px;max-width:230px;padding-left:12px;padding-right:34px;box-sizing:border-box;}
     /* Documents grouping is a permanent filter; keep its full label visible. */
-    #documentsView #documentGroup{flex:0 0 210px;width:210px;min-width:210px;max-width:210px;padding-left:10px;padding-right:30px;box-sizing:border-box;}
+    #documentsView #documentGroup{flex:0 0 230px;width:230px;min-width:230px;max-width:230px;padding-left:12px;padding-right:34px;box-sizing:border-box;}
     #vaultView #vaultSort{flex:0 0 230px;width:230px;min-width:230px;max-width:230px;}
     #maintenanceView .maintenance-toolbar .input-icon{flex:1 1 320px;min-width:260px;}
     #maintenanceView #maintenanceOutcome{flex:0 0 90px;width:90px;min-width:90px;max-width:90px;padding:10px 8px 10px 3px;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,#667085 50%),linear-gradient(135deg,#667085 50%,transparent 50%);background-position:calc(100% - 5px) 50%,calc(100% - 2px) 50%;background-size:3px 3px,3px 3px;background-repeat:no-repeat;}
@@ -31,8 +32,8 @@
       #vaultView .vault-toolbar,#maintenanceView .maintenance-toolbar{flex-wrap:wrap;}
       #vaultView .vault-toolbar .input-icon,#maintenanceView .maintenance-toolbar .input-icon{flex:1 1 100%;width:100%;min-width:100%;max-width:none;}
       #vaultView #vaultGroup{flex:1 1 210px;width:auto;min-width:210px;max-width:none;}
-      #inventoryView #inventoryGroup{flex:0 0 200px;width:200px;min-width:200px;max-width:200px;}
-      #documentsView #documentGroup{flex:0 0 210px;width:210px;min-width:210px;max-width:210px;}
+      #inventoryView #inventoryGroup{flex:0 0 230px;width:230px;min-width:230px;max-width:230px;}
+      #documentsView #documentGroup{flex:0 0 230px;width:230px;min-width:230px;max-width:230px;}
       #vaultView #vaultSort{flex:1 1 230px;width:auto;min-width:230px;max-width:none;}
       #maintenanceView #maintenanceOutcome{flex:0 0 90px;width:90px;min-width:90px;max-width:90px;}
     }
@@ -209,7 +210,7 @@
       </section>
       <div class="dashboard-meta"><span id="healthStatus" class="health-status reconnecting"><i></i> Starting…</span><span id="dashboardUpdated">Last updated: —</span><span id="appVersion">Version 7.03.3.14u</span></div>
       <section id="inventoryView" class="view"><article class="panel content-panel"><div class="toolbar ui-toolbar ui-toolbar--responsive"><div class="input-icon"><i data-lucide="search"></i><input id="inventorySearch" class="search" autocomplete="off" placeholder="Search SKU, item, model, serial, supplier, invoice..." /></div><select id="categoryFilter"><option value="">All categories</option></select><select id="inventoryGroup" title="Group inventory items"><option value="none">No Grouping</option><option value="company">Group by Company</option></select><button id="inventoryHealthBtn" class="secondary toolbar-btn" type="button"><i data-lucide="shield-check"></i> Data Health</button></div><div id="inventoryTable" class="table-wrap ui-table-wrap"></div></article></section>
-      <section id="documentsView" class="view"><article class="panel content-panel"><div class="toolbar ui-toolbar ui-toolbar--responsive documents-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="documentGroup" title="Group documents"><option value="none">No Grouping</option><option value="company">Group by Company</option></select><select id="documentSort" title="Sort documents by uploaded date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select></div><div id="documentsTable" class="table-wrap ui-table-wrap"></div></article></section>
+      <section id="documentsView" class="view"><article class="panel content-panel"><div class="toolbar ui-toolbar ui-toolbar--responsive documents-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="documentSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="documentSort" title="Sort documents by uploaded date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select><select id="documentGroup" title="Group documents"><option value="none">No Grouping</option><option value="company">Group by Company</option></select></div><div id="documentsTable" class="table-wrap ui-table-wrap"></div></article></section>
       <section id="vaultView" class="view"><article class="panel content-panel"><div class="toolbar ui-toolbar ui-toolbar--responsive documents-toolbar vault-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="vaultSearch" class="search" placeholder="Search supplier, invoice or filename..." /></div><select id="vaultGroup" title="Group vault invoices"><option value="company">Group by Company</option><option value="none">No Grouping</option></select><select id="vaultSort" title="Sort vault invoices by invoice date"><option value="newest">Sort Newest to Oldest</option><option value="oldest">Sort Oldest to Newest</option></select></div><div id="vaultTable" class="table-wrap ui-table-wrap"></div></article></section>
       <section id="maintenanceView" class="view"><article class="panel content-panel"><div class="panel-head maintenance-head"><div><h2>Maintenance Records</h2><p class="muted">Keep equipment repair and service history together with your inventory records.</p></div><button id="addMaintenanceBtn" class="primary"><i data-lucide="plus"></i> Add Maintenance Record</button></div><div class="toolbar ui-toolbar ui-toolbar--responsive maintenance-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="maintenanceSearch" class="search" autocomplete="off" placeholder="Search equipment, SKU, serial, issue..." /></div><select id="maintenanceOutcome"><option value="">All outcomes</option><option>Repaired</option><option>Replaced</option><option>Sent for Service</option><option>No Fault Found</option><option>Disposed</option></select></div><div id="maintenanceTable" class="table-wrap ui-table-wrap"></div></article></section>
       <section id="auditView" class="view"><article class="panel content-panel"><div class="toolbar ui-toolbar ui-toolbar--responsive audit-toolbar"><div class="input-icon"><i data-lucide="search"></i><input id="auditSearch" class="search" type="search" name="recent-activity-query" autocomplete="off" value="" placeholder="Search activities..." /></div><select id="auditUser"><option value="">All users</option></select><select id="auditAction"><option value="">All actions</option><option value="INSERT">Added / Imported</option><option value="UPDATE">Edited</option><option value="DELETE">Deleted</option><option value="ADJUST">Adjusted</option><option value="MERGE">Merged</option><option value="REVIEW">Health reviewed</option><option value="REOPEN">Health reopened</option></select><input id="auditDate" type="date" title="Filter by date"></div><div id="auditTable" class="table-wrap ui-table-wrap"></div></article></section>
@@ -231,7 +232,7 @@
   <div id="toast" class="toast hidden"></div>
   <script src="config.js"></script>
   <script src="parser-v7-core.js?v=7.03.3.14r-r1"></script>
-  <script src="app.js?v=7.03.3.14u-r4"></script>
+  <script src="app.js?v=7.03.3.14u-r5"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="feedback.js?v=7.03.3.14t-r1"></script>
 </body>
