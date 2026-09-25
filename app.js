@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14x',ASSET_REV='v703314x-startup-fix-upload-guidance-20260925-2';
+  const VERSION='7.03.3.14x',ASSET_REV='v703314x-startup-trace-20260925-3';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -31,7 +31,7 @@
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
-      const msg=String(err?.message||err).replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub '+VERSION+' could not start.</b><br>No database changes were made by this loader.<br><br><code>'+msg+'</code>';document.body.appendChild(box);
+      const detail=String(err?.stack||err?.message||err),msg=detail.replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));box.innerHTML='<b>AV Inventory Hub '+VERSION+' could not start.</b><br>No database changes were made by this loader.<br><br><pre style="white-space:pre-wrap;max-height:60vh;overflow:auto">'+msg+'</pre>';document.body.appendChild(box);
     }
   }
   launch();
