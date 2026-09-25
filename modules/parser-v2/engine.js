@@ -162,6 +162,22 @@
     const matches=(supportEvidenceRows||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
     if(!matches.length)return null;
     const invoiceQ=Number(skeleton.quantity);
+    const invoiceUnit=observed(skeleton,'unit_price');
+    if(invoiceQ>0&&invoiceUnit!==null&&invoiceUnit>=0){
+      const derivedAmount=Math.round(invoiceQ*invoiceUnit*100)/100,tol=Math.max(.03,Math.abs(derivedAmount)*.003);
+      const corroborating=matches.filter(r=>{
+        const a=observed(r,'amount');return a!==null&&Math.abs(a-derivedAmount)<=tol&&sourceId(r);
+      });
+      const sources=[...new Set(corroborating.map(sourceId).filter(Boolean))];
+      if(sources.length>=1){
+        return {
+          quantity:invoiceQ,unit_price:invoiceUnit,amount:derivedAmount,
+          support:sources.length,sources,
+          invoiceObserved:{quantity:invoiceQ,unit_price:invoiceUnit,amount:observed(skeleton,'amount')},
+          method:'invoice-arithmetic-support-amount'
+        };
+      }
+    }
     const qtyConsensus=consensusValue(matches,'quantity',{minSupport:2,tolerance:.01});
     const q=invoiceQ>0?invoiceQ:Number(qtyConsensus?.value);
     if(!(q>0)||Math.abs(q-Math.round(q))>.001)return null;
@@ -171,7 +187,6 @@
     if(!amountConsensus)return null;
     const derivedUnit=Math.round((amountConsensus.value/q)*100)/100;
     if(!(derivedUnit>=0))return null;
-    const invoiceUnit=observed(skeleton,'unit_price');
     const supportUnit=consensusValue(matches,'unit_price',{minSupport:1,tolerance:.12});
     const agrees=v=>v!==null&&Math.abs(v-derivedUnit)<=Math.max(.12,Math.abs(derivedUnit)*.001);
     // If Qty and Amount are each independently corroborated by >=2 OCR sources,
@@ -338,7 +353,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'3.0-multi-ocr-missing-qty-recovery',
+      version:'3.1-invoice-arithmetic-support-corroboration',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -410,7 +425,7 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'3.0-multi-ocr-missing-qty-recovery',
+    version:'3.1-invoice-arithmetic-support-corroboration',
     analyze,
     partialSupportRecovery,
     normalizeCrossOcrSkeletonModels,
