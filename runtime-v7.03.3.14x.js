@@ -2382,7 +2382,16 @@ async function reprocessConfirmedEquipmentInvoice(){
   const previous=state.parsed,reviewSnapshot=snapshotImportReview14x();
   try{
     let raw=previous.raw||previous.rawText||'';
-    let reparsed=v661FinalizeParsedInvoice(parseBestInvoice(raw),raw);
+    // Do not depend on rawText alone: preserve/use the original PDF layout and OCR evidence already captured during upload.
+    const sourceEvidence=v661EvidenceSources(raw),evidenceText=sourceEvidence.map(x=>String(x?.text||'')).filter(Boolean).join('\n');
+    if(evidenceText.trim())raw=evidenceText;
+    let reparsed;
+    if(raw.trim())reparsed=v661FinalizeParsedInvoice(parseBestInvoice(raw),raw);
+    else reparsed={...previous,doc:{...(previous.doc||{})},items:[...(previous.items||[])]};
+    if(!(reparsed.items||[]).length){
+      const recoveredLayout=recoverBaselineCompatibleEquipment14x(sourceEvidence);
+      if(recoveredLayout.length)reparsed={...reparsed,items:recoveredLayout,v703314xRegressionRecovery:true};
+    }
     // V6.90: confirming Equipment is an instruction to recover physical line items, not merely change a banner.
     // If the completed evidence still has no tracked item, run the independent page-image OCR route when the source file is available.
     if(!(reparsed.items||[]).length&&state.importSourceFile&&v662FileKind(state.importSourceFile)!=='docx'){
