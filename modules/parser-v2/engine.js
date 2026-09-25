@@ -310,6 +310,21 @@
     return Object.freeze({safe,needed,rows:Object.freeze(rows),blockers:Object.freeze(blockers)});
   }
 
+  function verifiedReviewRows(rowLedger=[]){
+    const out=[];
+    for(const entry of rowLedger||[]){
+      if(entry?.disposition!=='equipment')continue;
+      const row={...(entry.row||{})};
+      const econ=R?.economics?.(row)||{};
+      if(econ.ok!==true||row.layoutEvidenceVerified!==true||row.economicEvidenceVerified!==true)continue;
+      const variants=(entry.variants||[]).map(v=>v?.row||{}).filter(v=>(R?.economics?.(v)||{}).ok===true);
+      const sigs=new Set(variants.map(v=>economicSignature(v)).filter(Boolean));
+      if(sigs.size>1)continue;
+      out.push({...row,parserV2VerifiedReview:true,humanReviewRequired:true,needsReview:true,parserReviewRequired:true});
+    }
+    return Object.freeze(out);
+  }
+
   function analyze({sources=[],raw='',layout=[],candidates=[],legacyResult=null}={}){
     if(!E||!H||!T||!B||!R)throw new Error('Parser V2 dependencies are not loaded.');
     const evidence=E.buildDocumentEvidence({sources,raw,layout});
@@ -374,9 +389,10 @@
     ];
     const safeToPromote=promotion.safe&&sourceIssues.length===0&&subtotalBlockers.length===0;
     const promotionRows=safeToPromote?promotion.rows:[];
+    const reviewRows=verifiedReviewRows(rowLedger);
 
     return Object.freeze({
-      version:'3.2-multi-ocr-invoice-arithmetic',
+      version:'3.3-authoritative-review-rows',
       mode:'evidence-first-independent-table',
       headers,
       tables,
@@ -399,6 +415,7 @@
       safeToPromote,
       promotionNeeded:promotion.needed,
       promotionRows:Object.freeze(promotionRows),
+      reviewRows,
       promotionDecision:Object.freeze({
         safe:safeToPromote,
         needed:promotion.needed,
@@ -448,8 +465,9 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'3.2-multi-ocr-invoice-arithmetic',
+    version:'3.3-authoritative-review-rows',
     analyze,
+    verifiedReviewRows,
     invoiceArithmeticConsensusRecovery,
     partialSupportRecovery,
     normalizeCrossOcrSkeletonModels,
