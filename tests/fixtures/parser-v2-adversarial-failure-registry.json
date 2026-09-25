@@ -99,6 +99,45 @@
       "focused_retest": "PASS",
       "permanent_regression_lock": "tests/run-regression.cjs — SALES disposition and aerospaceRawV2 speaker assertions",
       "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-008",
+      "type": "crossed-header-lines-single-ocr-gibberish",
+      "base_document_family": "AV Media / Aerospace mutation",
+      "mutation": "Thin horizontal interference lines cross both invoice number and date. One OCR pass reads ENH7-032365 while other invoice-aware OCR passes cannot corroborate it.",
+      "observed_failure": "Parser V2 initially accepted ENH7-032365 as a resolved invoice number.",
+      "root_cause": "A single OCR source meeting the score threshold could resolve an invoice identifier even when other OCR passes saw the field but did not confirm that value.",
+      "generalized_fix": "For OCR-only invoice identifiers with support=1, require corroboration when multiple OCR sources observe the invoice label; otherwise leave unresolved.",
+      "expected": "invoice_number blank / Review required, never ENH7-032365",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceThinLinesBoth",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-009",
+      "type": "combined-damage-single-ocr-gibberish",
+      "base_document_family": "AV Media / Aerospace mutation",
+      "mutation": "Touching-character effect + line interference + blur produces VING932365- from one OCR mode while other modes cannot recover the number.",
+      "observed_failure": "Parser V2 initially accepted VING932365- as the invoice number.",
+      "root_cause": "Same single-source OCR acceptance weakness as ADV-008 under more severe degradation.",
+      "generalized_fix": "Same OCR corroboration guard; one unconfirmed damaged reading cannot auto-fill the field.",
+      "expected": "invoice_number blank / Review required",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceCombinedHard",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-010",
+      "type": "homoglyph-5-s-corroboration",
+      "base_document_family": "AV Media / Aerospace mutation",
+      "mutation": "OCR alternates between VIN17-03236S and VIN17-032365.",
+      "observed_failure": "Before the majority refinement, a 2-to-1 correct OCR majority still fell back to Review because the conflict rule ignored source support.",
+      "root_cause": "Conflict handling compared confidence scores but not independent corroboration count.",
+      "generalized_fix": "For invoice IDs only, two or more independent sources agreeing on one value can outweigh one conflicting OCR source; 1-vs-1 still fails closed.",
+      "expected": "single S misread -> unresolved; two correct 5 readings vs one S -> VIN17-032365",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceHomoglyphSingle / aerospaceHomoglyphMajority",
+      "status": "resolved"
     }
   ],
   "unresolved": []
