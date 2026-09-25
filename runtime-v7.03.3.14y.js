@@ -4563,7 +4563,11 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
       if(!parsed||!Array.isArray(parsed.items)||!parsed.items.length)return parsed;
       const evidence=candidateRows14q(raw),out={...parsed,items:parsed.items.map(x=>({...x}))},repairs=[],reviews=[];
       for(let i=0;i<out.items.length;i++){
-        const row=out.items[i],choice=api.v703314qChooseMoneyCandidate(row,evidence.rows);
+        const row=out.items[i];
+        // A V2-promoted row has already passed independent geometry + arithmetic proof.
+        // Do not let a weaker legacy money candidate overwrite that verified source row.
+        if(row.parserV2Promoted===true&&row.layoutEvidenceVerified===true&&row.economicEvidenceVerified===true)continue;
+        const choice=api.v703314qChooseMoneyCandidate(row,evidence.rows);
         if(choice.changed){
           const before={quantity:row.quantity,unit_price:row.unit_price,amount:row.amount};
           row.quantity=choice.values.quantity;row.unit_price=choice.values.unit_price;row.amount=choice.values.amount;
@@ -4727,6 +4731,6 @@ if(typeof v661FinalizeParsedInvoice==='function'&&!v661FinalizeParsedInvoice.__c
 
 try{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn('V6.69 optional audit/file-input setup skipped',e);}
 
-  window.__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14x';
+  window.__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14y';
   return true;
-})().catch(err=>{window.__AV_DIRECT_RUNTIME_ERROR__=String(err?.message||err);console.error('AV Inventory Hub v7.03.3.14x direct runtime failed',err);throw err;});
+})().catch(err=>{window.__AV_DIRECT_RUNTIME_ERROR__=String(err?.message||err);console.error('AV Inventory Hub v7.03.3.14y direct runtime failed',err);throw err;});
