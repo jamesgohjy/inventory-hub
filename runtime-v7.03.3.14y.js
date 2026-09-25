@@ -649,6 +649,55 @@ async function extractPdf(file){
       const score=ocrTextQuality(candidateText)+candidateLayouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0);
       return {source:m.key,label:m.label,text:candidateText,layout:candidateLayouts,score,invoicePageDecisions:gated.decisions,documentReviewRequired:!!gated.reviewRequired};
     }).filter(x=>x.text);
+    // V7.03.3.14y Parser V2: when ordinary OCR cannot prove a complete table,
+    // retry only positively identified invoice pages at high resolution using dark-text thresholds.
+    // This suppresses grey stamps/forms while preserving the printed invoice characters.
+    try{
+      let needsContrast=true;
+      if(candidates.length&&window.InventoryHubParserV2?.analyze){
+        const probe=window.InventoryHubParserV2.analyze({sources:candidates.map(x=>({source:x.source,kind:'ocr',text:x.text,layout:x.layout})),legacyResult:{doc:{},items:[]}});
+        needsContrast=!probe?.safeToPromote;
+      }
+      if(needsContrast&&candidates.length){
+        const invoicePages=[...new Set(candidates.flatMap(x=>(x.layout||[]).map(p=>Number(p.page)).filter(n=>Number.isInteger(n)&&n>=1)))].sort((a,b)=>a-b);
+        if(invoicePages.length){
+          const highModes=[
+            {key:'contrast-70-hi',label:'HIGH CONTRAST 70',threshold:70,texts:[],layouts:[]},
+            {key:'contrast-90-hi',label:'HIGH CONTRAST 90',threshold:90,texts:[],layouts:[]}
+          ];
+          const hw=await Tesseract.createWorker('eng');
+          const thresholdCanvas=(src,threshold)=>{
+            const out=document.createElement('canvas');out.width=src.width;out.height=src.height;
+            const ctx=out.getContext('2d',{willReadFrequently:true});ctx.drawImage(src,0,0);
+            const im=ctx.getImageData(0,0,out.width,out.height),d=im.data;
+            for(let k=0;k<d.length;k+=4){
+              const g=Math.round((d[k]+d[k+1]+d[k+2])/3),v=g>threshold?255:0;
+              d[k]=d[k+1]=d[k+2]=v;d[k+3]=255;
+            }
+            ctx.putImageData(im,0,0);return out;
+          };
+          try{
+            for(let pi=0;pi<invoicePages.length;pi++){
+              const pageNo=invoicePages[pi],p=await pdf.getPage(pageNo),vp=p.getViewport({scale:4.8}),hi=document.createElement('canvas');
+              hi.width=Math.round(vp.width);hi.height=Math.round(vp.height);
+              await p.render({canvasContext:hi.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;
+              for(let mi=0;mi<highModes.length;mi++){
+                const m=highModes[mi],input=thresholdCanvas(hi,m.threshold);
+                setProgress(78+Math.round(8*((pi*highModes.length+mi+1)/(invoicePages.length*highModes.length))),`High-contrast invoice recovery… page ${pageNo}`);
+                await hw.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.SINGLE_BLOCK??'6',preserve_interword_spaces:'1',user_defined_dpi:'345'});
+                const rr=await hw.recognize(input,{}, {text:true,tsv:true,hocr:true,blocks:true}),layout=ocrResultToLayout(rr.data||{},pageNo,input.height);
+                m.layouts.push(layout);m.texts.push(String(rr.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim());
+              }
+            }
+          }finally{await hw.terminate();}
+          for(const m of highModes){
+            const textValue=m.texts.join('\n\f\n').trim();if(!textValue)continue;
+            const score=1700+ocrTextQuality(textValue)+m.layouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0);
+            candidates.push({source:m.key,label:m.label,text:textValue,layout:m.layouts,score,invoicePageDecisions:[],documentReviewRequired:false,highContrastRecovery:true});
+          }
+        }
+      }
+    }catch(contrastErr){console.warn('High-contrast Parser V2 recovery could not complete; normal OCR evidence retained.',contrastErr);}
     if(!candidates.length){
       if(chars<80)throw new Error('No Invoice or Tax Invoice page was positively identified. Quotations, delivery documents, forms and photos were ignored.');
       console.warn('Structural OCR produced no usable invoice candidate; native evidence retained.');
