@@ -41,13 +41,22 @@
     const vals=parseNumericTokens(t);if(vals.length!==1)return null;
     return vals[0]>=0?round2(vals[0]):null;
   }
+  function numericCellCandidates(row,bounds,parser){
+    const [lo,hi]=bounds||[-Infinity,Infinity],out=[];
+    for(const item of row.items||[]){
+      const c=center(item);if(!Number.isFinite(c)||c<lo||c>=hi)continue;
+      const value=parser(clean(item.text));if(value!==null&&!out.some(x=>x.value===value))out.push({value,row,item});
+    }
+    // Fallback for PDFs that expose a whole cell as one positioned text object.
+    if(!out.length){const value=parser(cellText(row,bounds));if(value!==null)out.push({value,row,item:null});}
+    return out;
+  }
   function economicsFromGroup(group,columns){
     const qs=[],ps=[],as=[];
     for(const row of group){
-      const q=strictQuantity(cellText(row,columns.boundaries.quantity));
-      const p=strictMoney(cellText(row,columns.boundaries.unit_price));
-      const a=strictMoney(cellText(row,columns.boundaries.amount));
-      if(q!==null)qs.push({value:q,row});if(p!==null)ps.push({value:p,row});if(a!==null)as.push({value:a,row});
+      qs.push(...numericCellCandidates(row,columns.boundaries.quantity,strictQuantity));
+      ps.push(...numericCellCandidates(row,columns.boundaries.unit_price,strictMoney));
+      as.push(...numericCellCandidates(row,columns.boundaries.amount,strictMoney));
     }
     const triples=[];
     for(const q of qs)for(const p of ps)for(const a of as){
@@ -138,5 +147,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.1-shadow',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.2-shadow',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
