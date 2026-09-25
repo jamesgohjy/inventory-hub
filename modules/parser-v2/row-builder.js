@@ -234,8 +234,9 @@
       let desc=desc0,continuation=continuationEquipmentDescription(following,table.columns);
       if(continuation&&(GENERIC_DESC_RE.test(desc)||!EQUIPMENT_HINT_RE.test(desc)))desc=continuation;
       const model=printedModelFromRows([row,...following],table.columns);
-      const strongIdentity=!!model||EQUIPMENT_HINT_RE.test(desc)||numberedPhysicalRowStart(row,table.columns);
-      if(q===null&&!strongIdentity)continue;
+      // Missing-Qty recovery is permitted only on an actual numbered physical row.
+      // Standalone Model:/Note/specification continuation lines must never become their own skeleton.
+      if(q===null&&!numberedPhysicalRowStart(row,table.columns))continue;
       const observedUnitPrice=strictMoney(cellText(row,table.columns.boundaries.unit_price));
       const observedAmount=strictMoney(cellText(row,table.columns.boundaries.amount));
       desc=cleanItemDescription(desc);
@@ -259,5 +260,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'3.0-damaged-numbered-row-boundaries',numberedPhysicalRowStart,buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'3.1-numbered-skeleton-only',numberedPhysicalRowStart,buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
