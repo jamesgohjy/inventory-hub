@@ -906,7 +906,7 @@
       mergeEligible:blockers.length===0,
       reason:embeddedAlias?'embedded-sku-alias':(exact?'exact-sku':'format-normalized-sku'),
       confidence:embeddedAlias?'review':(exact?'exact':'high'),
-      score:embeddedAlias?.92:(exact?1:.98),
+      score:embeddedAlias?0.92:(exact?1:0.98),
       normalizedSku:normalizedKey,
       blockers,
       warnings,
