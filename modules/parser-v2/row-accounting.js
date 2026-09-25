@@ -20,7 +20,7 @@
     const geo=row.sourceRowId||row.rowId||row?.provenance?.rowId||row?.invoice_evidence?.source?.rowId||'';
     // Semantic/economic identity comes first so the same physical row from native-layout and OCR-layout can reconcile.
     // Occurrence ordinals in buildLedger still preserve repeated identical rows within one invoice.
-    if(sku)return 'sku:'+sku+'|q:'+q+'|p:'+p+'|a:'+a;
+    if(sku)return 'sku:'+sku;
     if(desc)return 'desc:'+desc.slice(0,90)+'|q:'+q+'|p:'+p+'|a:'+a;
     if(geo)return 'row:'+String(geo);
     return '';
@@ -75,14 +75,13 @@
     for(const g of groups.values()){
       g.variants.sort((a,b)=>b.strength-a.strength);
       const representative={...g.variants[0].row},disposition=classifyDisposition(representative);
+      const economicSignatures=[...new Set(g.variants.map(v=>{
+        const e=economics(v.row);return e.ok?[Number(v.row.quantity),round2(v.row.unit_price),round2(v.row.amount)].join('|'):'';
+      }).filter(Boolean))];
       ledger.push({
-        key:g.key,
-        row:representative,
-        disposition,
-        accounted:disposition!=='unknown',
-        evidenceOrigins:[...g.origins],
-        variantCount:g.variants.length,
-        variants:g.variants
+        key:g.key,row:representative,disposition,accounted:disposition!=='unknown',
+        evidenceOrigins:[...g.origins],variantCount:g.variants.length,variants:g.variants,
+        economicSignatures,economicConflict:economicSignatures.length>1
       });
     }
     return ledger;
@@ -102,5 +101,5 @@
     const missingEquipment=equipment.filter(x=>!finalKeys.has(x.key));
     return {expectedEquipmentCount:equipment.length,finalEquipmentCount:(finalItems||[]).length,missingEquipment,complete:missingEquipment.length===0&&equipment.length===(finalItems||[]).length};
   }
-  global.InventoryHubParserV2Rows=Object.freeze({version:'2.4-generic-install-scope',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
+  global.InventoryHubParserV2Rows=Object.freeze({version:'2.5-semantic-sku-fusion',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
 })(typeof window!=='undefined'?window:globalThis);
