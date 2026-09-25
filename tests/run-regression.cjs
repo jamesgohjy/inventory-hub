@@ -113,6 +113,11 @@ assert(runtime.includes('__canonicalAuthorityV11'),'Final canonical parser autho
 assert(runtime.includes("this.sb.rpc('confirm_and_save_invoice_v703314v'"),'Confirm & Save does not use canonical PostgreSQL RPC');
 assert(runtime.includes('database migration must be applied before this invoice can be saved'),'Confirm & Save must surface a specific missing-RPC/database-migration error');
 assert(runtime.includes('InventoryHubCanonicalParser.calculateAmount(qty.value,price.value)'),'Review Qty/Unit Price changes are not wired to canonical Amount auto-calculation');
+assert(runtime.includes('extractSupplierHeaderCandidate'),'Runtime supplier recovery is not using the generic evidence resolver');
+assert(runtime.includes("recovery-header-left")&&runtime.includes("!existingInvoice||!existingSupplier"),'Targeted header OCR must recover supplier and invoice independently');
+assert(runtime.includes("renderDuplicateImportWarning14x(dupe,{focus:true})")&&!runtime.includes("if(dupe&&!state.allowDuplicate)throw new Error('Possible duplicate detected."),'Duplicate invoice save path must surface the decision UI instead of throwing a generic import error');
+assert(runtime.includes("for(const id of ['pSupplier','pInvoice','pDate'])")&&runtime.includes("refreshDuplicateWarning({resetOverride:true,focus:false})"),'Manual header edits must refresh duplicate detection');
+
 assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Health Resolve does not persist through its database RPC');
 assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
 assert(runtime.includes("x.type==='Possible duplicate SKU')?'<button class=\"secondary small-btn\" data-health-resolve="),'Possible duplicate SKU alerts must expose Resolve');
@@ -207,7 +212,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
 assert(runtime.includes("'Restored equipment line-item recovery for previously supported multi-page invoice layouts.'")&&runtime.includes("'Improved equipment verification and manual-line Confirm & Save handling.'"),'Direct runtime Patch Notes are not the current concise user-facing version');
 assert(index.includes('Restored equipment line-item recovery for previously supported multi-page invoice layouts.')&&index.includes('Improved equipment verification and manual-line Confirm &amp; Save handling.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14x-r3'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14x-r4'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -229,6 +234,18 @@ console.log('protected-company-grouping: Inventory + Documents controls/event/re
 assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.14s.js')&&fs.existsSync('runtime-v7.03.3.14r.js')&&fs.existsSync('baseline-v6.55-d452.js'),'Rollback references must remain available');
 
 const mctx={console,Number,String,Array,Object,Set,Map,RegExp,Math};mctx.globalThis=mctx;mctx.window=mctx;vm.createContext(mctx);vm.runInContext(evidenceEngine,mctx,{filename:'modules/parser-evidence-engine.js'});vm.runInContext(parserModule,mctx,{filename:'modules/parser-table.js'});
+const supplierHeaderCases=[
+  ['legal-company-header','AV MEDIA PTE LTD\nBlk 2023 Industrial Park\nSingapore 659528 Tel: 6569 2123','AV MEDIA PTE LTD'],
+  ['labelled-vendor','VENDOR: Bright Vision Systems Pte Ltd\nGST Reg No. M2-0000000-0','Bright Vision Systems Pte Ltd'],
+  ['customer-must-not-win','Northstar AV Solutions Pte Ltd\nTel: 6123 4567\nSOLD TO: Example School Pte Ltd\nCustomer Code: C100','Northstar AV Solutions Pte Ltd'],
+  ['no-company-evidence','TAX INVOICE\nCustomer Code: R2002\nInvoice No: INV-1001',null]
+];
+for(const [id,input,expected] of supplierHeaderCases){
+  const hit=mctx.InventoryHubParserEvidenceEngine.extractSupplierHeaderCandidate(input);
+  assert((hit?.value||null)===expected,'Supplier header resolver '+id+' expected '+expected+' got '+(hit?.value||null));
+}
+console.log('supplier-header-evidence: '+supplierHeaderCases.length+'/'+supplierHeaderCases.length+' PASS');
+
 const consolidatedEvidenceRows=mctx.InventoryHubParserEvidenceEngine.consolidateRows([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
   {sku:'PT-MZI7K',item_name:'Replacement of AV Projector and control Panel',description:'Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352,layoutEvidenceVerified:true,economicEvidenceVerified:true},
