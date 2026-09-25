@@ -15,11 +15,22 @@
     const m=clean(v).match(/(?:^|[^A-Za-z0-9\/.-])([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*(?:\d{4}|\d{2}))(?![A-Za-z0-9])/);
     return m?m[1]:'';
   }
+  function namedDateToken(v=''){
+    const m=clean(v).match(/(?:^|[^A-Za-z0-9])([0-3]?\d\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?:\d{4}|\d{2}))(?![A-Za-z0-9])/i);
+    return m?m[1]:'';
+  }
   function parseDateStrict(v=''){
-    const m=clean(v).match(/^([0-3]?\d)\s*[/.\-]\s*([01]?\d)\s*[/.\-]\s*(\d{2}|\d{4})$/);
-    if(!m)return '';
-    let y=Number(m[3]);if(y<100)y=y<70?2000+y:1900+y;
-    const d=Number(m[1]),mo=Number(m[2]);if(!(y>=1990&&y<=2100&&mo>=1&&mo<=12&&d>=1&&d<=31))return '';
+    const s=clean(v);
+    let m=s.match(/^([0-3]?\d)\s*[/\.\-]\s*([01]?\d)\s*[/\.\-]\s*(\d{2}|\d{4})$/),d,mo,y;
+    if(m){
+      d=Number(m[1]);mo=Number(m[2]);y=Number(m[3]);if(y<100)y=y<70?2000+y:1900+y;
+    }else{
+      m=s.match(/^([0-3]?\d)\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{2}|\d{4})$/i);
+      if(!m)return '';
+      const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+      d=Number(m[1]);mo=months[m[2].slice(0,3).toLowerCase()]||0;y=Number(m[3]);if(y<100)y=y<70?2000+y:1900+y;
+    }
+    if(!(y>=1990&&y<=2100&&mo>=1&&mo<=12&&d>=1&&d<=31))return '';
     const dt=new Date(Date.UTC(y,mo-1,d));if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==d)return '';
     return String(y).padStart(4,'0')+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
   }
@@ -132,17 +143,16 @@
       for(let i=0;i<lines.length;i++){
         const line=lines[i];
         if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
-        const tail=lineValueAfterLabel(line,dateLabel),token=dateToken(tail||line);
+        const tail=lineValueAfterLabel(line,dateLabel),token=dateToken(tail||line)||namedDateToken(tail||line);
         if(token){pushCandidate(out,'invoice_date',token,{source:src.id,kind:src.kind,score:105,evidence:line});continue;}
-        // Boxed invoice headers often OCR the DATE label and value onto successive rows.
         for(let j=i+1;j<=Math.min(lines.length-1,i+2);j++){
-          const next=clean(lines[j]),nextToken=dateToken(next);
+          const next=clean(lines[j]),nextToken=dateToken(next)||namedDateToken(next);
           if(nextToken){pushCandidate(out,'invoice_date',nextToken,{source:src.id,kind:src.kind,score:102,evidence:line+' -> '+next});break;}
           if(/^(?:INVOICE|REF(?:ERENCE)?|P\/?O|PURCHASE\s+ORDER|SALESMAN|TERMS|CUSTOMER|ACCOUNT)\b/i.test(next))break;
         }
       }
     }
-    return out.map(x=>({...x,value:parseDateStrict(dateToken(x.value)||x.value)})).filter(x=>x.value);
+    return out.map(x=>({...x,value:parseDateStrict(dateToken(x.value)||namedDateToken(x.value)||x.value)})).filter(x=>x.value);
   }
   function referenceCandidates(evidence){
     const out=[...geometryValues(evidence,refLabel,'reference_number')];
@@ -200,5 +210,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.5-ocr-corroboration',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.6-written-month-dates',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
