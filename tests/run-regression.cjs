@@ -334,6 +334,35 @@ const conflictPromotion=v2ctx.InventoryHubParserV2.assessPromotion(conflictLedge
 assert(conflictPromotion.safe===false&&conflictPromotion.blockers.some(x=>x.code==='conflicting-equipment-economics'),'Conflicting geometry economics must block automatic promotion');
 assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='service','Numeric SALES accounting code must not be promoted as equipment');
 
+const multipartHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'multipart-id',kind:'ocr',text:'Loud Technologies Asia Pte Ltd\nTAX INVOICE\nInvoice Number INV LTA-00215840\nInvoice Date 28/08/2026'}
+  ]})
+);
+assert(multipartHeaders.invoice_number==='INV LTA-00215840','Parser V2 must preserve a proven two-token invoice identifier');
+
+const multiTableLayout=[{page:1,width:595,height:842,yTolerance:3,rows:[
+  {y:100,text:'Description Quantity Unit Price Amount',items:[
+    {text:'Description',x:36,width:48},{text:'Quantity',x:252,width:36},{text:'Unit Price',x:341,width:42},{text:'Amount',x:523,width:34}
+  ]},
+  {y:140,text:'Wireless microphone receiver',items:[{text:'Wireless microphone receiver',x:36,width:180}]},
+  {y:175,text:'1 340.00 340.00',items:[{text:'1',x:272,width:10},{text:'340.00',x:357,width:25},{text:'340.00',x:551,width:25}]},
+  {y:205,text:'Subtotal 340.00',items:[{text:'Subtotal',x:480,width:45},{text:'340.00',x:551,width:25}]},
+  {y:300,text:'Description Quantity Unit Price Amount',items:[
+    {text:'Description',x:36,width:48},{text:'Quantity',x:252,width:36},{text:'Unit Price',x:341,width:42},{text:'Amount',x:523,width:34}
+  ]},
+  {y:340,text:'Controller installation service',items:[{text:'Controller installation service',x:36,width:180}]},
+  {y:375,text:'1 200.00 200.00',items:[{text:'1',x:272,width:10},{text:'200.00',x:357,width:25},{text:'200.00',x:551,width:25}]},
+  {y:405,text:'Subtotal 200.00',items:[{text:'Subtotal',x:480,width:45},{text:'200.00',x:551,width:25}]}
+]}];
+const multiTableV2=v2ctx.InventoryHubParserV2.analyze({
+  sources:[{source:'two-tables',kind:'layout',text:'Example AV Pte Ltd\nInvoice No. INV-2001\nDATE 25/09/26',layout:multiTableLayout}],
+  legacyResult:{doc:{},items:[]}
+});
+assert(multiTableV2.tables.length===2,'Parser V2 must detect two independent tables on the same page');
+assert(multiTableV2.completeness.counts.equipment===1&&multiTableV2.completeness.counts.service===1,'Multi-table page must retain equipment and account for service separately');
+assert(multiTableV2.safeToPromote===true&&multiTableV2.promotionRows.length===1,'Multi-table page must safely promote only the verified equipment row');
+
 // Real-world failure-class locks derived from historical invoice geometry/OCR.
 // 1) Corroborate supplier/invoice/date across noisy full-page OCR + targeted header OCR.
 const hawkoHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
