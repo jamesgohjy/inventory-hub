@@ -1205,15 +1205,15 @@
   }
 
   const RELEASE_NOTES=[
-    'Replaced source-specific parser winner boosts with supplier-neutral evidence ranking based on arithmetic, structure, review state and cross-candidate agreement.',
-    'Reconciled parser output is now treated as a candidate that must win on evidence instead of automatically overriding other extraction paths.',
-    'Added field-level parser accuracy fixtures, adversarial mutation checks and explicit evidence metrics so CI cannot report a vague PASS.'
+    'Improved invoice parsing accuracy and verification.',
+    'Added safer review for uncertain invoice details.',
+    'Improved item matching, duplicate detection and data saving.'
   ];
   const RELEASE_UPCOMING_VERSION='7.03.3.14v';
   const RELEASE_ROADMAP=[
-    {id:'quality-retention',text:'Add parser-quality export, retention and long-term trend controls.'},
-    {id:'module-decomposition',text:'Continue low-risk module separation for audit, maintenance and data-access code.'},
-    {id:'offsite-document-recovery',text:'Add an optional independent off-site document copy target and restore drill.'}
+    {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
+    {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
+    {id:'offsite-document-recovery',text:'Strengthen backup and recovery protection.'}
   ];
   const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation','known-good-14m-freeze','automatic-regression-ci','correction-memory','supplier-layout-profiles','pdf-fingerprint-dedupe','admin-parser-quality-dashboard','operational-backups']);
   const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
