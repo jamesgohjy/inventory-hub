@@ -560,7 +560,7 @@ const reviewRowsFixture=[
 ];
 const verifiedReview=v2ctx.InventoryHubParserV2.verifiedReviewRows(reviewRowsFixture);
 assert(verifiedReview.length===1&&verifiedReview[0].sku==='EQ-1'&&verifiedReview[0].humanReviewRequired===true,'Individually verified V2 equipment must remain visible in Review even when another row is unresolved');
-assert(runtime.includes('Array.isArray(v2.reviewRows)')&&runtime.includes('reason:\\'partial-v2-review\\''),'Production runtime must consume Parser V2 authoritative Review rows');
+assert(runtime.includes('Array.isArray(v2.reviewRows)')&&runtime.includes("reason:'partial-v2-review'"),'Production runtime must consume Parser V2 authoritative Review rows');
 assert(runtime.includes('v2EvidenceText||evidence'),'V2-promoted/review rows must be post-validated against the same full evidence used by Parser V2');
 
 
