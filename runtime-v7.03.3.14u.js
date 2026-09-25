@@ -224,7 +224,6 @@ async function reload(){
     }
     renderAll();
     setHealth('live',CFG.mode==='supabase'?'Live':'Demo mode');
-    if(CFG.mode==='supabase'&&currentRole()==='admin')loadBackupVerification().catch(err=>console.warn('Backup verification status load skipped',err));
   }catch(e){
     setHealth('offline','Offline');
     throw e;
