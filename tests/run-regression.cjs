@@ -5,7 +5,7 @@ const read=p=>fs.readFileSync(p,'utf8');
 
 const core=read('v7033-core.js');
 const app=read('app.js');
-const runtime=read('runtime-v7.03.3.14w.js');
+const runtime=read('runtime-v7.03.3.14x.js');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
@@ -42,7 +42,15 @@ for(const [name,result] of Object.entries(suites)){
   assert(result.ok,name+' regression suite failed: '+(result.failures||[]).join(', '));
 }
 const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Object.values(suites).reduce((n,r)=>n+r.cases.filter(x=>x.pass).length,0);
-assert(total===77&&passed===77,'Expected 77/77 core regression checks, got '+passed+'/'+total);
+assert(total===78&&passed===78,'Expected 78/78 core regression checks, got '+passed+'/'+total);
+assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
+const avMediaDedupe=api.dedupeParsedLineItems([
+  {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
+  {sku:'',item_name:'PT-MZI7K Replacement of AV Projector and control Panel',description:'PT-MZI7K Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352},
+  {sku:'PT-MZI7K',item_name:'Replacement of AV Projector and control Panel',description:'Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352}
+]);
+assert(avMediaDedupe.length===1&&avMediaDedupe[0].sku==='PT-MZI7K'&&near(avMediaDedupe[0].amount,38352),'Fragmented duplicate consolidation did not retain the strongest evidenced PT-MZI7K row');
+assert(api.v703312jIsTrackedEquipment({sku:'RC-208/UK',item_name:'I/O Control Button Keypad',description:'I/O Control Button Keypad'})===true,'Generic keypad equipment recognition failed');
 
 // 14u: historical source excerpts are now checked field-by-field, not just by broad case predicates.
 const historicalExpectations={
@@ -52,7 +60,15 @@ const historicalExpectations={
   'loud-mixed-00215840':[{sku:'U35C',quantity:4,unit_price:340,amount:1360},{sku:'SLXD2+',quantity:1,unit_price:480,amount:480},{sku:'AT-2',quantity:1,unit_price:270,amount:270},{sku:'U3',quantity:4,unit_price:275,amount:1100}],
   'jny-rds-2021':[{sku:'PT-TW381R',quantity:1,unit_price:4820,amount:4820}],
   'seminar-room-2021':[{sku:'PT-VW540',quantity:2,unit_price:707,amount:1414},{sku:'SPS-1100',quantity:2,unit_price:90,amount:180}],
-  'hawko-av-cart-2021':[{sku:'ZS6HKOAV-EB97E',quantity:2,unit_price:550,amount:1100,recovered:true}]
+  'hawko-av-cart-2021':[{sku:'ZS6HKOAV-EB97E',quantity:2,unit_price:550,amount:1100,recovered:true}],
+  'av-media-2023-reference-dedupe':[
+    {sku:'PT-MZI7K',quantity:4,unit_price:9588,amount:38352},
+    {sku:'ET-EMT750',quantity:4,unit_price:3080,amount:12320},
+    {sku:'VS-442H2A',quantity:3,unit_price:3500,amount:10500},
+    {sku:'RC-208/UK',quantity:6,unit_price:800,amount:4800},
+    {sku:'TP-583TXR',quantity:8,unit_price:590,amount:4720},
+    {sku:'TP-583RXR',quantity:8,unit_price:590,amount:4720}
+  ]
 };
 let historicalFields=0,historicalFieldsPassed=0;
 const near=(a,b)=>Math.abs(Number(a)-Number(b))<=.01;
@@ -72,10 +88,10 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14w','Core version must be 7.03.3.14w');
+assert(cv==='7.03.3.14x','Core version must be 7.03.3.14x');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.14x','Upcoming version must be 7.03.3.14x');
+assert(uv==='7.03.3.14y','Upcoming version must be 7.03.3.14y');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
@@ -93,6 +109,7 @@ assert(runtime.includes('InventoryHubCanonicalParser.applyReviewEdits'),'Review 
 assert(runtime.includes('__canonicalAuthorityV11'),'Final canonical parser authority boundary is missing');
 assert(runtime.includes("this.sb.rpc('confirm_and_save_invoice_v703314v'"),'Confirm & Save does not use canonical PostgreSQL RPC');
 assert(runtime.includes('database migration must be applied before this invoice can be saved'),'Confirm & Save must surface a specific missing-RPC/database-migration error');
+assert(runtime.includes('InventoryHubCanonicalParser.calculateAmount(qty.value,price.value)'),'Review Qty/Unit Price changes are not wired to canonical Amount auto-calculation');
 assert(!runtime.includes("this.sb.rpc('import_invoice_atomic'"),'Legacy import_invoice_atomic remains in production Confirm & Save path');
 assert(canonicalSaveSql.includes('create or replace function public.confirm_and_save_invoice_v703314v'),'Canonical Confirm & Save RPC missing');
 for(const table of ['public.documents','public.purchases','public.master_items','public.purchase_items','public.serial_numbers'])assert(canonicalSaveSql.includes(table),'Atomic save RPC/schema missing '+table);
@@ -106,6 +123,8 @@ const canonicalApi=canonicalCtx.InventoryHubCanonicalParser;
 const identity=canonicalApi.canonicalIdentity({brand:'Remaco',model:'MAS-1818',sku:'MAS-1818',verified_aliases:['MAS1818']});
 assert(identity.key==='REMACO::MAS1818','Canonical brand+model identity normalization failed');
 assert(identity.verifiedAliases.includes('MAS1818'),'Verified alias retention failed');
+assert(canonicalApi.calculateAmount(4,9588)===38352,'Canonical Qty × Unit Price amount calculation failed');
+assert(canonicalApi.calculateAmount('',9588)===null,'Canonical amount calculator must reject blank quantity');
 const canonicalResult=canonicalApi.normalizeResult({doc:{invoice_number:'ANON-1'},items:[{brand:'Remaco',model:'MAS-1818',sku:'MAS-1818',item_name:'Projector mount controller',description:'Original invoice wording',quantity:2,unit_price:350,amount:700,verified_aliases:['MAS1818']}],rawText:'anonymized invoice evidence',parseEvidence:{evidenceRanking:{review:[]}}});
 assert(canonicalResult.apiVersion==='1.1'&&canonicalResult.canonical===true&&canonicalResult.status==='accepted','Canonical result contract failed');
 assert(canonicalResult.items[0].invoice_evidence.original_description==='Original invoice wording','Canonical normalization lost original invoice evidence');
@@ -146,20 +165,20 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14w'"),'14w direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14x'"),'14x direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
-assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14w.js'),'14w bootstrap direct module references missing');
+assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14x.js'),'14x bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
 assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("ASSET_REV='v703314w-level3-save-20260925-1'"),'v14w Level 3 save asset revision marker missing');
-assert(runtime.includes("'Fixed Confirm & Save after completed Level 3 review.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
-assert(index.includes('Fixed Confirm &amp; Save after completed Level 3 review.')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14w-r1'),'Index app.js cache-bust revision missing');
-assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14w bootstrap still references an older runtime/baseline');
+assert(app.includes("ASSET_REV='v703314x-reference-dedupe-autocalc-20260925-1'"),'v14x reference/dedupe/autocalc asset revision marker missing');
+assert(runtime.includes("'Improved Reference No. parsing from labelled invoice fields.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
+assert(index.includes('Improved Reference No. parsing from labelled invoice fields.')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
+assert(index.includes('app.js?v=7.03.3.14x-r1'),'Index app.js cache-bust revision missing');
+assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
@@ -180,6 +199,12 @@ console.log('protected-company-grouping: Inventory + Documents controls/event/re
 assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.14s.js')&&fs.existsSync('runtime-v7.03.3.14r.js')&&fs.existsSync('baseline-v6.55-d452.js'),'Rollback references must remain available');
 
 const mctx={console,Number,String,Array,Object,Set,Map,RegExp,Math};mctx.globalThis=mctx;mctx.window=mctx;vm.createContext(mctx);vm.runInContext(evidenceEngine,mctx,{filename:'modules/parser-evidence-engine.js'});vm.runInContext(parserModule,mctx,{filename:'modules/parser-table.js'});
+const consolidatedEvidenceRows=mctx.InventoryHubParserEvidenceEngine.consolidateRows([
+  {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
+  {sku:'PT-MZI7K',item_name:'Replacement of AV Projector and control Panel',description:'Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352,layoutEvidenceVerified:true,economicEvidenceVerified:true},
+  {sku:'RC-208/UK',item_name:'I/O Control Button Keypad',description:'I/O Control Button Keypad',quantity:6,unit_price:800,amount:4800}
+]);
+assert(consolidatedEvidenceRows.rows.length===2&&consolidatedEvidenceRows.rows.some(x=>x.sku==='PT-MZI7K')&&consolidatedEvidenceRows.rows.some(x=>x.sku==='RC-208/UK'),'Evidence engine failed to collapse fragment duplicate without losing distinct keypad row');
 const layout=[{yTolerance:3,rows:[
  {y:100,text:'PRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT',items:[{text:'PRODUCT',x:50,width:80},{text:'DESCRIPTION',x:190,width:120},{text:'QUANTITY',x:480,width:40},{text:'PRICE',x:590,width:40},{text:'AMOUNT',x:700,width:40}]},
  {y:130,text:'AVS-320A Abtus AVS320 HDMI Control panel 1 350.00 350.00',items:[{text:'AVS-320A',x:55,width:75},{text:'Abtus AVS320 HDMI Control panel',x:190,width:230},{text:'1 350.00 350.00',x:450,width:320}]},
@@ -309,4 +334,4 @@ const frozen=JSON.parse(read('tests/known-good-releases.json'));
 assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.14w regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.14x regression gates PASS.');
