@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.14w resolved Level 3 save patch
+/* AV Inventory Hub v7.03.3.14x reference, duplicate-row and review arithmetic patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14w';
+  const VERSION='7.03.3.14x';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -423,6 +423,20 @@
     }
     return '';
   }
+  function referenceNumberFromLabel(raw=''){
+    const text=String(raw||'').replace(/\r/g,'\n');
+    const re=/\b(?:Reference(?:\s*(?:No\.?|Number|#))?|Ref\.?\s*(?:No\.?|Number|#)?)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})/ig;
+    const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
+    for(const m of text.matchAll(re)){
+      const value=clean(m[1]||'').replace(/[,:;]+$/,'');
+      if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDateLike(value))return value;
+    }
+    return '';
+  }
+  function parseDateLike(value=''){
+    const s=clean(value);
+    return /^(?:\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}|\d{4}[/.\-]\d{1,2}[/.\-]\d{1,2})$/.test(s);
+  }
   function fixDocumentHeader(doc={},raw=''){
     const d={...doc};
     d.supplier_name=supplierFromEvidence(raw,d.supplier_name||'');
@@ -436,6 +450,11 @@
     if(d.invoice_number!==clean(doc.invoice_number||''))d.v7033InvoiceNumberCorrectedFrom=clean(doc.invoice_number||'');
     const delivery=clean(d.delivery_order_number||'');
     if(/^(?:D\s*\/?\s*O(?:\s*(?:NO\.?|NUMBER))?|DELIVERY\s+ORDER(?:\s*(?:NO\.?|NUMBER))?)$/i.test(delivery))d.delivery_order_number='';
+    const labelledReference=referenceNumberFromLabel(raw),previousReference=clean(d.reference_number||d.reference||'');
+    if(labelledReference){
+      d.reference_number=labelledReference;
+      if(previousReference&&previousReference!==labelledReference)d.v7033ReferenceCorrectedFrom=previousReference;
+    }else d.reference_number=previousReference;
     return d;
   }
   function lineEvidenceSignature(r={}){
@@ -445,12 +464,35 @@
     const serial=compact(r.serials||r.serial_numbers||'');
     return [sku||name,q,Number.isFinite(p)?p.toFixed(4):'',Number.isFinite(a)?a.toFixed(4):'',serial].join('|');
   }
+  function v703314xDuplicateDescription(row={}){
+    return normalizedItemIdentity(row.item_name||row.description||'').replace(/\b(?:the|a|an|in|with|for|of)\b/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function v703314xEconomicOk(row={}){
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    return q>0&&Number.isFinite(p)&&Number.isFinite(a)&&Math.abs(q*p-a)<=Math.max(.06,Math.abs(a)*.005);
+  }
+  function v703314xDuplicatePair(a={},b={}){
+    const qa=Number(a.quantity),qb=Number(b.quantity),pa=Number(a.unit_price),pb=Number(b.unit_price);
+    if(!(qa>0&&qb>0&&Number.isFinite(pa)&&Number.isFinite(pb)&&Math.abs(qa-qb)<1e-9&&Math.abs(pa-pb)<=.01))return false;
+    const sa=compact(a.sku||''),sb=compact(b.sku||'');
+    if(sa&&sb)return sa===sb;
+    const da=v703314xDuplicateDescription(a),db=v703314xDuplicateDescription(b);if(!da||!db)return false;
+    const short=da.length<=db.length?da:db,long=da.length<=db.length?db:da;
+    return short.length>=12&&(short===long||long.includes(short));
+  }
+  function v703314xRowStrength(row={}){
+    let score=0;if(clean(row.sku))score+=30;if(v703314xEconomicOk(row))score+=40;
+    score+=Math.min(20,v703314xDuplicateDescription(row).length/5);
+    if(row.humanReviewRequired||row.needsReview||row.quantityReviewRequired||row.priceReviewRequired||row.amountReviewRequired)score-=10;
+    if(row.layoutEvidenceVerified)score+=8;if(row.economicEvidenceVerified)score+=8;return score;
+  }
   function dedupeParsedLineItems(items=[]){
-    const out=[],seen=new Set();
-    for(const item of items||[]){
-      const k=lineEvidenceSignature(item);
-      if(!k.replace(/[|0.]/g,'')){out.push(item);continue;}
-      if(seen.has(k))continue;seen.add(k);out.push(item);
+    const out=[];
+    for(const raw of items||[]){
+      const item={...raw},matches=[];for(let i=0;i<out.length;i++)if(v703314xDuplicatePair(out[i],item))matches.push(i);
+      if(!matches.length){out.push(item);continue;}
+      const candidates=[item,...matches.map(i=>out[i])].sort((a,b)=>v703314xRowStrength(b)-v703314xRowStrength(a));
+      out[matches[0]]={...candidates[0]};for(let j=matches.length-1;j>=1;j--)out.splice(matches[j],1);
     }
     return out;
   }
@@ -476,7 +518,7 @@
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
   const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
-  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
+  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|keypad|button\s+keypad|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
   function v703314kHasStrongEquipmentIdentity(row={}){
     const text=v703312jRowText(row),sku=clean(row.sku||''),primary=clean(row.item_name||'');
@@ -505,7 +547,7 @@
   }
   function v703312jCategory(text=''){
     const t=norm(text);
-    if(/controller|control panel|processor|switcher/.test(t))return 'AV Control';
+    if(/controller|control panel|keypad|button keypad|processor|switcher/.test(t))return 'AV Control';
     if(/projector|visualizer|document camera|display|monitor/.test(t))return 'Projection / Video';
     if(/microphone|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
     return '';
@@ -1205,11 +1247,11 @@
   }
 
   const RELEASE_NOTES=[
-    'Fixed Confirm & Save after completed Level 3 review.',
-    'Human approval now remains valid until reviewed fields change.',
-    'Improved save errors for database setup problems.'
+    'Improved Reference No. parsing from labelled invoice fields.',
+    'Removed duplicate or fragmented parsed item rows more safely.',
+    'Added automatic Amount calculation when Qty or Unit Price changes.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14x';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14y';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
@@ -1248,5 +1290,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
