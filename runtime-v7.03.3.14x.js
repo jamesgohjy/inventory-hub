@@ -608,8 +608,19 @@ async function extractPdf(file){
     layouts.push(layout);const text=layout.rows.map(r=>r.text).join('\n');pages.push(text);chars+=text.replace(/\s/g,'').length;
   }
   const v70338PrimaryGate=globalThis.V7033Patch?.filterInvoicePages(pages,layouts);if(!v70338PrimaryGate)throw new Error('Invoice-only parser gate is unavailable.');if(chars>=80&&!v70338PrimaryGate.texts.length)throw new Error('No Invoice or Tax Invoice page was positively identified. Non-invoice pages were ignored.');let text=(v70338PrimaryGate.texts.length?v70338PrimaryGate.texts:pages).join('\n');state.pdfLayout=v70338PrimaryGate.layouts.length?v70338PrimaryGate.layouts:layouts;state.invoicePageDecisions=v70338PrimaryGate.decisions;state.importDocumentReviewRequired=!!v70338PrimaryGate.reviewRequired;state.importDocumentReviewReason=v70338PrimaryGate.reviewRequired?'One or more invoice pages need document-type verification.':'';
-  if(chars<80){
-    if(!window.Tesseract)throw new Error('This PDF appears scanned and OCR could not be loaded.');
+  const nativePdfText=text,nativePdfLayout=state.pdfLayout||[];
+  let nativeV2TableCount=0;
+  try{
+    const ev=window.InventoryHubParserV2Evidence?.buildDocumentEvidence?.({sources:[{source:'native-pdf',kind:'native',text:nativePdfText,layout:nativePdfLayout}]});
+    nativeV2TableCount=ev?Number(window.InventoryHubParserV2TableDetector?.detectTables?.(ev)?.length||0):0;
+  }catch(v2TableErr){console.warn('V2 native table quality check unavailable.',v2TableErr);}
+  const nativeLayoutScore=nativePdfLayout.reduce((n,l)=>n+(typeof layoutInvoiceQuality==='function'?layoutInvoiceQuality(l):0),0);
+  const needsStructuralOcr=chars<80||(nativeV2TableCount===0&&nativeLayoutScore<20);
+  if(needsStructuralOcr){
+    if(!window.Tesseract){
+      if(chars<80)throw new Error('This PDF appears scanned and OCR could not be loaded.');
+      console.warn('Native PDF structure is weak but OCR is unavailable; preserving native evidence without guessing.');
+    }else{
     const modes=[
       {key:'auto',label:'AUTO',psm:Tesseract.PSM?.AUTO??'3',texts:[],layouts:[]},
       {key:'column',label:'SINGLE_COLUMN',psm:Tesseract.PSM?.SINGLE_COLUMN??'4',texts:[],layouts:[]},
@@ -639,10 +650,16 @@ async function extractPdf(file){
       const score=ocrTextQuality(candidateText)+candidateLayouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0);
       return {source:m.key,label:m.label,text:candidateText,layout:candidateLayouts,score,invoicePageDecisions:gated.decisions,documentReviewRequired:!!gated.reviewRequired};
     }).filter(x=>x.text);
-    if(!candidates.length)throw new Error('No Invoice or Tax Invoice page was positively identified. Quotations, delivery documents, forms and photos were ignored.');
-    candidates.sort((a,b)=>b.score-a.score);
-    state.ocrCandidates=candidates;
-    text=candidates[0].text;state.pdfLayout=candidates[0].layout;
+    if(!candidates.length){
+      if(chars<80)throw new Error('No Invoice or Tax Invoice page was positively identified. Quotations, delivery documents, forms and photos were ignored.');
+      console.warn('Structural OCR produced no usable invoice candidate; native evidence retained.');
+    }else{
+      const nativeCandidate={source:'native-pdf',label:'NATIVE PDF',text:nativePdfText,layout:nativePdfLayout,score:ocrTextQuality(nativePdfText)+nativeLayoutScore,invoicePageDecisions:v70338PrimaryGate.decisions,documentReviewRequired:!!v70338PrimaryGate.reviewRequired};
+      const all=[nativeCandidate,...candidates],seen=new Set();
+      state.ocrCandidates=all.filter(x=>{const k=String(x.source||'')+'|'+String(x.text||'').replace(/\s+/g,' ').slice(0,1200);if(seen.has(k))return false;seen.add(k);return true;}).sort((a,b)=>(Number(b.score)||0)-(Number(a.score)||0));
+      const chosen=state.ocrCandidates[0]||nativeCandidate;text=chosen.text;state.pdfLayout=chosen.layout||nativePdfLayout;
+    }
+    }
   }
   setProgress(84,'Comparing OCR results…');await new Promise(r=>setTimeout(r,80));
   setProgress(94,'Preparing review…');return text;
