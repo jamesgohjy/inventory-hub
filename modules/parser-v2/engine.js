@@ -65,9 +65,27 @@
     for(const src of evidence.sources||[])for(const pg of src.layout||[]){
       if(typeof T.pageDocumentRole==='function'&&T.pageDocumentRole(pg)!=='invoice')continue;
       for(const row of pg.rows||[]){
-        if(!/\bSUB\s*TOTAL\b|\bSUBTOTAL\b/i.test(clean(row.text||'')))continue;
-        const nums=[...clean(row.text||'').matchAll(/\d[\d,]*\.\d{2}/g)].map(m=>Number(m[0].replace(/,/g,''))).filter(Number.isFinite);
-        if(nums.length)values.push({value:nums[nums.length-1],source:src.id,page:pg.page,evidence:row.text});
+        const text=clean(row.text||'');
+        if(!/\bSUB\s*TOTAL\b|\bSUBTOTAL\b/i.test(text))continue;
+        // A totals band may OCR as one line: "Subtotal 16,500.00 GST ... Invoice Total 17,985.00".
+        // Bind the value specifically to SUBTOTAL instead of taking the last money token on the row.
+        const direct=text.match(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b\s*(?:SGD|S\$|\$)?\s*([\d,]+\.\d{2})/i);
+        if(direct){
+          const value=Number(direct[1].replace(/,/g,''));
+          if(Number.isFinite(value))values.push({value,source:src.id,page:pg.page,evidence:row.text});
+          continue;
+        }
+        // Geometry fallback: choose the first money-looking item to the right of the subtotal label.
+        const items=(row.items||[]).slice().sort((a,b)=>(Number(a.x)||0)-(Number(b.x)||0));
+        const labelIndex=items.findIndex(it=>/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i.test(clean(it.text||'')));
+        if(labelIndex>=0){
+          for(let i=labelIndex+1;i<items.length;i++){
+            const m=clean(items[i].text||'').match(/(?:SGD|S\$|\$)?\s*([\d,]+\.\d{2})/i);
+            if(!m)continue;
+            const value=Number(m[1].replace(/,/g,''));
+            if(Number.isFinite(value)){values.push({value,source:src.id,page:pg.page,evidence:row.text});break;}
+          }
+        }
       }
     }
     const unique=[...new Set(values.map(x=>Number(x.value).toFixed(2)))];
@@ -213,7 +231,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.4-support-subtotal-model-guard',
+      version:'2.5-precise-subtotal-support-guard',
       mode:'evidence-first-independent-table',
       headers,
       tables,
