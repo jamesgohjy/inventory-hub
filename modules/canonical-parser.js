@@ -1,14 +1,20 @@
-// Inventory Hub canonical parser API — v7.03.3.14w
+// Inventory Hub canonical parser API — v7.03.3.14x
 (function(global){
   'use strict';
   const API_VERSION='1.1';
-  const ENGINE_VERSION='7.03.3.14w';
+  const ENGINE_VERSION='7.03.3.14x';
   const clean=v=>String(v??'').replace(/\s+/g,' ').trim();
   const compact=v=>clean(v).normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const normalizeBrand=v=>clean(v).normalize('NFKC').toUpperCase().replace(/\b(?:PTE|LTD|LIMITED|INC|CORP|CORPORATION)\b/g,' ').replace(/[^A-Z0-9]+/g,' ').trim();
   const normalizeModel=v=>compact(v);
   const clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
   const serials=v=>[...new Set(String(v||'').split(',').map(clean).filter(Boolean))];
+
+  function calculateAmount(quantity,unitPrice){
+    const q=Number(quantity),p=Number(unitPrice);
+    if(!(q>0)||!Number.isFinite(p)||p<0)return null;
+    return Math.round(q*p*100)/100;
+  }
 
   function canonicalIdentity(row={}){
     const brand=clean(row.brand||row.manufacturer||'');
@@ -172,6 +178,7 @@
     version:ENGINE_VERSION,
     apiVersion:API_VERSION,
     canonicalIdentity,
+    calculateAmount,
     normalizeResult,
     fromPipeline,
     applyReviewEdits,

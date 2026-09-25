@@ -7,7 +7,7 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
-      - "runtime-v7.03.3.14w.js"
+      - "runtime-v7.03.3.14x.js"
       - "modules/**"
       - "scripts/**"
       - "index.html"
@@ -22,7 +22,7 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
-      - "runtime-v7.03.3.14w.js"
+      - "runtime-v7.03.3.14x.js"
       - "modules/**"
       - "scripts/**"
       - "index.html"
@@ -48,7 +48,7 @@ jobs:
       - name: Syntax-check direct runtime and backup verifier
         run: |
           node --check app.js
-          node --check runtime-v7.03.3.14w.js
+          node --check runtime-v7.03.3.14x.js
           node --check modules/parser-evidence-engine.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js

@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.14w resolved Level 3 save patch
+/* AV Inventory Hub v7.03.3.14x reference, duplicate-row and review arithmetic patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14w';
+  const VERSION='7.03.3.14x';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -423,6 +423,20 @@
     }
     return '';
   }
+  function referenceNumberFromLabel(raw=''){
+    const text=String(raw||'').replace(/\r/g,'\n');
+    const re=/\b(?:Reference(?:\s*(?:No\.?|Number|#))?|Ref\.?\s*(?:No\.?|Number|#)?)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})/ig;
+    const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
+    for(const m of text.matchAll(re)){
+      const value=clean(m[1]||'').replace(/[,:;]+$/,'');
+      if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDateLike(value))return value;
+    }
+    return '';
+  }
+  function parseDateLike(value=''){
+    const s=clean(value);
+    return /^(?:\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}|\d{4}[/.\-]\d{1,2}[/.\-]\d{1,2})$/.test(s);
+  }
   function fixDocumentHeader(doc={},raw=''){
     const d={...doc};
     d.supplier_name=supplierFromEvidence(raw,d.supplier_name||'');
@@ -436,6 +450,11 @@
     if(d.invoice_number!==clean(doc.invoice_number||''))d.v7033InvoiceNumberCorrectedFrom=clean(doc.invoice_number||'');
     const delivery=clean(d.delivery_order_number||'');
     if(/^(?:D\s*\/?\s*O(?:\s*(?:NO\.?|NUMBER))?|DELIVERY\s+ORDER(?:\s*(?:NO\.?|NUMBER))?)$/i.test(delivery))d.delivery_order_number='';
+    const labelledReference=referenceNumberFromLabel(raw),previousReference=clean(d.reference_number||d.reference||'');
+    if(labelledReference){
+      d.reference_number=labelledReference;
+      if(previousReference&&previousReference!==labelledReference)d.v7033ReferenceCorrectedFrom=previousReference;
+    }else d.reference_number=previousReference;
     return d;
   }
   function lineEvidenceSignature(r={}){
@@ -451,6 +470,38 @@
       const k=lineEvidenceSignature(item);
       if(!k.replace(/[|0.]/g,'')){out.push(item);continue;}
       if(seen.has(k))continue;seen.add(k);out.push(item);
+    }
+    return out;
+  }
+  function v703314xDuplicateDescription(row={}){
+    return normalizedItemIdentity(row.item_name||row.description||'').replace(/\b(?:the|a|an|in|with|for|of)\b/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function v703314xEconomicOk(row={}){
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    return q>0&&Number.isFinite(p)&&Number.isFinite(a)&&Math.abs(q*p-a)<=Math.max(.06,Math.abs(a)*.005);
+  }
+  function v703314xDuplicatePair(a={},b={}){
+    const qa=Number(a.quantity),qb=Number(b.quantity),pa=Number(a.unit_price),pb=Number(b.unit_price);
+    if(!(qa>0&&qb>0&&Number.isFinite(pa)&&Number.isFinite(pb)&&Math.abs(qa-qb)<1e-9&&Math.abs(pa-pb)<=.01))return false;
+    const sa=compact(a.sku||''),sb=compact(b.sku||'');
+    if(sa&&sb)return sa===sb;
+    const da=v703314xDuplicateDescription(a),db=v703314xDuplicateDescription(b);if(!da||!db)return false;
+    const short=da.length<=db.length?da:db,long=da.length<=db.length?db:da;
+    return short.length>=12&&(short===long||long.includes(short));
+  }
+  function v703314xRowStrength(row={}){
+    let score=0;if(clean(row.sku))score+=30;if(v703314xEconomicOk(row))score+=40;
+    score+=Math.min(20,v703314xDuplicateDescription(row).length/5);
+    if(row.humanReviewRequired||row.needsReview||row.quantityReviewRequired||row.priceReviewRequired||row.amountReviewRequired)score-=10;
+    if(row.layoutEvidenceVerified)score+=8;if(row.economicEvidenceVerified)score+=8;return score;
+  }
+  function consolidateFragmentedParsedLineItems(items=[]){
+    const out=[];
+    for(const raw of items||[]){
+      const item={...raw},matches=[];for(let i=0;i<out.length;i++)if(v703314xDuplicatePair(out[i],item))matches.push(i);
+      if(!matches.length){out.push(item);continue;}
+      const candidates=[item,...matches.map(i=>out[i])].sort((a,b)=>v703314xRowStrength(b)-v703314xRowStrength(a));
+      out[matches[0]]={...candidates[0]};for(let j=matches.length-1;j>=1;j--)out.splice(matches[j],1);
     }
     return out;
   }
@@ -476,7 +527,7 @@
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
   const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
-  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
+  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|keypad|button\s+keypad|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
   function v703314kHasStrongEquipmentIdentity(row={}){
     const text=v703312jRowText(row),sku=clean(row.sku||''),primary=clean(row.item_name||'');
@@ -505,7 +556,7 @@
   }
   function v703312jCategory(text=''){
     const t=norm(text);
-    if(/controller|control panel|processor|switcher/.test(t))return 'AV Control';
+    if(/controller|control panel|keypad|button keypad|processor|switcher/.test(t))return 'AV Control';
     if(/projector|visualizer|document camera|display|monitor/.test(t))return 'Projection / Video';
     if(/microphone|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
     return '';
@@ -642,7 +693,7 @@
       if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
       else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
     }}
-    return dedupeParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw)));
+    return dedupeParsedLineItems(consolidateFragmentedParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw))));
   }
 
   const v703314nRound2=n=>Number.isFinite(Number(n))?Math.round(Number(n)*100)/100:null;
@@ -943,6 +994,22 @@
     add({id:'jny-rds-2021',source_files:['INV-RDSMar21.pdf'],expected:{sku:'PT-TW381R',clean_name:true,invoice_allowed:true},run:()=>{const raw='Tax Invoice\nInvoice Number IV20210040\nDelivery Order Number D20210026\nAV Projection system replacement @ RDS Room3 & Room 5 including below hardware and services:\nPanasonic PT-TW381R Short Throw 3300 Lumens Projector\nProfessional Services including dismantle of existing projectors,\ninstallation of new projectors, HDMI cabling works,\nTesting & Commissioning';return applyParsedFixes({doc:{},items:[{sku:'PT-TW381R',item_name:'Panasonic PT-TW381R Short Throw 3300 Lumens Projector',description:'Panasonic PT-TW381R Short Throw 3300 Lumens Projector. Professional Services including dismantle of existing projectors, installation of new projectors, Testing & Commissioning',quantity:1,unit_price:4820,amount:4820}]},raw);},pass:x=>x.items.length===1&&x.items[0]?.sku==='PT-TW381R'&&!/dismant|dismount|installation|commissioning/i.test(x.items[0]?.item_name||'')&&x.v703314lDiagnostics?.document?.classification?.allowed===true,evidence:x=>({final_items:x.items.map(i=>({sku:i.sku,item_name:i.item_name})),classification:x.v703314lDiagnostics?.document?.classification,diagnostics:x.v703314lDiagnostics}),pass_reason:'Bundled projector remains tracked, work verbs stay out of Standard Item Name, and D/O reference does not reject the Tax Invoice.',fail_reason:x=>'JNY bundled-equipment behavior differs from expectation.'});
     add({id:'seminar-room-2021',source_files:['INV-SeminarRoom123.pdf','INV-SeminarRoom123(1).pdf'],expected:{must_include:['PT-VW540','SPS-1100'],no_bracket:true,no_unrelated_model_hijack:true},run:()=>{const raw='TAX INVOICE\nPT-VW540\nSPS-1100\nPanasonic Projector WXGA 5500 Lumens\nABTUS Active Speaker 20W\nSupply and install bracket for projector\nSW12-120E Power Adaptor For ABTUS AVS-318 HDMI Panel 12V 1A';return applyParsedFixes({doc:{},items:[{sku:'PT-VW540',item_name:'Panasonic Projector WXGA 5500 Lumens',description:'Panasonic Projector WXGA 5500 Lumens',quantity:2,unit_price:707,amount:1414},{sku:'SPS-1100',item_name:'ABTUS Active Speaker 20W',description:'ABTUS Active Speaker 20W',quantity:2,unit_price:90,amount:180},{sku:'',item_name:'Supply and install bracket for projector',description:'Supply and install bracket for projector',quantity:2,unit_price:0,amount:0}]},raw);},pass:x=>x.items.some(i=>i.sku==='PT-VW540')&&x.items.some(i=>i.sku==='SPS-1100')&&x.items.every(i=>!/bracket/i.test(i.item_name||''))&&!x.items.some(i=>/l2v/i.test(i.sku||'')),evidence:x=>({final_items:x.items.map(i=>({sku:i.sku,item_name:i.item_name,identity:i.v7033Identity})),filter:x.v703312jInventoryFilter,diagnostics:x.v703314lDiagnostics}),pass_reason:'Projector and speaker identities survive; bracket is excluded and unrelated OCR tokens do not hijack SKU/model.',fail_reason:x=>'Seminar identities/accessory filtering differ from expectation.'});
     add({id:'hawko-av-cart-2021',source_files:['INV-AVcart.pdf'],expected:{structured_asset_recovered:true},run:()=>{const raw='TAX INVOICE\nZS6HKOAV-EB97E METAL TROLLEY W C+S 2 550.00 1100.00\nAdjustable height 770-970mm\nLockable Security Cabinet with key\nSingle pull out shelf for PC keyboard\n4 caster wheels 2 locking\nSolid steel construction will not topple over\nSUBTOTAL 1100.00';return {raw,recovered:v703314aRecoverStructuredPricedAssetRows(raw,'historical-hawko')};},pass:x=>x.recovered.length===1&&compact(x.recovered[0]?.sku)==='ZS6HKOAVEB97E',evidence:x=>({recovered:x.recovered.map(i=>({sku:i.sku,item_name:i.item_name,quantity:i.quantity,amount:i.amount,structured:!!i.v703314aStructuredPricedAsset}))}),pass_reason:'Strongly evidenced priced trolley is recovered as a structured physical asset despite generic cart/trolley exclusions.',fail_reason:x=>'Expected one structured HAWKO trolley; recovered '+x.recovered.length+' with '+(x.recovered[0]?.sku||'no SKU')});
+    add({id:'av-media-2023-reference-dedupe',source_files:['15-12-2023-AV-Media-Pte-Ltd.pdf'],expected:{reference_number:'VSO17-026212/V17-041821',tracked_skus:['PT-MZI7K','ET-EMT750','VS-442H2A','RC-208/UK','TP-583TXR','TP-583RXR'],tracked_count:6},run:()=>{
+      const raw='TAX INVOICE\nInvoice No: VIN17-038478\nRef. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056\nPT-MZI7K Replacement of AV Projector and control Panel 4 9,588.00 38,352.00\nET-EMT750 Projector Zoom Lens 4 3,080.00 12,320.00\nVS-442H2A Matrix Switcher 3 3,500.00 10,500.00\nRC-208/UK I/O Control Button Keypad 6 800.00 4,800.00\nTP-583TXR HDMI-HDBaseT Transmitter 8 590.00 4,720.00\nTP-583RXR Kramer 4K HDR HDMI Receiver 8 590.00 4,720.00\nSALES-INSTALLATION Cabling, Installation, Services 1 13,000.00 13,000.00\nSALES-INSTALLATION Cabling, Installation, Services 1 1,500.00 1,500.00';
+      const items=[
+        {sku:'',item_name:'PT-MZI7K Replacement of AV Projector and control Panel',description:'PT-MZI7K Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352},
+        {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
+        {sku:'PT-MZI7K',item_name:'Replacement of AV Projector and control Panel',description:'Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352},
+        {sku:'ET-EMT750',item_name:'Projector Zoom Lens',description:'Projector Zoom Lens',quantity:4,unit_price:3080,amount:12320},
+        {sku:'VS-442H2A',item_name:'Matrix Switcher',description:'Matrix Switcher',quantity:3,unit_price:3500,amount:10500},
+        {sku:'RC-208/UK',item_name:'I/O Control Button Keypad',description:'I/O Control Button Keypad',quantity:6,unit_price:800,amount:4800},
+        {sku:'TP-583TXR',item_name:'HDMI-HDBaseT Transmitter',description:'HDMI-HDBaseT Transmitter',quantity:8,unit_price:590,amount:4720},
+        {sku:'TP-583RXR',item_name:'Kramer 4K HDR HDMI Receiver',description:'Kramer 4K HDR HDMI Receiver',quantity:8,unit_price:590,amount:4720},
+        {sku:'SALES-INSTALLATION',item_name:'Cabling, Installation, Services',description:'Cabling, Installation, Services',quantity:1,unit_price:13000,amount:13000},
+        {sku:'SALES-INSTALLATION',item_name:'Cabling, Installation, Services',description:'Cabling, Installation, Services',quantity:1,unit_price:1500,amount:1500}
+      ];
+      return applyParsedFixes({doc:{supplier_name:'AV Media Pte Ltd',invoice_number:'VIN17-038478',reference_number:'wrong-neighbour'},items},raw);
+    },pass:x=>x.doc.reference_number==='VSO17-026212/V17-041821'&&x.items.length===6&&['PT-MZI7K','ET-EMT750','VS-442H2A','RC-208/UK','TP-583TXR','TP-583RXR'].every(s=>x.items.some(i=>compact(i.sku)===compact(s)))&&!x.items.some(i=>norm(i.item_name)==='and control panel'),evidence:x=>({reference_number:x.doc.reference_number,final_items:x.items.map(i=>({sku:i.sku,item_name:i.item_name,quantity:i.quantity,unit_price:i.unit_price,amount:i.amount}))}),pass_reason:'Labelled Reference No. wins over neighbouring header values; fragmented PT-MZI7K duplicates collapse while the keypad remains tracked.',fail_reason:x=>'Reference/duplicate/keypad regression differs: ref='+x.doc.reference_number+' rows='+x.items.map(i=>(i.sku||'No SKU')+' '+i.item_name).join(' | ')});
     const represented=cases.reduce((n,c)=>n+c.source_files.length,0);return {ok:cases.every(x=>x.pass),version:VERSION,generated_at:new Date().toISOString(),logical_cases:cases.length,represented_files:represented,cases,failures:cases.filter(x=>!x.pass).map(x=>x.id)};
   }
 
@@ -1205,11 +1272,11 @@
   }
 
   const RELEASE_NOTES=[
-    'Fixed Confirm & Save after completed Level 3 review.',
-    'Human approval now remains valid until reviewed fields change.',
-    'Improved save errors for database setup problems.'
+    'Improved Reference No. parsing from labelled invoice fields.',
+    'Removed duplicate or fragmented parsed item rows more safely.',
+    'Added automatic Amount calculation when Qty or Unit Price changes.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14x';
+  const RELEASE_UPCOMING_VERSION='7.03.3.14y';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
@@ -1248,5 +1315,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,dedupeParsedLineItems,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
