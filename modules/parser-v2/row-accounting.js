@@ -32,7 +32,7 @@
     if(!text)return 'unknown';
     if(/\b(?:serial|s n|shipment no|remarks?|notes?)\b/.test(text)&&!finite(row.amount))return 'metadata';
     if(/\b(?:warranty|extended warranty|support coverage|maintenance coverage)\b/.test(text))return 'warranty';
-    if(/\b(?:installation|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery fee|service charge|repair service)\b/.test(text))return 'service';
+    if(/\b(?:installation|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery(?: fee| service| services)?|return trip|redelivery|courier|freight|service charge|repair service)\b/.test(text))return 'service';
     if(/\b(?:cable|wire|bracket|mount|lamp kit|cart|trolley|generic stand|power adaptor|adapter)\b/.test(text)&&!/\bmicrophone stand\b/.test(text))return 'accessory';
     const eq=/\b(?:projector|microphone|speaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player|audio tester|signal tester|tester|analyzer|analyser|meter)\b/.test(text);
     if(eq&&economics(row).ok)return 'equipment';
