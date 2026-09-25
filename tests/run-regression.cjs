@@ -116,6 +116,10 @@ assert(runtime.includes('InventoryHubCanonicalParser.calculateAmount(qty.value,p
 assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Health Resolve does not persist through its database RPC');
 assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
 assert(runtime.includes("x.type==='Possible duplicate SKU')?'<button class=\"secondary small-btn\" data-health-resolve="),'Possible duplicate SKU alerts must expose Resolve');
+assert(runtime.includes('function renderNeedsAttention14x(openDialog=false)'),'14x must have one authoritative Needs Attention renderer');
+assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
+assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
+assert(app.includes("ASSET_REV='v703314x-health-unified-no-correction-memory-20260925-1'"),'Asset revision must force deployment of the unified health/Correction Memory retirement runtime');
 assert(!runtime.includes('out=applySupplierProfile14o(out,raw);out=applyCorrectionMemory14o(out,raw)'),'Retired Correction Memory must not mutate parsed output');
 assert(!runtime.includes('if(corrections.length)await persistCorrectionMemory14o(corrections)'),'Retired Correction Memory must not persist new corrections');
 assert(!runtime.includes('<strong>Correction Memory</strong>'),'Retired Correction Memory UI must not render');
