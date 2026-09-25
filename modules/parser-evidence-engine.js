@@ -1,4 +1,4 @@
-// Inventory Hub parser evidence engine — v7.03.3.14u
+// Inventory Hub parser evidence engine — v7.03.3.14x
 (function(global){
   'use strict';
 
@@ -109,8 +109,59 @@
   }
 
 
+  function duplicateDescription(row={}){
+    return norm(row.item_name||row.description||'')
+      .replace(/\b(?:the|a|an|in|with|for|of)\b/g,' ')
+      .replace(/\s+/g,' ').trim();
+  }
+
+  function sameEconomicBasis(a={},b={}){
+    const qa=Number(a.quantity),qb=Number(b.quantity),pa=Number(a.unit_price),pb=Number(b.unit_price);
+    return qa>0&&qb>0&&finite(pa)&&finite(pb)&&Math.abs(qa-qb)<1e-9&&Math.abs(pa-pb)<=.01;
+  }
+
+  function duplicateRowPair(a={},b={}){
+    if(!sameEconomicBasis(a,b))return false;
+    const sa=norm(a.sku||'').replace(/\s+/g,''),sb=norm(b.sku||'').replace(/\s+/g,'');
+    if(sa&&sb)return sa===sb;
+    const da=duplicateDescription(a),db=duplicateDescription(b);
+    if(!da||!db)return false;
+    const short=da.length<=db.length?da:db,long=da.length<=db.length?db:da;
+    return short.length>=12&&(short===long||long.includes(short));
+  }
+
+  function duplicateRowStrength(row={}){
+    let score=0;
+    if(clean(row.sku))score+=30;
+    if(verifyEconomics(row).ok)score+=40;
+    score+=Math.min(20,duplicateDescription(row).length/5);
+    if(reviewFlag(row))score-=10;
+    if(row.layoutEvidenceVerified)score+=8;
+    if(row.economicEvidenceVerified)score+=8;
+    return score;
+  }
+
+  function consolidateRows(rows=[]){
+    const kept=[],removed=[];
+    for(const raw of rows||[]){
+      const row={...raw};
+      const matches=[];
+      for(let i=0;i<kept.length;i++)if(duplicateRowPair(kept[i],row))matches.push(i);
+      if(!matches.length){kept.push(row);continue;}
+      const indexes=[...matches],candidates=[row,...indexes.map(i=>kept[i])];
+      candidates.sort((a,b)=>duplicateRowStrength(b)-duplicateRowStrength(a));
+      const winner={...candidates[0]};
+      const first=indexes[0];
+      kept[first]=winner;
+      for(let j=indexes.length-1;j>=1;j--)kept.splice(indexes[j],1);
+      removed.push(...candidates.slice(1));
+    }
+    return {rows:kept,removed};
+  }
+
   function reconcileCandidate(candidate={},options={}){
-    const rows=Array.isArray(candidate.items)?candidate.items:[];
+    const consolidation=consolidateRows(Array.isArray(candidate.items)?candidate.items:[]);
+    const rows=consolidation.rows;
     const assessments=rows.map(assessRow);
     const accepted=[],review=[];
     for(let i=0;i<rows.length;i++){
@@ -123,7 +174,7 @@
     const amountSum=round2(accepted.reduce((n,r)=>n+(finite(r.amount)?Number(r.amount):0),0));
     const subtotalDelta=subtotal===null?null:round2(Math.abs(amountSum-subtotal));
     const subtotalOk=subtotal===null||subtotalDelta<=Math.max(.06,Math.abs(subtotal)*.002);
-    return {accepted,review,subtotal,amountSum,subtotalDelta,subtotalOk,assessments};
+    return {accepted,review,subtotal,amountSum,subtotalDelta,subtotalOk,assessments,duplicateRowsRemoved:consolidation.removed.length};
   }
 
   function runPipeline(candidates=[],options={}){
@@ -152,7 +203,7 @@
   }
 
   global.InventoryHubParserEvidenceEngine=Object.freeze({
-    version:'7.03.3.14v',
+    version:'7.03.3.14x',
     verifyEconomics,
     assessRow,
     assessCandidate,
@@ -160,6 +211,8 @@
     reconcileCandidate,
     runPipeline,
     validateRows,
+    consolidateRows,
+    duplicateRowPair,
     identityKey
   });
 })(typeof window!=='undefined'?window:globalThis);
