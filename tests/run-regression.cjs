@@ -115,6 +115,11 @@ assert(runtime.includes('database migration must be applied before this invoice 
 assert(runtime.includes('InventoryHubCanonicalParser.calculateAmount(qty.value,price.value)'),'Review Qty/Unit Price changes are not wired to canonical Amount auto-calculation');
 assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Health Resolve does not persist through its database RPC');
 assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
+assert(runtime.includes("x.type==='Possible duplicate SKU')?'<button class=\"secondary small-btn\" data-health-resolve="),'Possible duplicate SKU alerts must expose Resolve');
+assert(!runtime.includes('out=applySupplierProfile14o(out,raw);out=applyCorrectionMemory14o(out,raw)'),'Retired Correction Memory must not mutate parsed output');
+assert(!runtime.includes('if(corrections.length)await persistCorrectionMemory14o(corrections)'),'Retired Correction Memory must not persist new corrections');
+assert(!runtime.includes('<strong>Correction Memory</strong>'),'Retired Correction Memory UI must not render');
+assert(runtime.includes('<strong>Supplier Layout Profiles</strong>'),'Supplier Layout Profiles must remain after Correction Memory retirement');
 assert(runtime.includes("source.sku||'No SKU'"),'No-SKU merge acknowledgement must render a safe label');
 assert(core.includes("'embedded-sku-alias'"),'Evidence-backed no-SKU duplicate merge path is missing');
 assert(masterMergeSql.includes('v_source_text_key')&&masterMergeSql.includes('No-SKU source does not contain the surviving SKU/model'),'Server-side no-SKU merge evidence guard is missing');
