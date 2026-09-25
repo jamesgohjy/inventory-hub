@@ -69,7 +69,9 @@
     const out=[],usedHeaderY=[];
     for(let i=0;i<rows.length;i++){
       const row=rows[i],txt=token(row.text||'');
-      if(!/DESCRIPTION/.test(txt)||!/(?:QTY|QUANTITY|UNIT|PRICE|AMOUNT)/.test(txt))continue;
+      // Header labels are frequently emitted as separate PDF text objects at the same Y coordinate.
+      // DESCRIPTION is only the seed; the merged horizontal band must prove Qty/Price/Amount.
+      if(!/DESCRIPTION/.test(txt))continue;
       const items=mergedHeaderItems(rows,i,page.yTolerance),columns=findHeaderColumns(items);if(!columns)continue;
       const headerY=Number(row.y);
       if(usedHeaderY.some(y=>Math.abs(y-headerY)<=Math.max(6,Number(page.yTolerance)||3)*3))continue;
