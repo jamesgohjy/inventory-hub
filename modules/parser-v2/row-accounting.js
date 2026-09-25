@@ -34,9 +34,15 @@
     if(/\b(?:warranty|extended warranty|support coverage|maintenance coverage)\b/.test(text))return 'warranty';
     const code=norm(row.sku||row.model||'');
     if(/^\d{4,}\s+(?:installation|labour|labor|service)\b/.test(code))return 'service';
-    if(/\b(?:installation|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery(?: fee| service| services)?|return trip|redelivery|courier|freight|service charge|repair service)\b/.test(text))return 'service';
-    if(/\b(?:cable|wire|bracket|mount|lamp kit|cart|trolley|generic stand|power adaptor|adapter)\b/.test(text)&&!/\bmicrophone stand\b/.test(text))return 'accessory';
-    const eq=/\b(?:projector|microphone|speaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player|audio tester|signal tester|tester|analyzer|analyser|meter)\b/.test(text);
+
+    const eq=/\b(?:projector|microphones?|speakers?|loudspeakers?|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|players?|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter)\b/.test(text);
+    const strongService=/\b(?:installation\s+work|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery(?: fee| service| services)?|return trip|redelivery|courier|freight|service charge|repair service|cabling|labell?ing|labeling|tidying|training|tuning|calibration)\b/.test(text);
+    if(strongService)return 'service';
+
+    const supplyInstall=/\bsupply\s+(?:&|and)\s+install\b/.test(text);
+    if(supplyInstall&&!eq)return 'service';
+
+    if(/\b(?:cable|wire|bracket|mount|lamp kit|cart|trolley|generic stand|power adaptor|adapter)\b/.test(text)&&! /\bmicrophone stand\b/.test(text))return 'accessory';
     if(eq&&economics(row).ok)return 'equipment';
     if(clean(row.sku||row.model)&&economics(row).ok)return 'equipment';
     return 'unknown';
@@ -94,5 +100,5 @@
     const missingEquipment=equipment.filter(x=>!finalKeys.has(x.key));
     return {expectedEquipmentCount:equipment.length,finalEquipmentCount:(finalItems||[]).length,missingEquipment,complete:missingEquipment.length===0&&equipment.length===(finalItems||[]).length};
   }
-  global.InventoryHubParserV2Rows=Object.freeze({version:'2.2-sales-equipment-evidence',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
+  global.InventoryHubParserV2Rows=Object.freeze({version:'2.3-complex-service-equipment',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
 })(typeof window!=='undefined'?window:globalThis);
