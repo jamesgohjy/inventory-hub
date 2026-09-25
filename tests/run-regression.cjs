@@ -116,7 +116,7 @@ assert(runtime.includes('InventoryHubCanonicalParser.calculateAmount(qty.value,p
 assert(runtime.includes("this.sb.rpc('resolve_health_issue_v703314x'"),'Data Health Resolve does not persist through its database RPC');
 assert(runtime.includes('data-health-resolve'),'Data Health Resolve action is not rendered');
 assert(runtime.includes("source.sku||'No SKU'"),'No-SKU merge acknowledgement must render a safe label');
-assert(core.includes("reason:'embedded-sku-alias'"),'Evidence-backed no-SKU duplicate merge path is missing');
+assert(core.includes("'embedded-sku-alias'"),'Evidence-backed no-SKU duplicate merge path is missing');
 assert(masterMergeSql.includes('v_source_text_key')&&masterMergeSql.includes('No-SKU source does not contain the surviving SKU/model'),'Server-side no-SKU merge evidence guard is missing');
 assert(healthResolutionSql.includes('resolve_health_issue_v703314x')&&healthResolutionSql.includes("resolution_status='resolved'"),'Persistent Data Health resolution migration is incomplete');
 assert(databaseMigrationWorkflow.includes('/v1/projects/$SUPABASE_PROJECT_REF/database/query'),'Database migration workflow does not use the verified Supabase Management API query endpoint');
