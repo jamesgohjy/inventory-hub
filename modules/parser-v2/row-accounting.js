@@ -40,6 +40,8 @@
     if(strongService)return 'service';
 
     const supplyInstall=/\bsupply\s+(?:&|and)\s+install\b/.test(text);
+    const genericInstallScope=/\b(?:specified\s+in\s+section|includes?\s+racking|mounting\s+kits?|required\s+setup|scope\s+of\s+work)\b/.test(text);
+    if(supplyInstall&&genericInstallScope)return 'service';
     if(supplyInstall&&!eq)return 'service';
 
     if(/\b(?:cable|wire|bracket|mount|lamp kit|cart|trolley|generic stand|power adaptor|adapter)\b/.test(text)&&! /\bmicrophone stand\b/.test(text))return 'accessory';
@@ -100,5 +102,5 @@
     const missingEquipment=equipment.filter(x=>!finalKeys.has(x.key));
     return {expectedEquipmentCount:equipment.length,finalEquipmentCount:(finalItems||[]).length,missingEquipment,complete:missingEquipment.length===0&&equipment.length===(finalItems||[]).length};
   }
-  global.InventoryHubParserV2Rows=Object.freeze({version:'2.3-complex-service-equipment',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
+  global.InventoryHubParserV2Rows=Object.freeze({version:'2.4-generic-install-scope',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
 })(typeof window!=='undefined'?window:globalThis);
