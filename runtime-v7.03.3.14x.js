@@ -7,9 +7,10 @@ window.__AV_DIRECT_RUNTIME_READY__=(async function InventoryHubDirectRuntime14s(
 // AV Inventory Hub V7.00 — Structured parser core + regression-safe migration
 const APP_VERSION='7.03.3.14x';
 const RELEASE_CURRENT_NOTES=[
-  'Improved invoice parsing, Reference No. handling and automatic Amount calculation.',
-  'Fixed Confirm & Save database deployment and Master Item merge review.',
-  'Added a persistent Resolve option for valid Data Health exceptions.'
+  'Restored equipment line-item recovery for previously supported multi-page invoice layouts.',
+  'Improved equipment verification and manual-line Confirm & Save handling.',
+  'Rebuilt PDF review controls with page-aware zoom, fit-width and drag panning.',
+  'Added AI disclaimers across login, dashboard, import and OCR progress screens.'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
