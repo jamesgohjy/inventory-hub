@@ -2356,10 +2356,30 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
   const finalItems=['service','noninventory'].includes(classification.type)?[]:inventory;
   const finalized={...parsed,doc,items:finalItems,excludedServiceCount:Math.max(0,withSerials.length-finalItems.length),invoiceClassification:classification,serviceOnlyInvoice:classification.type==='service',nonInventoryOnlyInvoice:classification.type==='noninventory',dateReviewRequired:!doc.invoice_date,rawText:evidence,parseEvidence:{...(parsed.parseEvidence||{}),itemSource:chosen?.origin||'none',candidateCounts:candidates.map(c=>({origin:c.origin,count:c.items.length,legacyScore:c.score,evidenceScore:c.evidence14u?.score??null,verifiedRows:c.verifiedRows,badRows:c.badRows,subtotalDelta:c.evidence14u?.subtotalDelta??null})),evidenceRanking:{confidence:evidenceRanking.confidence,margin:evidenceRanking.margin,status:pipeline.status,review:pipeline.review,winnerOrigin:pipeline.winnerOrigin},completeness:{expectedEquipmentCount:completeness.expectedEquipmentCount,candidateExpectedCount:completeness.candidateExpectedCount,sourceEvidenceCount:completeness.sourceEvidenceCount,finalEquipmentCount:finalItems.length,recoveredCount:completeness.recoveredCount,recheckRequired:completeness.expectedEquipmentCount!==finalItems.length},file_sha256:state.importFileHash||'',file_kind:state.importFileKind||''}};const normalized=v682AttachNormalization(finalized,evidence);return window.InventoryHubCanonicalParser.fromPipeline(normalized,{raw:evidence});
 }
+function snapshotImportReview14x(){
+  const value=id=>String($(id)?.value??'').trim(),money=id=>{const v=value(id);return v===''?null:num(v);};
+  return {doc:{supplier_name:value('pSupplier'),invoice_number:value('pInvoice'),invoice_date:value('pDate'),delivery_order_number:value('pDo'),reference_number:value('pRef'),currency:value('pCurrency')||'SGD',subtotal:money('pSubtotal'),gst:money('pGst'),total_amount:money('pTotal')},items:currentReviewPhysicalItems14x()};
+}
+function preserveReviewedImportValues14x(reparsed,previous,review){
+  const next={...(reparsed||{}),doc:{...(reparsed?.doc||{})}};
+  const prior=previous?.doc||{},manual=review?.doc||{};
+  for(const k of ['supplier_name','invoice_number','invoice_date','delivery_order_number','reference_number','currency']){
+    if(!String(next.doc[k]??'').trim())next.doc[k]=String(manual[k]??'').trim()||String(prior[k]??'').trim();
+  }
+  for(const k of ['subtotal','gst','total_amount']){
+    if(!Number.isFinite(Number(next.doc[k]))){if(Number.isFinite(Number(manual[k])))next.doc[k]=Number(manual[k]);else if(Number.isFinite(Number(prior[k])))next.doc[k]=Number(prior[k]);}
+  }
+  if(!(next.items||[]).length){
+    const manualItems=review?.items||[],priorItems=previous?.items||[];
+    if(manualItems.length)next.items=manualItems;
+    else if(priorItems.length)next.items=priorItems;
+  }
+  return next;
+}
 async function reprocessConfirmedEquipmentInvoice(){
   if(!state.parsed)return;state.importClassificationChoice='equipment';
   setProgress(70,'Re-checking line items…');$('importProgress')?.classList.remove('hidden');
-  const previous=state.parsed;
+  const previous=state.parsed,reviewSnapshot=snapshotImportReview14x();
   try{
     let raw=previous.raw||previous.rawText||'';
     let reparsed=v661FinalizeParsedInvoice(parseBestInvoice(raw),raw);
@@ -2404,9 +2424,9 @@ async function reprocessConfirmedEquipmentInvoice(){
         }
       }catch(headerErr){console.warn('Targeted invoice-header OCR could not complete.',headerErr);}
     }
-    // Never destroy already-reviewed valid rows because a reparse produced fewer/no rows.
-    if(!(reparsed.items||[]).length&&(previous.items||[]).length)reparsed={...reparsed,items:previous.items};
-    reparsed.raw=reparsed.rawText||reparsed.raw||raw;state.parsed=reparsed;
+    // Equipment confirmation is a recovery scan, never a destructive reset of reviewed/previous values.
+    reparsed=preserveReviewedImportValues14x(reparsed,previous,reviewSnapshot);
+    reparsed.raw=reparsed.rawText||reparsed.raw||raw||previous.raw||previous.rawText||'';state.parsed=reparsed;
     applyParsedReviewToForm();if(typeof v703RenderVerificationNotice==='function')v703RenderVerificationNotice();await refreshDuplicateWarning();renderImportEligibility();
     if((state.parsed.items||[]).length)toast('Equipment invoice confirmed. Line items and quantities were refreshed automatically.');
     else toast('Equipment confirmed, but no physical line item could be verified. No item was invented.');
