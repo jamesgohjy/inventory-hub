@@ -44,6 +44,23 @@
     }
     return out;
   }
+  function legalCompanyFromLine(line='',domainStems=new Set()){
+    const v=clean(line);if(!v)return '';
+    const suffixMatch=v.match(/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i);
+    if(!suffixMatch)return '';
+    const end=suffixMatch.index+suffixMatch[0].length;
+    let prefix=v.slice(0,end).trim();
+    let bestStart=-1;
+    for(const stem of domainStems||[]){
+      const escaped=String(stem).replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\  function supplierCandidates(evidence){');
+      const re=new RegExp('\\b'+escaped+'\\b','ig');
+      let m;while((m=re.exec(prefix)))bestStart=m.index;
+    }
+    if(bestStart>=0)prefix=prefix.slice(bestStart).trim();
+    const toks=prefix.split(/\s+/);
+    if(toks.length>2&&toks[0].toUpperCase()===toks[1].toUpperCase())prefix=toks.slice(1).join(' ');
+    return prefix.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9.)]+$/g,'').trim();
+  }
   function supplierCandidates(evidence){
     const out=[];
     for(const src of evidence.sources||[]){
@@ -57,9 +74,10 @@
         const labelled=v.match(/^\s*(?:SUPPLIER|VENDOR|FROM|ISSUED\s+BY)\s*[:#.-]?\s*(.+)$/i);
         if(labelled&&clean(labelled[1]))pushCandidate(out,'supplier_name',labelled[1],{source:src.id,kind,score:Math.max(100,145-index),evidence:v});
         if(companySuffix.test(v)){
-          const first=(v.match(/^\s*([A-Z0-9][A-Z0-9&._-]*)/i)||[])[1]||'';
+          const legal=legalCompanyFromLine(v,domainStems);if(!legal)return;
+          const first=(legal.match(/^\s*([A-Z0-9][A-Z0-9&._-]*)/i)||[])[1]||'';
           const domainBoost=domainStems.has(first.toUpperCase())?40:0;
-          pushCandidate(out,'supplier_name',v,{source:src.id,kind,score:Math.max(80,108-Math.min(index,28))+domainBoost,evidence:v});
+          pushCandidate(out,'supplier_name',legal,{source:src.id,kind,score:Math.max(80,108-Math.min(index,28))+domainBoost,evidence:v});
         }
       };
       lines.forEach((line,i)=>addLine(line,src.kind,i));
@@ -78,7 +96,8 @@
         // Accept this only with local invoice-title context; a generic account/customer NO remains rejected.
         const bare=line.match(/\bNO\.?\s*[:#.-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i);
         const nearby=lines.slice(Math.max(0,i-3),Math.min(lines.length,i+2)).join(' ');
-        if(bare&&/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE|INVOICE)\b/i.test(nearby)){
+        const forbiddenBare=/\b(?:REG(?:ISTRATION)?|GST|UEN|ACCOUNT|CUSTOMER|D\/?O|P\/?O|ORDER|PHONE|TEL|FAX)\s*(?:NO\.?|NUMBER)?\b/i.test(line);
+        if(bare&&!forbiddenBare&&/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE|INVOICE)\b/i.test(nearby)){
           pushCandidate(out,'invoice_number',bare[1],{source:src.id,kind:src.kind,score:112,evidence:line});
         }
       }
@@ -129,5 +148,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.0-shadow',parseDateStrict,identifierFromTail,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.1-shadow',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
