@@ -198,13 +198,15 @@
     const globalReviewReasons=review.filter(x=>!Number.isInteger(x?.index)).map(x=>x.reason||'review-required');
     const items=status==='accepted'
       ? reconciliation.accepted
-      : (reconciliation.rows||[]).map((row,index)=>({
-          ...row,
-          humanReviewRequired:true,
-          needsReview:true,
-          parserReviewRequired:true,
-          parserReviewReasons:[...(rowReviewReasons.get(index)||[]),...globalReviewReasons]
-        }));
+      : (reconciliation.rows||[]).map((row,index)=>({row,index,assessment:assessRow(row)}))
+          .filter(x=>!x.assessment.reasons.includes('non-inventory-classification')&&!x.assessment.reasons.includes('metadata-like-row'))
+          .map(({row,index})=>({
+            ...row,
+            humanReviewRequired:true,
+            needsReview:true,
+            parserReviewRequired:true,
+            parserReviewReasons:[...(rowReviewReasons.get(index)||[]),...globalReviewReasons]
+          }));
     return {ok:status==='accepted',status,items,review,ranking,reconciliation,confidence,winnerOrigin:winner.origin||'unknown'};
   }
 
