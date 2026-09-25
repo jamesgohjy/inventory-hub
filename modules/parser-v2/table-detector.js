@@ -225,14 +225,23 @@
     }
     return out;
   }
+  const INVOICE_PAGE_RE=/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)\b/i;
+  const NONINVOICE_PAGE_RE=/\b(?:DELIVERY\s+ORDER|PURCHASE\s+ORDER|QUOTATION|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?)\b/i;
+  function pageDocumentRole(page={}){
+    const t=clean((page.rows||[]).slice(0,100).map(r=>r.text||'').join(' '));
+    if(INVOICE_PAGE_RE.test(t))return 'invoice';
+    if(NONINVOICE_PAGE_RE.test(t))return 'noninvoice';
+    return 'unknown';
+  }
   function detectTables(evidence={}){
     const all=[];
     for(const source of evidence.sources||[])for(const page of source.layout||[]){
+      if(pageDocumentRole(page)==='noninvoice')continue;
       const headerTables=detectPageTables(source,page);
       if(headerTables.length)all.push(...headerTables);
       else all.push(...detectHeaderlessTables(source,page));
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.4-body-evidence-direction',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.5-mixed-document-page-filter',pageDocumentRole,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
