@@ -2412,8 +2412,17 @@ async function reprocessConfirmedEquipmentInvoice(){
   }catch(err){console.warn('Equipment re-check failed.',err);state.parsed=previous;renderImportEligibility();toast('Equipment selected. Existing parsed values were kept because the independent re-check could not complete.');}
   finally{setTimeout(()=>$('importProgress')?.classList.add('hidden'),180);}
 }
+function currentReviewPhysicalItems14x(){
+  const rows=[...document.querySelectorAll('#parsedItems .parsed-row[data-pi]')];
+  if(!rows.length)return [];
+  return rows.map(row=>{
+    const out={manual_review_entry:true,humanReviewRequired:true};
+    row.querySelectorAll('[data-f]').forEach(el=>{const key=el.dataset.f;out[key]=el.type==='number'?num(el.value):String(el.value||'').trim();});
+    return out;
+  }).filter(x=>String(x.item_name||x.description||'').trim()&&Number(x.quantity)>0&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)&&!v676IsSupportCoverageLine(x));
+}
 function renderImportEligibility(){
-  const parsed=state.parsed,detected=parsed?.invoiceClassification?.type||'uncertain',hasItems=(parsed?.items||[]).some(x=>String(x?.item_name||x?.description||'').trim()&&Number(x?.quantity)>0&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)),missingInvoice=!String(parsed?.doc?.invoice_number||'').trim(),incompleteEquipment=detected==='equipment'&&(!hasItems||missingInvoice),isVault=typeof v70339IsVaultDate==='function'&&v70339IsVaultDate(parsed?.doc?.invoice_date||''),effective=incompleteEquipment?(state.importClassificationChoice||'uncertain'):effectiveInvoiceType(),saveBtn=$('saveImportBtn');
+  const parsed=state.parsed,detected=parsed?.invoiceClassification?.type||'uncertain',hasItems=(parsed?.items||[]).some(x=>String(x?.item_name||x?.description||'').trim()&&Number(x?.quantity)>0&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)&&!v676IsSupportCoverageLine(x))||currentReviewPhysicalItems14x().length>0,missingInvoice=!String(parsed?.doc?.invoice_number||'').trim(),incompleteEquipment=detected==='equipment'&&(!hasItems||missingInvoice),isVault=typeof v70339IsVaultDate==='function'&&v70339IsVaultDate(parsed?.doc?.invoice_date||''),effective=incompleteEquipment?(state.importClassificationChoice||'uncertain'):effectiveInvoiceType(),saveBtn=$('saveImportBtn');
   let note=$('invoiceEligibilityWarning');if(!note&&$('parsedItems')){note=document.createElement('div');note.id='invoiceEligibilityWarning';$('parsedItems').parentNode.insertBefore(note,$('parsedItems'));}
   const setStyle=(kind)=>{if(!note)return;const map={danger:['#f5c2c0','#fff1f0','#912018'],warn:['#f6d88a','#fff8df','#854d0e'],info:['#b9d9ff','#eff7ff','#175cd3']},v=map[kind];note.style.cssText=`margin:0 0 14px;padding:12px 14px;border:1px solid ${v[0]};border-radius:10px;background:${v[1]};color:${v[2]};font-size:12px;line-height:1.45`};
   if(note){
