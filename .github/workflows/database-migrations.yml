@@ -8,6 +8,13 @@ on:
       - "supabase-v7-03-3-14v-canonical-save.sql"
       - "supabase-v7-03-3-14x-data-health-resolution.sql"
       - ".github/workflows/database-migrations.yml"
+  pull_request:
+    types: [closed]
+    paths:
+      - "supabase-v7-03-3-14d-master-item-merge.sql"
+      - "supabase-v7-03-3-14v-canonical-save.sql"
+      - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - ".github/workflows/database-migrations.yml"
   workflow_dispatch:
 
 permissions:
@@ -20,6 +27,7 @@ concurrency:
 
 jobs:
   migrate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
