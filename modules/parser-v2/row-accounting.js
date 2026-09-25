@@ -18,9 +18,11 @@
     const p=finite(row.unit_price)?round2(row.unit_price):'';
     const a=finite(row.amount)?round2(row.amount):'';
     const geo=row.sourceRowId||row.rowId||row?.provenance?.rowId||row?.invoice_evidence?.source?.rowId||'';
-    if(geo)return 'row:'+String(geo);
+    // Semantic/economic identity comes first so the same physical row from native-layout and OCR-layout can reconcile.
+    // Occurrence ordinals in buildLedger still preserve repeated identical rows within one invoice.
     if(sku)return 'sku:'+sku+'|q:'+q+'|p:'+p+'|a:'+a;
     if(desc)return 'desc:'+desc.slice(0,90)+'|q:'+q+'|p:'+p+'|a:'+a;
+    if(geo)return 'row:'+String(geo);
     return '';
   }
   function classifyDisposition(row={}){
