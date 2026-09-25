@@ -200,6 +200,35 @@
     }
     return rows;
   }
+  function buildSkeletonRows(table){
+    const body=mergeBodyBands(table?.bodyRows||[],table?.yTolerance||3)
+      .sort((a,b)=>((Number(a.y)-table.headerY)*table.direction)-((Number(b.y)-table.headerY)*table.direction));
+    const out=[];
+    for(let i=0;i<body.length;i++){
+      const row=body[i],desc0=clean(cellText(row,table.columns.boundaries.description)),q=strictQuantity(cellText(row,table.columns.boundaries.quantity));
+      if(!desc0||q===null||META_RE.test(desc0))continue;
+      if(economicsFromGroup([row],table.columns).verified)continue;
+      let next=i+1;
+      while(next<body.length){
+        const nd=clean(cellText(body[next],table.columns.boundaries.description)),nq=strictQuantity(cellText(body[next],table.columns.boundaries.quantity));
+        if(nd&&nq!==null)break;
+        next++;
+      }
+      const following=body.slice(i+1,next);
+      let desc=desc0,continuation=continuationEquipmentDescription(following,table.columns);
+      if(continuation&&(GENERIC_DESC_RE.test(desc)||!EQUIPMENT_HINT_RE.test(desc)))desc=continuation;
+      const model=printedModelFromRows([row,...following],table.columns);
+      desc=cleanItemDescription(desc);
+      out.push({
+        sourceRowId:table.id+':s'+(out.length+1),
+        sku:model||'',model:model||'',item_name:desc,description:desc,
+        quantity:q,unit_price:null,amount:null,
+        layoutEvidenceVerified:true,economicEvidenceVerified:false,parserV2PhysicalRow:true,supportRecoveryPending:true,
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:[row,...following].flatMap(r=>r.sourceRowIndexes||[]),rawText:clean([row,...following].map(r=>r.text).join(' ')),printedModel:model||''}
+      });
+    }
+    return out;
+  }
   function buildRows(evidence={},tables=[]){
     const tableRows=(tables||[]).map(table=>({table,rows:buildTableRows(table)}));
     return {
@@ -209,5 +238,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.6-row-local-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.7-support-recovery-skeletons',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
