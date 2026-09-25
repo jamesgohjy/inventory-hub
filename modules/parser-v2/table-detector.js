@@ -125,7 +125,9 @@
     }
     const leftEdge=Math.max(0,Math.min(...before.map(it=>Number(it.x)||0))-10);
     const qx=best.q.x,px=best.p.x,ax=best.a.x;
-    const bDescQty=(Math.max(splitX,leftEdge)+qx)/2;
+    const descriptionCandidates=before.filter(it=>!hasCode||center(it)>=splitX);
+    const descriptionRight=Math.max(...(descriptionCandidates.length?descriptionCandidates:before).map(it=>(Number(it.x)||0)+(Number(it.width)||0)));
+    const bDescQty=(descriptionRight+qx)/2;
     const bQtyPrice=(qx+px)/2,bPriceAmount=(px+ax)/2;
     const amountWidth=Math.max(60,(Number(best.a.it.width)||0)*2,(ax-px)*.9);
     return {
