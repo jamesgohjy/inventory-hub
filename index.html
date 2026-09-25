@@ -235,8 +235,8 @@
       </nav>
       <section id="patchNotesPanel" class="sidebar-patch-panel hidden" aria-label="Patch notes" aria-live="polite">
         <div class="sidebar-patch-head"><span>Release Notes</span><strong>Patch Notes</strong></div>
-        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14x</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Restored equipment line-item recovery for previously supported multi-page invoice layouts.</li><li>Improved equipment verification and manual-line Confirm &amp; Save handling.</li><li>Rebuilt PDF review controls with page-aware zoom, fit-width and drag panning.</li><li>Added AI disclaimers across login, dashboard, import and OCR progress screens.</li></ul></article>
-        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14y</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Improve parsing across more invoice layouts.</li><li>Improve automatic item matching and consolidation.</li><li>Simplify review messages and workflow.</li></ul></article>
+        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14y</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Improved line-item price recovery using independent table geometry with fail-closed verification.</li><li>Legacy parser results are replaced only when the independent row set is complete and conflict-free.</li><li>Service, accessory and warranty rows remain excluded from Inventory promotion.</li></ul></article>
+        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14z</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Improve parsing across more invoice layouts.</li><li>Improve automatic item matching and consolidation.</li><li>Simplify review messages and workflow.</li></ul></article>
       </section>
       <div class="sidebar-footer"><div class="footer-rule"></div><p>Track today.<br>Empower tomorrow.</p><button id="signOutBtn" class="ghost hidden"><i data-lucide="log-out"></i> Sign out</button></div>
     </aside>
@@ -282,7 +282,7 @@
   <div id="toast" class="toast hidden"></div>
   <script src="config.js"></script>
   <script src="parser-v7-core.js?v=7.03.3.14r-r1"></script>
-  <script src="app.js?v=7.03.3.14x-r9"></script>
+  <script src="app.js?v=7.03.3.14y-r1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="feedback.js?v=7.03.3.14t-r1"></script>
 </body>

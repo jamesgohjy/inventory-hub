@@ -5,7 +5,7 @@ const read=p=>fs.readFileSync(p,'utf8');
 
 const core=read('v7033-core.js');
 const app=read('app.js');
-const runtime=read('runtime-v7.03.3.14x.js');
+const runtime=read('runtime-v7.03.3.14y.js');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
@@ -97,19 +97,19 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14x','Core version must be 7.03.3.14x');
+assert(cv==='7.03.3.14y','Core version must be 7.03.3.14y');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.14y','Upcoming version must be 7.03.3.14y');
+assert(uv==='7.03.3.14z','Upcoming version must be 7.03.3.14z');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
-assert(runtime.includes('Parser V2 runs in shadow mode only.')&&runtime.includes('v2Shadow:v2'),'Production finalizer must attach Parser V2 shadow diagnostics without replacing legacy values');
-assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 shadow gate failed'),'App bootstrap must load and gate Parser V2 before runtime');
+assert(runtime.includes('independent-geometry-complete')&&runtime.includes('v2Promotion:promotion')&&!runtime.includes('Parser V2 runs in shadow mode only.'),'Production finalizer must use fail-closed Parser V2 evidence promotion instead of shadow-only diagnostics');
+assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 evidence-promotion gate failed'),'App bootstrap must load and gate Parser V2 before runtime');
 assert(app.includes('modules/parser-v2/table-detector.js')&&app.includes('modules/parser-v2/row-builder.js'),'App bootstrap must load independent Parser V2 table/row modules');
-assert(parserV2Engine.includes("mode:'shadow-independent-table'")&&parserV2Engine.includes('T.detectTables(evidence)')&&parserV2Engine.includes('B.buildRows(evidence,tables)'),'Parser V2 engine must derive completeness from its own geometry pipeline');
+assert(parserV2Engine.includes("mode:'evidence-first-independent-table'")&&parserV2Engine.includes('T.detectTables(evidence)')&&parserV2Engine.includes('B.buildRows(evidence,tables)')&&parserV2Engine.includes('assessPromotion'),'Parser V2 engine must derive promotion from its own geometry pipeline');
 
 
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
@@ -144,7 +144,7 @@ const intel14oStart=runtime.indexOf('(function v703314oInstallParserIntelligence
 assert(intel14oExecutableCalls===1&&intel14oBlock.includes('function renderQualityDashboard14o()'),'Retired 14o quality renderer must have no executable call sites');
 assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
 assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
-assert(/ASSET_REV='v703314x-[^']+'/.test(app),'14x loader must carry an explicit cache-busting asset revision');
+assert(/ASSET_REV='v703314y-[^']+'/.test(app),'14y loader must carry an explicit cache-busting asset revision');
 assert(!runtime.includes('out=applySupplierProfile14o(out,raw);out=applyCorrectionMemory14o(out,raw)'),'Retired Correction Memory must not mutate parsed output');
 assert(!runtime.includes('if(corrections.length)await persistCorrectionMemory14o(corrections)'),'Retired Correction Memory must not persist new corrections');
 assert(!runtime.includes('<strong>Correction Memory</strong>'),'Retired Correction Memory UI must not render');
@@ -212,20 +212,20 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14x'"),'14x direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14y'"),'14y direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
-assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14x.js'),'14x bootstrap direct module references missing');
+assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
 assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
-assert(runtime.includes("'Restored equipment line-item recovery for previously supported multi-page invoice layouts.'")&&runtime.includes("'Improved equipment verification and manual-line Confirm & Save handling.'"),'Direct runtime Patch Notes are not the current concise user-facing version');
-assert(index.includes('Restored equipment line-item recovery for previously supported multi-page invoice layouts.')&&index.includes('Improved equipment verification and manual-line Confirm &amp; Save handling.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14x-r9'),'Index app.js cache-bust revision missing');
-assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
+assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
+assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
+assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
+assert(index.includes('app.js?v=7.03.3.14y-r1'),'Index app.js cache-bust revision missing');
+assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
@@ -319,10 +319,20 @@ const independentV2=v2ctx.InventoryHubParserV2.analyze({
     {sku:'RX-1',item_name:'Wireless receiver',quantity:2,unit_price:400,amount:800}
   ]}
 });
-assert(independentV2.mode==='shadow-independent-table'&&independentV2.tables.length===1,'Parser V2 must detect the table independently of legacy candidates');
+assert(independentV2.mode==='evidence-first-independent-table'&&independentV2.tables.length===1,'Parser V2 must detect the table independently of legacy candidates');
 assert(independentV2.physicalRows.length===5,'Parser V2 physical reconstruction expected 5 source rows, got '+independentV2.physicalRows.length);
 assert(independentV2.completeness.counts.equipment===4&&independentV2.completeness.counts.service===1,'Parser V2 physical ledger must account for 4 equipment + 1 service rows');
 assert(independentV2.finalComparison.missingEquipment.length===2,'Parser V2 must expose the 2 equipment rows omitted by the legacy partial result');
+assert(independentV2.safeToPromote===true&&independentV2.promotionNeeded===true,'Complete independent table evidence must be promotable when the legacy result is incomplete');
+assert(independentV2.promotionRows.length===4&&!independentV2.promotionRows.some(x=>/INSTALL/i.test(String(x.sku||''))),'Promotion must contain the 4 verified equipment rows and exclude installation');
+
+const conflictLedger=v2ctx.InventoryHubParserV2Rows.buildLedger([
+  {origin:'geometry-a',items:[{sku:'CTRL-1',item_name:'Control panel',quantity:1,unit_price:350,amount:350,layoutEvidenceVerified:true,economicEvidenceVerified:true}]},
+  {origin:'geometry-b',items:[{sku:'CTRL-1',item_name:'Control panel',quantity:1,unit_price:390,amount:390,layoutEvidenceVerified:true,economicEvidenceVerified:true}]}
+]);
+const conflictPromotion=v2ctx.InventoryHubParserV2.assessPromotion(conflictLedger,v2ctx.InventoryHubParserV2Rows.summarize(conflictLedger),{complete:false});
+assert(conflictPromotion.safe===false&&conflictPromotion.blockers.some(x=>x.code==='conflicting-equipment-economics'),'Conflicting geometry economics must block automatic promotion');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='service','Numeric SALES accounting code must not be promoted as equipment');
 
 // Real-world failure-class locks derived from historical invoice geometry/OCR.
 // 1) Corroborate supplier/invoice/date across noisy full-page OCR + targeted header OCR.
@@ -525,4 +535,4 @@ const frozen=JSON.parse(read('tests/known-good-releases.json'));
 assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.14x regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.14y regression gates PASS.');
