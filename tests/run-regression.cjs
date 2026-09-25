@@ -332,7 +332,7 @@ const conflictLedger=v2ctx.InventoryHubParserV2Rows.buildLedger([
 ]);
 const conflictPromotion=v2ctx.InventoryHubParserV2.assessPromotion(conflictLedger,v2ctx.InventoryHubParserV2Rows.summarize(conflictLedger),{complete:false});
 assert(conflictPromotion.safe===false&&conflictPromotion.blockers.some(x=>x.code==='conflicting-equipment-economics'),'Conflicting geometry economics must block automatic promotion');
-assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='service','Numeric SALES accounting code must not be promoted as equipment');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='equipment','SALES accounting code must not override verified physical-equipment evidence');
 
 const multipartHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
   v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
@@ -340,6 +340,60 @@ const multipartHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
   ]})
 );
 assert(multipartHeaders.invoice_number==='INV LTA-00215840','Parser V2 must preserve a proven two-token invoice identifier');
+
+const aerospaceRawHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
+    {source:'aerospace-raw-psm11',kind:'ocr',text:'AV MEDIA PTE LTD\nTAX INVOICE\nInvoice No:\nVIN17-032365\nRef. No.\nDATE\nP/O NO.\nSALESMAN\nTERMS'},
+    {source:'aerospace-raw-psm6',kind:'ocr',text:'AV MEDIA PTE LTD\nRef. No. DATE P/O NO. SALESMAN TERMS\nVSO17-021642/V17-035189/V17- 12/08/22 CQ/AN/2113/24/AN Andy Ng 30 Days'}
+  ]})
+);
+assert(aerospaceRawHeaders.supplier_name==='AV MEDIA PTE LTD','Raw Aerospace supplier header recovery failed');
+assert(aerospaceRawHeaders.invoice_number==='VIN17-032365','Raw Aerospace split-line invoice-number recovery failed');
+assert(aerospaceRawHeaders.invoice_date==='2022-08-12','Raw Aerospace date must not absorb trailing reference-number digits');
+
+const aerospaceRawLayout=[{page:1,width:2915,height:3790,yTolerance:12,rows:[
+  {y:1296,text:'PRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT',items:[
+    {text:'PRODUCT',x:272,width:211},{text:'NO.',x:498,width:72},{text:'DESCRIPTION',x:1115,width:292},
+    {text:'QUANTITY',x:1855,width:218},{text:'UNIT',x:2139,width:99},{text:'PRICE',x:2253,width:128},{text:'AMOUNT',x:2564,width:188}
+  ]},
+  {y:1483,text:'PT-VW540 Panasonic PT-VW540 projector 1 804.00 804.00',items:[
+    {text:'PT-VW540',x:213,width:199},{text:'Panasonic',x:739,width:195},{text:'PT-VW540',x:949,width:222},{text:'projector',x:1185,width:173},
+    {text:'1',x:2023,width:16},{text:'804.00',x:2321,width:131},{text:'804.00',x:2734,width:131}
+  ]},
+  {y:1544,text:'-5000 Ansi lumens',items:[{text:'-5000',x:740,width:122},{text:'Ansi',x:875,width:99},{text:'lumens',x:988,width:145}]},
+  {y:1603,text:'-WXGA resolution',items:[{text:'-WXGA',x:739,width:183},{text:'resolution',x:931,width:209}]},
+  {y:1673,text:'-1280 X 800 resolution',items:[{text:'-1280',x:740,width:122},{text:'X',x:881,width:20},{text:'800',x:931,width:75},{text:'resolution',x:1020,width:209}]},
+  {y:1730,text:'PT-VW540- WT FOR 3YR 3 years warranty 1',items:[
+    {text:'PT-VW540-',x:214,width:216},{text:'WT',x:443,width:64},{text:'FOR',x:518,width:86},{text:'3YR',x:617,width:80},
+    {text:'3',x:726,width:20},{text:'years',x:775,width:101},{text:'warranty',x:888,width:178},{text:'1',x:2025,width:14}
+  ]},
+  {y:1797,text:'S/N: DC2210037',items:[{text:'S/N:',x:741,width:80},{text:'DC2210037',x:841,width:234}]},
+  {y:1847,text:'AVS-320A Abtus AVS320 HDMI Control panel 1 350.00 350.00',items:[
+    {text:'AVS-320A',x:216,width:196},{text:'Abtus',x:738,width:114},{text:'AVS320',x:865,width:166},{text:'HDMI',x:1047,width:124},
+    {text:'Control',x:1187,width:145},{text:'panel',x:1347,width:104},{text:'1',x:2025,width:13},{text:'350.00',x:2323,width:130},{text:'350.00',x:2736,width:130}
+  ]},
+  {y:1962,text:'60100-SALES Abtus Active Speaker in pair 1 90.00 90.00',items:[
+    {text:'60100-SALES',x:215,width:252},{text:'Abtus',x:738,width:115},{text:'Active',x:864,width:127},{text:'Speaker',x:1008,width:152},
+    {text:'in',x:1172,width:40},{text:'pair',x:1224,width:77},{text:'1',x:2025,width:14},{text:'90.00',x:2343,width:111},{text:'90.00',x:2760,width:106}
+  ]},
+  {y:2087,text:'60200-INSTALLATION Installation work including: 1 530.00 530.00',items:[
+    {text:'60200-INSTALLATION',x:216,width:426},{text:'Installation',x:740,width:221},{text:'work',x:973,width:97},{text:'including:',x:1083,width:195},
+    {text:'1',x:2024,width:16},{text:'530.00',x:2323,width:130},{text:'530.00',x:2736,width:130}
+  ]},
+  {y:2975,text:'SUB TOTAL SGD 1,774.00',items:[{text:'SUB',x:2170,width:86},{text:'TOTAL',x:2270,width:158},{text:'SGD',x:2520,width:92},{text:'1,774.00',x:2680,width:162}]}
+]}];
+const aerospaceRawV2=v2ctx.InventoryHubParserV2.analyze({
+  sources:[
+    {source:'aerospace-raw-layout',kind:'ocr',text:'AV MEDIA PTE LTD',layout:aerospaceRawLayout},
+    {source:'aerospace-raw-headers',kind:'ocr',text:'TAX INVOICE\nInvoice No:\nVIN17-032365\nRef. No. DATE P/O NO. SALESMAN TERMS\nVSO17-021642/V17-035189/V17- 12/08/22 CQ/AN/2113/24/AN Andy Ng 30 Days'}
+  ],
+  legacyResult:{doc:{},items:[]}
+});
+assert(aerospaceRawV2.promotionRows.some(x=>x.sku==='PT-VW540'&&x.quantity===1&&x.unit_price===804&&x.amount===804),'Raw Aerospace projector economics failed');
+assert(aerospaceRawV2.promotionRows.some(x=>x.sku==='AVS-320A'&&x.item_name==='Abtus AVS320 HDMI Control panel'&&x.quantity===1&&x.unit_price===350&&x.amount===350),'Raw Aerospace AVS row was contaminated by prior specs/warranty or code spill');
+assert(aerospaceRawV2.promotionRows.some(x=>x.sku==='60100-SALES'&&/Abtus Active Speaker in pair/i.test(x.item_name)&&x.quantity===1&&x.unit_price===90&&x.amount===90),'Raw Aerospace SALES-coded physical speaker must remain equipment');
+assert(!aerospaceRawV2.promotionRows.some(x=>/INSTALLATION/i.test(String(x.sku||''))),'Raw Aerospace installation row must remain excluded from promotion');
+assert(aerospaceRawV2.safeToPromote===true&&aerospaceRawV2.completeness.unexplainedRows===0,'Raw Aerospace evidence must be complete and safely promotable');
 
 const multiTableLayout=[{page:1,width:595,height:842,yTolerance:3,rows:[
   {y:100,text:'Description Quantity Unit Price Amount',items:[

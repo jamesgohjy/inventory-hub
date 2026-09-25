@@ -74,6 +74,12 @@
     if(!value||value.length>80)return '';
     if(/^(?:SERIAL|SHIPMENT|DATE|TERMS|TOTAL|SUBTOTAL|GST)$/i.test(value))return '';
     const pieces=value.split(/\s+/);if(pieces.length>3)return '';
+    // OCR/table boundaries can slightly spill the first description/vendor token into the code cell.
+    // When the first token is already a strong alphanumeric model/SKU, keep that token only.
+    if(pieces.length>1){
+      const first=pieces[0];
+      if(/^[A-Z0-9][A-Z0-9+._\/-]{2,}$/i.test(first)&&/[A-Z]/i.test(first)&&/\d/.test(first))return first;
+    }
     return /[A-Za-z0-9]/.test(value)?value:'';
   }
   function descriptionFromGroup(group,columns){
@@ -115,10 +121,22 @@
       const anchorInfo=anchors[ai],group=body.slice(previousAnchor+1,anchorInfo.index+1),anchor=body[anchorInfo.index],economics=anchorInfo.econ;
       previousAnchor=anchorInfo.index;
 
-      const description=descriptionFromGroup(group,table.columns);
       let sku='';
       // Prefer a printed code from the same segment, nearest the economic anchor.
       for(let gi=group.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(group[gi],table.columns);
+      // If the economic anchor itself already contains the product description,
+      // prefer it. This prevents specification/warranty text belonging to the previous priced row
+      // from being pulled forward into the next product when OCR emits continuation lines after price.
+      const anchorDescription=clean(cellText(anchor,table.columns.boundaries.description));
+      const anchorCodeText=table.columns.hasCode?clean(cellText(anchor,table.columns.boundaries.code)):'';
+      let codeSpill='';
+      if(sku&&anchorCodeText&&anchorCodeText.toUpperCase().startsWith(String(sku).toUpperCase())){
+        codeSpill=clean(anchorCodeText.slice(String(sku).length));
+        if(codeSpill&&(/\d/.test(codeSpill)||codeSpill.length>60))codeSpill='';
+      }
+      const baseDescription=(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))
+        ?anchorDescription:descriptionFromGroup(group,table.columns);
+      const description=clean([codeSpill,baseDescription].filter(Boolean).join(' '));
       const raw=clean(group.map(r=>r.text).join(' '));
       if(!sku&&!description&&!/[0-9]/.test(raw))continue;
 
@@ -147,5 +165,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.2-shadow',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.4-code-spill-description',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);

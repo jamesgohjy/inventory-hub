@@ -34,6 +34,71 @@
       "focused_retest": "PASS",
       "permanent_regression_lock": "tests/run-regression.cjs — multiTableV2 assertions",
       "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-003",
+      "type": "split-header-label-value",
+      "base_document_family": "AV Media / Aerospace raw invoice",
+      "mutation": "OCR places 'Invoice No:' on one line and VIN17-032365 on the next line.",
+      "observed_failure": "Parser V2 left invoice_number blank despite the value being visible in a targeted OCR pass.",
+      "root_cause": "Header resolver required invoice label and identifier to share one OCR line.",
+      "generalized_fix": "Accept only a tightly adjacent identifier-like line after an invoice label, stopping at other known header labels.",
+      "expected": "invoice_number = 'VIN17-032365'",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceRawHeaders",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-004",
+      "type": "date-reference-overlap",
+      "base_document_family": "AV Media / Aerospace raw invoice",
+      "mutation": "Reference ends with 'V17-' immediately before the adjacent printed date 12/08/22.",
+      "observed_failure": "Date matcher combined reference digits with the date and produced 17/12/08 (2008-12-17).",
+      "root_cause": "Date regex had no boundary preventing a match from starting inside an alphanumeric/reference identifier.",
+      "generalized_fix": "Extract bounded date tokens that cannot start inside letters, digits, slash, dot or hyphen sequences.",
+      "expected": "invoice_date = '2022-08-12'",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceRawHeaders date assertion",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-005",
+      "type": "post-anchor-description-contamination",
+      "base_document_family": "AV Media / Aerospace raw invoice",
+      "mutation": "Projector specifications, warranty and serial rows appear after its price row and before the next priced AVS-320A row.",
+      "observed_failure": "Those continuation rows were pulled forward into the next AVS product description.",
+      "root_cause": "Row builder assigned all rows since the previous economic anchor to the next anchor even when the next anchor already contained its own description.",
+      "generalized_fix": "Prefer the economic anchor's own description when present; use prior rows only when the anchor lacks a usable description.",
+      "expected": "AVS-320A -> 'Abtus AVS320 HDMI Control panel'",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceRawV2 AVS assertion",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-006",
+      "type": "code-column-description-spill",
+      "base_document_family": "AV Media / Aerospace raw invoice",
+      "mutation": "OCR/geometry places vendor word 'Abtus' inside the product-code column next to AVS-320A.",
+      "observed_failure": "SKU was corrected to AVS-320A but the item name lost the vendor word.",
+      "root_cause": "Code-column boundary slightly overlapped the description column; trimming the SKU discarded the remainder.",
+      "generalized_fix": "When a strong SKU is the first token in a code cell, preserve a safe nonnumeric remainder as description spill.",
+      "expected": "AVS-320A / Abtus AVS320 HDMI Control panel",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — aerospaceRawV2 AVS assertion",
+      "status": "resolved"
+    },
+    {
+      "id": "ADV-2026-09-25-007",
+      "type": "sales-code-false-service",
+      "base_document_family": "AV Media / Aerospace raw invoice",
+      "mutation": "Physical equipment uses accounting/product code 60100-SALES.",
+      "observed_failure": "Parser V2 classified the priced Active Speaker row as service solely because the code contained SALES.",
+      "root_cause": "Numeric accounting-code rule treated SALES the same as installation/labour/service.",
+      "generalized_fix": "SALES alone is not service evidence; let strong physical-equipment identity plus verified economics determine disposition.",
+      "expected": "60100-SALES Abtus Active Speaker in pair -> equipment",
+      "focused_retest": "PASS",
+      "permanent_regression_lock": "tests/run-regression.cjs — SALES disposition and aerospaceRawV2 speaker assertions",
+      "status": "resolved"
     }
   ],
   "unresolved": []

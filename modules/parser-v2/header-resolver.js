@@ -11,6 +11,10 @@
   const invoiceLabel=/(?:\bINVOICE\s*(?:NO\.?|NUMBER|#)|\bINV\s*(?:NO\.?|#))(?=\s*[:#.-]|\s|$)/i;
   const dateLabel=/\b(?:INVOICE\s+DATE|DATE)\b/i;
 
+  function dateToken(v=''){
+    const m=clean(v).match(/(?:^|[^A-Za-z0-9\/.-])([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*(?:\d{4}|\d{2}))(?![A-Za-z0-9])/);
+    return m?m[1]:'';
+  }
   function parseDateStrict(v=''){
     const m=clean(v).match(/^([0-3]?\d)\s*[/.\-]\s*([01]?\d)\s*[/.\-]\s*(\d{2}|\d{4})$/);
     if(!m)return '';
@@ -98,6 +102,17 @@
       for(let i=0;i<lines.length;i++){
         const line=lines[i],v=lineValueAfterLabel(line,invoiceLabel);
         if(v)pushCandidate(out,'invoice_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
+        // OCR frequently separates a boxed label and its value onto adjacent lines.
+        // Recover only a tightly adjacent identifier-looking value; never absorb another field label.
+        if(invoiceLabel.test(line)&&!identifierFromTail(v)){
+          for(let j=i+1;j<=Math.min(lines.length-1,i+2);j++){
+            const next=clean(lines[j]);
+            if(!next)continue;
+            if(/^(?:REF(?:ERENCE)?|DATE|P\/?O|PURCHASE\s+ORDER|SALESMAN|TERMS|CUSTOMER|ACCOUNT|GST|UEN)\b/i.test(next))break;
+            const id=identifierFromTail(next);
+            if(id){pushCandidate(out,'invoice_number',id,{source:src.id,kind:src.kind,score:108,evidence:line+' -> '+next});break;}
+          }
+        }
         // Some invoice boxes use only "NO:" beneath/next to TAX INVOICE.
         // Accept this only with local invoice-title context; a generic account/customer NO remains rejected.
         const bare=line.match(/\bNO\.?\s*[:#.-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i);
@@ -112,12 +127,22 @@
   }
   function dateCandidates(evidence){
     const out=[...geometryValues(evidence,dateLabel,'invoice_date')];
-    for(const src of evidence.sources||[])for(const line of clean(src.text).split(/\n+/).filter(Boolean)){
-      if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
-      const tail=lineValueAfterLabel(line,dateLabel),m=(tail||line).match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/);
-      if(m)pushCandidate(out,'invoice_date',m[1],{source:src.id,kind:src.kind,score:105,evidence:line});
+    for(const src of evidence.sources||[]){
+      const lines=clean(src.text).split(/\n+/).filter(Boolean);
+      for(let i=0;i<lines.length;i++){
+        const line=lines[i];
+        if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
+        const tail=lineValueAfterLabel(line,dateLabel),token=dateToken(tail||line);
+        if(token){pushCandidate(out,'invoice_date',token,{source:src.id,kind:src.kind,score:105,evidence:line});continue;}
+        // Boxed invoice headers often OCR the DATE label and value onto successive rows.
+        for(let j=i+1;j<=Math.min(lines.length-1,i+2);j++){
+          const next=clean(lines[j]),nextToken=dateToken(next);
+          if(nextToken){pushCandidate(out,'invoice_date',nextToken,{source:src.id,kind:src.kind,score:102,evidence:line+' -> '+next});break;}
+          if(/^(?:INVOICE|REF(?:ERENCE)?|P\/?O|PURCHASE\s+ORDER|SALESMAN|TERMS|CUSTOMER|ACCOUNT)\b/i.test(next))break;
+        }
+      }
     }
-    return out.map(x=>({...x,value:parseDateStrict((x.value.match(/([0-3]?\d\s*[/.\-]\s*[01]?\d\s*[/.\-]\s*(?:\d{4}|\d{2}))/)||[])[1]||x.value)})).filter(x=>x.value);
+    return out.map(x=>({...x,value:parseDateStrict(dateToken(x.value)||x.value)})).filter(x=>x.value);
   }
   function referenceCandidates(evidence){
     const out=[...geometryValues(evidence,refLabel,'reference_number')];
@@ -154,5 +179,5 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.2-multipart-identifier',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({version:'2.4-safe-date-boundary',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
 })(typeof window!=='undefined'?window:globalThis);
