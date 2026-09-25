@@ -11,6 +11,8 @@ const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
 const parserV2Evidence=read('modules/parser-v2/evidence-model.js');
 const parserV2Header=read('modules/parser-v2/header-resolver.js');
+const parserV2Table=read('modules/parser-v2/table-detector.js');
+const parserV2Builder=read('modules/parser-v2/row-builder.js');
 const parserV2Rows=read('modules/parser-v2/row-accounting.js');
 const parserV2Engine=read('modules/parser-v2/engine.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
@@ -29,7 +31,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Rows);new Function(parserV2Engine);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Engine);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -106,6 +108,9 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
 assert(runtime.includes('Parser V2 runs in shadow mode only.')&&runtime.includes('v2Shadow:v2'),'Production finalizer must attach Parser V2 shadow diagnostics without replacing legacy values');
 assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 shadow gate failed'),'App bootstrap must load and gate Parser V2 before runtime');
+assert(app.includes('modules/parser-v2/table-detector.js')&&app.includes('modules/parser-v2/row-builder.js'),'App bootstrap must load independent Parser V2 table/row modules');
+assert(parserV2Engine.includes("mode:'shadow-independent-table'")&&parserV2Engine.includes('T.detectTables(evidence)')&&parserV2Engine.includes('B.buildRows(evidence,tables)'),'Parser V2 engine must derive completeness from its own geometry pipeline');
+
 
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
 assert(runtime.includes('InventoryHubCanonicalParser.fromPipeline'),'Production finalizer does not publish through the canonical parser API');
@@ -219,7 +224,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
 assert(runtime.includes("'Restored equipment line-item recovery for previously supported multi-page invoice layouts.'")&&runtime.includes("'Improved equipment verification and manual-line Confirm & Save handling.'"),'Direct runtime Patch Notes are not the current concise user-facing version');
 assert(index.includes('Restored equipment line-item recovery for previously supported multi-page invoice layouts.')&&index.includes('Improved equipment verification and manual-line Confirm &amp; Save handling.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14x-r6'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14x-r7'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -246,6 +251,8 @@ assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.1
 const v2ctx={console,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp};v2ctx.globalThis=v2ctx;v2ctx.window=v2ctx;vm.createContext(v2ctx);
 vm.runInContext(parserV2Evidence,v2ctx,{filename:'modules/parser-v2/evidence-model.js'});
 vm.runInContext(parserV2Header,v2ctx,{filename:'modules/parser-v2/header-resolver.js'});
+vm.runInContext(parserV2Table,v2ctx,{filename:'modules/parser-v2/table-detector.js'});
+vm.runInContext(parserV2Builder,v2ctx,{filename:'modules/parser-v2/row-builder.js'});
 vm.runInContext(parserV2Rows,v2ctx,{filename:'modules/parser-v2/row-accounting.js'});
 vm.runInContext(parserV2Engine,v2ctx,{filename:'modules/parser-v2/engine.js'});
 assert(v2ctx.InventoryHubParserV2?.selfTest?.().ok,'Parser V2 self-test failed: '+(v2ctx.InventoryHubParserV2?.selfTest?.().failures||[]).join(', '));
@@ -280,6 +287,43 @@ const ledgerSummary=v2ctx.InventoryHubParserV2Rows.summarize(ledger);
 assert(ledgerSummary.detectedRows===5&&ledgerSummary.counts.equipment===4&&ledgerSummary.counts.service===1,'Parser V2 row ledger failed to preserve/account for the fuller candidate set');
 const compared=v2ctx.InventoryHubParserV2Rows.compareFinalItems(ledger,[{sku:'AVS-320',item_name:'Projector controller',quantity:2,unit_price:350,amount:700}]);
 assert(compared.missingEquipment.length===3,'Parser V2 must detect equipment missing from a partial winning candidate');
+const independentFiveRowLayout=[{page:1,width:820,height:1000,yTolerance:3,rows:[
+  {y:100,text:'PRODUCT NO DESCRIPTION QUANTITY UNIT PRICE AMOUNT',items:[
+    {text:'PRODUCT NO',x:40,width:90},{text:'DESCRIPTION',x:180,width:120},{text:'QUANTITY',x:470,width:60},{text:'UNIT PRICE',x:570,width:70},{text:'AMOUNT',x:700,width:60}
+  ]},
+  {y:140,text:'AVS-320 Projector controller 2 350.00 700.00',items:[
+    {text:'AVS-320',x:45,width:65},{text:'Projector controller',x:180,width:190},{text:'2',x:490,width:10},{text:'350.00',x:585,width:55},{text:'700.00',x:710,width:55}
+  ]},
+  {y:175,text:'RX-1 Wireless receiver 2 400.00 800.00',items:[
+    {text:'RX-1',x:45,width:45},{text:'Wireless receiver',x:180,width:170},{text:'2',x:490,width:10},{text:'400.00',x:585,width:55},{text:'800.00',x:710,width:55}
+  ]},
+  {y:210,text:'MIC-1 Wireless microphone 2 250.00 500.00',items:[
+    {text:'MIC-1',x:45,width:50},{text:'Wireless microphone',x:180,width:190},{text:'2',x:490,width:10},{text:'250.00',x:585,width:55},{text:'500.00',x:710,width:55}
+  ]},
+  {y:245,text:'PROJ-1 Laser projector 1 5000.00 5000.00',items:[
+    {text:'PROJ-1',x:45,width:60},{text:'Laser projector',x:180,width:150},{text:'1',x:490,width:10},{text:'5000.00',x:580,width:60},{text:'5000.00',x:705,width:60}
+  ]},
+  {y:280,text:'INSTALL Installation labour 1 1000.00 1000.00',items:[
+    {text:'INSTALL',x:45,width:65},{text:'Installation labour',x:180,width:180},{text:'1',x:490,width:10},{text:'1000.00',x:580,width:60},{text:'1000.00',x:705,width:60}
+  ]},
+  {y:325,text:'SUBTOTAL 8000.00',items:[{text:'SUBTOTAL',x:570,width:70},{text:'8000.00',x:705,width:60}]}
+]}];
+const independentV2=v2ctx.InventoryHubParserV2.analyze({
+  sources:[{source:'native-layout',kind:'layout',text:'SUPPLIER: Example AV Pte Ltd\nInvoice No.: INV-5001\nDATE: 25/09/26',layout:independentFiveRowLayout}],
+  candidates:[{origin:'legacy-partial',items:[
+    {sku:'AVS-320',item_name:'Projector controller',quantity:2,unit_price:350,amount:700},
+    {sku:'RX-1',item_name:'Wireless receiver',quantity:2,unit_price:400,amount:800}
+  ]}],
+  legacyResult:{doc:{supplier_name:'Example AV Pte Ltd',invoice_number:'INV-5001',invoice_date:'2026-09-25'},items:[
+    {sku:'AVS-320',item_name:'Projector controller',quantity:2,unit_price:350,amount:700},
+    {sku:'RX-1',item_name:'Wireless receiver',quantity:2,unit_price:400,amount:800}
+  ]}
+});
+assert(independentV2.mode==='shadow-independent-table'&&independentV2.tables.length===1,'Parser V2 must detect the table independently of legacy candidates');
+assert(independentV2.physicalRows.length===5,'Parser V2 physical reconstruction expected 5 source rows, got '+independentV2.physicalRows.length);
+assert(independentV2.completeness.counts.equipment===4&&independentV2.completeness.counts.service===1,'Parser V2 physical ledger must account for 4 equipment + 1 service rows');
+assert(independentV2.finalComparison.missingEquipment.length===2,'Parser V2 must expose the 2 equipment rows omitted by the legacy partial result');
+
 console.log('parser-v2-shadow: header independence, strict reference, same-layout variation and row completeness PASS');
 
 const mctx={console,Number,String,Array,Object,Set,Map,RegExp,Math};mctx.globalThis=mctx;mctx.window=mctx;vm.createContext(mctx);vm.runInContext(evidenceEngine,mctx,{filename:'modules/parser-evidence-engine.js'});vm.runInContext(parserModule,mctx,{filename:'modules/parser-table.js'});
