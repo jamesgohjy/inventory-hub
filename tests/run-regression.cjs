@@ -5,7 +5,7 @@ const read=p=>fs.readFileSync(p,'utf8');
 
 const core=read('v7033-core.js');
 const app=read('app.js');
-const runtime=read('runtime-v7.03.3.14x.js');
+const runtime=read('runtime-v7.03.3.14y.js');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
@@ -97,19 +97,19 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14x','Core version must be 7.03.3.14x');
+assert(cv==='7.03.3.14y','Core version must be 7.03.3.14y');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.14y','Upcoming version must be 7.03.3.14y');
+assert(uv==='7.03.3.14z','Upcoming version must be 7.03.3.14z');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
-assert(runtime.includes('Parser V2 runs in shadow mode only.')&&runtime.includes('v2Shadow:v2'),'Production finalizer must attach Parser V2 shadow diagnostics without replacing legacy values');
-assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 shadow gate failed'),'App bootstrap must load and gate Parser V2 before runtime');
+assert(runtime.includes('independent-geometry-complete')&&runtime.includes('v2Promotion:promotion')&&!runtime.includes('Parser V2 runs in shadow mode only.'),'Production finalizer must use fail-closed Parser V2 evidence promotion instead of shadow-only diagnostics');
+assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 evidence-promotion gate failed'),'App bootstrap must load and gate Parser V2 before runtime');
 assert(app.includes('modules/parser-v2/table-detector.js')&&app.includes('modules/parser-v2/row-builder.js'),'App bootstrap must load independent Parser V2 table/row modules');
-assert(parserV2Engine.includes("mode:'shadow-independent-table'")&&parserV2Engine.includes('T.detectTables(evidence)')&&parserV2Engine.includes('B.buildRows(evidence,tables)'),'Parser V2 engine must derive completeness from its own geometry pipeline');
+assert(parserV2Engine.includes("mode:'evidence-first-independent-table'")&&parserV2Engine.includes('T.detectTables(evidence)')&&parserV2Engine.includes('B.buildRows(evidence,tables)')&&parserV2Engine.includes('assessPromotion'),'Parser V2 engine must derive promotion from its own geometry pipeline');
 
 
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
@@ -319,10 +319,20 @@ const independentV2=v2ctx.InventoryHubParserV2.analyze({
     {sku:'RX-1',item_name:'Wireless receiver',quantity:2,unit_price:400,amount:800}
   ]}
 });
-assert(independentV2.mode==='shadow-independent-table'&&independentV2.tables.length===1,'Parser V2 must detect the table independently of legacy candidates');
+assert(independentV2.mode==='evidence-first-independent-table'&&independentV2.tables.length===1,'Parser V2 must detect the table independently of legacy candidates');
 assert(independentV2.physicalRows.length===5,'Parser V2 physical reconstruction expected 5 source rows, got '+independentV2.physicalRows.length);
 assert(independentV2.completeness.counts.equipment===4&&independentV2.completeness.counts.service===1,'Parser V2 physical ledger must account for 4 equipment + 1 service rows');
 assert(independentV2.finalComparison.missingEquipment.length===2,'Parser V2 must expose the 2 equipment rows omitted by the legacy partial result');
+assert(independentV2.safeToPromote===true&&independentV2.promotionNeeded===true,'Complete independent table evidence must be promotable when the legacy result is incomplete');
+assert(independentV2.promotionRows.length===4&&!independentV2.promotionRows.some(x=>/INSTALL/i.test(String(x.sku||''))),'Promotion must contain the 4 verified equipment rows and exclude installation');
+
+const conflictLedger=v2ctx.InventoryHubParserV2Rows.buildLedger([
+  {origin:'geometry-a',items:[{sku:'CTRL-1',item_name:'Control panel',quantity:1,unit_price:350,amount:350,layoutEvidenceVerified:true,economicEvidenceVerified:true}]},
+  {origin:'geometry-b',items:[{sku:'CTRL-1',item_name:'Control panel',quantity:1,unit_price:390,amount:390,layoutEvidenceVerified:true,economicEvidenceVerified:true}]}
+]);
+const conflictPromotion=v2ctx.InventoryHubParserV2.assessPromotion(conflictLedger,v2ctx.InventoryHubParserV2Rows.summarize(conflictLedger),{complete:false});
+assert(conflictPromotion.safe===false&&conflictPromotion.blockers.some(x=>x.code==='conflicting-equipment-economics'),'Conflicting geometry economics must block automatic promotion');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({sku:'60100-SALES',item_name:'Active Speaker in pair',quantity:1,unit_price:90,amount:90})==='service','Numeric SALES accounting code must not be promoted as equipment');
 
 // Real-world failure-class locks derived from historical invoice geometry/OCR.
 // 1) Corroborate supplier/invoice/date across noisy full-page OCR + targeted header OCR.
