@@ -89,10 +89,7 @@
     if(!headers.invoice_date)headerIssues.push({code:'invoice-date-not-proven'});
 
     const promotion=assessPromotion(rowLedger,completeness,finalComparison);
-    if(sourceIssues.length){
-      for(const issue of sourceIssues)if(!promotion.blockers.some(x=>x.code===issue.code))promotion.blockers.push?.(issue);
-    }
-    // assessPromotion returns frozen blockers, so source blockers are merged immutably here.
+    // Promotion blockers are merged immutably; source evidence must remain complete.
     const promotionBlockers=[
       ...promotion.blockers,
       ...sourceIssues.filter(issue=>!promotion.blockers.some(x=>x.code===issue.code))
