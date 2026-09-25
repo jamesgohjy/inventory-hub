@@ -1,8 +1,8 @@
-// Inventory Hub canonical parser API — v7.03.3.14w
+// Inventory Hub canonical parser API — v7.03.3.14x
 (function(global){
   'use strict';
   const API_VERSION='1.1';
-  const ENGINE_VERSION='7.03.3.14w';
+  const ENGINE_VERSION='7.03.3.14x';
   const clean=v=>String(v??'').replace(/\s+/g,' ').trim();
   const compact=v=>clean(v).normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const normalizeBrand=v=>clean(v).normalize('NFKC').toUpperCase().replace(/\b(?:PTE|LTD|LIMITED|INC|CORP|CORPORATION)\b/g,' ').replace(/[^A-Z0-9]+/g,' ').trim();
