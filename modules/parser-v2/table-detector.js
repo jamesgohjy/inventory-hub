@@ -65,9 +65,11 @@
     if(!unit_price){
       const units=words.filter(it=>/^UNIT$/.test(it._token)),prices=words.filter(it=>/^PRICE$/.test(it._token));
       outer:for(const u of units)for(const p of prices){
-        if(center(p)>center(u)&&Math.abs(center(p)-center(u))<160){unit_price={text:'UNIT PRICE',x:Number(u.x),width:(Number(p.x)||0)+(Number(p.width)||0)-Number(u.x)};break outer;}
+        if(center(p)>center(u)&&Math.abs(center(p)-center(u))<160){unit_price={text:'UNIT PRICE',x:Number(u.x),width:(Number(p.x)||0)+(Number(p.width)||0)-Number(u.x),_joinedFromUnit:u};break outer;}
       }
     }
+    // "UNIT PRICE" split into two OCR words must not let UNIT masquerade as the Qty column.
+    if(quantity&&unit_price?._joinedFromUnit&&quantity===unit_price._joinedFromUnit)quantity=null;
     if(!quantity&&description&&unit_price)quantity=fuzzyQuantityHeader(words,description,unit_price);
     if(!description||!quantity||!unit_price||!amount)return null;
     const xs={description:center(description),quantity:center(quantity),unit_price:center(unit_price),amount:center(amount)};
@@ -281,5 +283,5 @@
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.7-fuzzy-quantity-header',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.8-unit-price-quantity-disambiguation',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
