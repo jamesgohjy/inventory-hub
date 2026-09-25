@@ -182,7 +182,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "MIX-100",
+            2,
+            350,
+            500
+          ]
+        ]
       }
     },
     {
@@ -222,7 +229,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "SPK-20",
+            1,
+            null,
+            null
+          ]
+        ]
       }
     },
     {
@@ -373,7 +387,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "MAS-1818",
+            2,
+            550,
+            1100
+          ]
+        ]
       }
     },
     {
@@ -735,7 +756,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "SPK-Z",
+            1,
+            0,
+            0
+          ]
+        ]
       }
     },
     {
@@ -763,7 +791,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "CTRL-9",
+            2,
+            450,
+            900
+          ]
+        ]
       }
     },
     {
@@ -806,7 +841,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "ANT-2",
+            1,
+            270,
+            270
+          ]
+        ]
       }
     },
     {
@@ -834,7 +876,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "",
+            2,
+            90,
+            180
+          ]
+        ]
       }
     },
     {
@@ -877,7 +926,14 @@
       ],
       "expected": {
         "status": "review",
-        "rows": []
+        "rows": [
+          [
+            "CTRL-700",
+            2,
+            350,
+            700
+          ]
+        ]
       }
     }
   ]
