@@ -15,6 +15,7 @@
     discount:/^(?:DISC(?:OUNT)?|DISCOUNT %|DISC %)$/
   });
   const TOTAL_RE=/\b(?:SUB\s*TOTAL|SUBTOTAL|GST|GRAND\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i;
+  const HEADERLESS_META_RE=/\b(?:ACCOUNT\s*(?:NO|NUMBER)?|CUSTOMER\s*(?:NO|NUMBER|CODE)?|INVOICE\s*(?:NO|NUMBER|DATE)?|PURCHASE\s+ORDER|P\/?O\s*(?:NO|NUMBER)?|D\/?O\s*(?:NO|NUMBER)?|ORDERED\s+BY|SALES\s+REP|SALESMAN|TERMS|PAYMENT|DUE\s+DATE|ADDRESS|CONTACT|EMAIL|PHONE|TEL|FAX|GST\s+REG|COMPANY\s+REG|UEN)\b/i;
 
   function mergedHeaderItems(rows=[],seedIndex=0,yTolerance=3){
     const seed=rows[seedIndex];if(!seed)return [];
@@ -149,7 +150,7 @@
     const rows=(page?.rows||[]).filter(r=>Array.isArray(r.items)&&r.items.length&&Number.isFinite(Number(r.y)));
     const out=[];
     for(const row of rows){
-      if(TOTAL_RE.test(row.text||''))continue;
+      if(TOTAL_RE.test(row.text||'')||HEADERLESS_META_RE.test(row.text||''))continue;
       const columns=inferEconomicColumns(row);if(!columns)continue;
       out.push({
         id:[source.id,'p'+page.page,'econ'+Math.round(Number(row.y))].join(':'),
@@ -204,5 +205,5 @@
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.1-shadow',HEADER_RULES,TOTAL_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.2-shadow',HEADER_RULES,TOTAL_RE,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
