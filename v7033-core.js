@@ -905,7 +905,7 @@
       candidate:true,
       mergeEligible:blockers.length===0,
       reason:embeddedAlias?'embedded-sku-alias':(exact?'exact-sku':'format-normalized-sku'),
-      confidence:embeddedAlias?'review':'exact',
+      confidence:embeddedAlias?'review':(exact?'exact':'high'),
       score:embeddedAlias?.92:(exact?1:.98),
       normalizedSku:normalizedKey,
       blockers,
