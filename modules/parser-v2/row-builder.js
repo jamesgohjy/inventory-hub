@@ -91,6 +91,44 @@
     }
     return clean(parts.join(' '));
   }
+  const EQUIPMENT_HINT_RE=/\b(?:projector|microphone|speaker|loudspeaker|controller|control panel|camera|mixer|monitor|amplifier|receiver|transmitter|player|receptacle|wireless)\b/i;
+  const GENERIC_DESC_RE=/^(?:RE\s*:|REFERENCE\b|(?:\([A-Z]\)\s*)?SECTION\b|TECHNICAL\s+SPECIFICATIONS\b|SCOPE\s+OF\s+WORK\b|.*\bREPLACEMENT\s+SETUP\b)/i;
+  function modelTokenFromValue(v=''){
+    const s=clean(v).replace(/[|;,]+$/,'');if(!s)return '';
+    const toks=s.split(/\s+/).filter(Boolean);
+    for(let i=toks.length-1;i>=0;i--){
+      const t=toks[i].replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+._\/-]+$/g,'');
+      if(/^[A-Za-z0-9][A-Za-z0-9+._\/-]{1,}$/i.test(t)&&/\d/.test(t))return t;
+    }
+    if(toks.length===1){
+      const t=toks[0].replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+._\/-]+$/g,'');
+      if(/^[A-Za-z][A-Za-z0-9+._\/-]{2,}$/i.test(t))return t;
+    }
+    return '';
+  }
+  function printedModelFromRows(rows=[],columns={}){
+    let printed='',replacement='';
+    for(const row of rows||[]){
+      const d=clean(cellText(row,columns.boundaries?.description||[-Infinity,Infinity]));
+      if(!d)continue;
+      const rep=d.match(/\breplac(?:ed|ement)\s+with\s+([A-Za-z0-9][A-Za-z0-9+._\/-]{1,})/i);
+      if(rep)replacement=modelTokenFromValue(rep[1])||replacement;
+      const m=d.match(/\bMODEL\s*:\s*(.+)$/i);
+      if(m&&!printed)printed=modelTokenFromValue(m[1]);
+    }
+    return replacement||printed;
+  }
+  function cleanItemDescription(v=''){
+    return clean(v).replace(/\s*\bMODEL\s*:\s*.+$/i,'').replace(/^\d+\s+(?=[A-Za-z(])/,'').trim();
+  }
+  function continuationEquipmentDescription(rows=[],columns={}){
+    for(const row of rows||[]){
+      const d=clean(cellText(row,columns.boundaries?.description||[-Infinity,Infinity]));
+      if(!d||META_RE.test(d)||WARRANTY_RE.test(d)||GENERIC_DESC_RE.test(d)||/^MODEL\s*:/i.test(d))continue;
+      if(EQUIPMENT_HINT_RE.test(d))return cleanItemDescription(d);
+    }
+    return '';
+  }
   function rowLooksLikeStart(row,columns){
     const code=codeFromRow(row,columns),q=strictQuantity(cellText(row,columns.boundaries.quantity)),p=strictMoney(cellText(row,columns.boundaries.unit_price)),a=strictMoney(cellText(row,columns.boundaries.amount));
     const econCount=[q,p,a].filter(v=>v!==null).length;
@@ -119,14 +157,19 @@
     let previousAnchor=-1;
     for(let ai=0;ai<anchors.length;ai++){
       const anchorInfo=anchors[ai],group=body.slice(previousAnchor+1,anchorInfo.index+1),anchor=body[anchorInfo.index],economics=anchorInfo.econ;
+      // A damaged priced row may still have a readable description + quantity. Treat that as a hard
+      // physical-row boundary so its text/model cannot be swallowed by the previous valid anchor.
+      let nextPhysicalStart=body.length;
+      for(let j=anchorInfo.index+1;j<body.length;j++){
+        const d=clean(cellText(body[j],table.columns.boundaries.description)),q=strictQuantity(cellText(body[j],table.columns.boundaries.quantity));
+        if(d&&q!==null){nextPhysicalStart=j;break;}
+      }
+      const nextAnchorIndex=Math.min(anchors[ai+1]?.index??body.length,nextPhysicalStart),following=body.slice(anchorInfo.index+1,nextAnchorIndex);
       previousAnchor=anchorInfo.index;
 
       let sku='';
       // Prefer a printed code from the same segment, nearest the economic anchor.
       for(let gi=group.length-1;gi>=0&&!sku;gi--)sku=codeFromRow(group[gi],table.columns);
-      // If the economic anchor itself already contains the product description,
-      // prefer it. This prevents specification/warranty text belonging to the previous priced row
-      // from being pulled forward into the next product when OCR emits continuation lines after price.
       const anchorDescription=clean(cellText(anchor,table.columns.boundaries.description));
       const anchorCodeText=table.columns.hasCode?clean(cellText(anchor,table.columns.boundaries.code)):'';
       let codeSpill='';
@@ -134,10 +177,18 @@
         codeSpill=clean(anchorCodeText.slice(String(sku).length));
         if(codeSpill&&(/\d/.test(codeSpill)||codeSpill.length>60))codeSpill='';
       }
-      const baseDescription=(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))
+      let baseDescription=(anchorDescription&&!META_RE.test(anchor.text||'')&&!WARRANTY_RE.test(anchor.text||''))
         ?anchorDescription:descriptionFromGroup(group,table.columns);
-      const description=clean([codeSpill,baseDescription].filter(Boolean).join(' '));
-      const raw=clean(group.map(r=>r.text).join(' '));
+      const continuationDescription=continuationEquipmentDescription(following,table.columns);
+      if(continuationDescription&&(GENERIC_DESC_RE.test(baseDescription)||!EQUIPMENT_HINT_RE.test(baseDescription)))baseDescription=continuationDescription;
+      // Prefer model/replacement evidence on the current priced anchor and its trailing continuation.
+      // Do not let a previous row's post-anchor Model: line bleed into this row.
+      let printedModel=printedModelFromRows([anchor,...following],table.columns);
+      // If the economic anchor itself has no description, allow pre-anchor wrapped text as a fallback.
+      if(!printedModel&&!anchorDescription)printedModel=printedModelFromRows(group,table.columns);
+      if(!sku&&printedModel)sku=printedModel;
+      const description=cleanItemDescription([codeSpill,baseDescription].filter(Boolean).join(' '));
+      const raw=clean([...group,...following].map(r=>r.text).join(' '));
       if(!sku&&!description&&!/[0-9]/.test(raw))continue;
 
       rows.push({
@@ -151,10 +202,39 @@
         layoutEvidenceVerified:true,
         economicEvidenceVerified:true,
         parserV2PhysicalRow:true,
-        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:group.flatMap(r=>r.sourceRowIndexes||[]),rawText:raw}
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:[...group,...following].flatMap(r=>r.sourceRowIndexes||[]),rawText:raw,printedModel:printedModel||''}
       });
     }
     return rows;
+  }
+  function buildSkeletonRows(table){
+    const body=mergeBodyBands(table?.bodyRows||[],table?.yTolerance||3)
+      .sort((a,b)=>((Number(a.y)-table.headerY)*table.direction)-((Number(b.y)-table.headerY)*table.direction));
+    const out=[];
+    for(let i=0;i<body.length;i++){
+      const row=body[i],desc0=clean(cellText(row,table.columns.boundaries.description)),q=strictQuantity(cellText(row,table.columns.boundaries.quantity));
+      if(!desc0||q===null||META_RE.test(desc0))continue;
+      if(economicsFromGroup([row],table.columns).verified)continue;
+      let next=i+1;
+      while(next<body.length){
+        const nd=clean(cellText(body[next],table.columns.boundaries.description)),nq=strictQuantity(cellText(body[next],table.columns.boundaries.quantity));
+        if(nd&&nq!==null)break;
+        next++;
+      }
+      const following=body.slice(i+1,next);
+      let desc=desc0,continuation=continuationEquipmentDescription(following,table.columns);
+      if(continuation&&(GENERIC_DESC_RE.test(desc)||!EQUIPMENT_HINT_RE.test(desc)))desc=continuation;
+      const model=printedModelFromRows([row,...following],table.columns);
+      desc=cleanItemDescription(desc);
+      out.push({
+        sourceRowId:table.id+':s'+(out.length+1),
+        sku:model||'',model:model||'',item_name:desc,description:desc,
+        quantity:q,unit_price:null,amount:null,
+        layoutEvidenceVerified:true,economicEvidenceVerified:false,parserV2PhysicalRow:true,supportRecoveryPending:true,
+        provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:[row,...following].flatMap(r=>r.sourceRowIndexes||[]),rawText:clean([row,...following].map(r=>r.text).join(' ')),printedModel:model||''}
+      });
+    }
+    return out;
   }
   function buildRows(evidence={},tables=[]){
     const tableRows=(tables||[]).map(table=>({table,rows:buildTableRows(table)}));
@@ -165,5 +245,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.4-code-spill-description',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.8-damaged-row-boundaries',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);

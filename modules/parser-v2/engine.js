@@ -18,6 +18,132 @@
     if(!e.complete||!e.ok)return '';
     return [Number(row.quantity),Number(row.unit_price).toFixed(2),Number(row.amount).toFixed(2)].join('|');
   }
+  const RECOVERY_STOP=new Set(['the','and','with','for','from','into','setup','support','supported','supply','install','system','digital','single','dual','new','equipment','specified','section','model','console']);
+  function recoveryTokens(row={}){
+    return new Set(keyText([row.sku,row.model,row.item_name,row.description].filter(Boolean).join(' '))
+      .split(' ').filter(t=>t.length>=3&&!RECOVERY_STOP.has(t)));
+  }
+  function supportMatchScore(invoiceRow={},supportRow={}){
+    const iq=Number(invoiceRow.quantity),sq=Number(supportRow.quantity),econ=R?.economics?.(supportRow)||{};
+    if(!(iq>0)||iq!==sq||econ.ok!==true)return -1;
+    const a=recoveryTokens(invoiceRow),b=recoveryTokens(supportRow);
+    if(!a.size||!b.size)return -1;
+    let shared=0;for(const t of a)if(b.has(t))shared++;
+    const ratio=shared/Math.max(1,Math.min(a.size,b.size));
+    const sku=keyText(invoiceRow.sku||invoiceRow.model||'').replace(/\s+/g,'');
+    const supportText=keyText([supportRow.sku,supportRow.model,supportRow.item_name,supportRow.description].filter(Boolean).join(' ')).replace(/\s+/g,'');
+    const exactModel=!!sku&&supportText.includes(sku);
+    if(!exactModel&&(shared<3||ratio<.5))return -1;
+    return (exactModel?100:0)+shared*12+ratio*50;
+  }
+  const CONFUSABLE_MODEL_PAIRS=new Set(['5S','S5','0O','O0','1I','I1','1L','L1','2Z','Z2','8B','B8','6G','G6']);
+  function modelLikeTokens(row={}){
+    const t=clean([row.sku,row.model,row.item_name,row.description,row?.provenance?.rawText].filter(Boolean).join(' '));
+    const out=[];
+    for(const m of t.matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)){
+      const v=String(m[0]||'').replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+._\/-]+$/g,'');
+      if(/[A-Za-z]/.test(v)&&/\d/.test(v)&&!out.includes(v))out.push(v);
+    }
+    return out;
+  }
+  function oneConfusableModelDifference(a='',b=''){
+    const x=String(a).toUpperCase(),y=String(b).toUpperCase();
+    if(!x||x.length!==y.length||x===y)return false;
+    let diffs=0,pair='';
+    for(let i=0;i<x.length;i++)if(x[i]!==y[i]){diffs++;pair=x[i]+y[i];if(diffs>1)return false;}
+    return diffs===1&&CONFUSABLE_MODEL_PAIRS.has(pair);
+  }
+  function corroboratedModel(invoiceRow={},supportRow={}){
+    const current=clean(invoiceRow.sku||invoiceRow.model||'');if(!current)return '';
+    for(const token of modelLikeTokens(supportRow)){
+      if(oneConfusableModelDifference(current,token))return token;
+    }
+    return '';
+  }
+  function invoiceSubtotalEvidence(evidence={}){
+    const values=[];
+    for(const src of evidence.sources||[])for(const pg of src.layout||[]){
+      // Continuation invoice pages may lose the invoice title in scans/OCR. Include "unknown"
+      // pages for subtotal evidence, but never PO/DO/quotation/support pages.
+      const role=typeof T.pageDocumentRole==='function'?T.pageDocumentRole(pg):'unknown';
+      if(role==='noninvoice'||role==='support')continue;
+      for(const row of pg.rows||[]){
+        const text=clean(row.text||'');
+        if(!/\bSUB\s*TOTAL\b|\bSUBTOTAL\b/i.test(text))continue;
+        // A totals band may OCR as one line: "Subtotal 16,500.00 GST ... Invoice Total 17,985.00".
+        // Bind the value specifically to SUBTOTAL instead of taking the last money token on the row.
+        const direct=text.match(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b\s*(?:SGD|S\$|\$)?\s*([\d,]+\.\d{2})/i);
+        if(direct){
+          const value=Number(direct[1].replace(/,/g,''));
+          if(Number.isFinite(value))values.push({value,source:src.id,page:pg.page,evidence:row.text});
+          continue;
+        }
+        // Geometry fallback: choose the first money-looking item to the right of the subtotal label.
+        const items=(row.items||[]).slice().sort((a,b)=>(Number(a.x)||0)-(Number(b.x)||0));
+        const labelIndex=items.findIndex(it=>/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i.test(clean(it.text||'')));
+        if(labelIndex>=0){
+          for(let i=labelIndex+1;i<items.length;i++){
+            const m=clean(items[i].text||'').match(/(?:SGD|S\$|\$)?\s*([\d,]+\.\d{2})/i);
+            if(!m)continue;
+            const value=Number(m[1].replace(/,/g,''));
+            if(Number.isFinite(value)){values.push({value,source:src.id,page:pg.page,evidence:row.text});break;}
+          }
+        }
+      }
+    }
+    const unique=[...new Set(values.map(x=>Number(x.value).toFixed(2)))];
+    if(unique.length!==1)return Object.freeze({proven:false,value:null,candidates:Object.freeze(values)});
+    return Object.freeze({proven:true,value:Number(unique[0]),candidates:Object.freeze(values)});
+  }
+  function subtotalCheck(rowLedger=[],subtotalEvidence={}){
+    if(!subtotalEvidence?.proven)return Object.freeze({proven:false,ok:null,expected:null,actual:null,delta:null});
+    let actual=0,complete=true;
+    for(const x of rowLedger||[]){
+      const row=x.row||{},a=Number(row.amount);
+      if(!Number.isFinite(a)){complete=false;continue;}
+      actual+=a;
+    }
+    actual=Math.round(actual*100)/100;
+    const expected=Number(subtotalEvidence.value),delta=Math.round(Math.abs(actual-expected)*100)/100,tolerance=Math.max(.06,Math.abs(expected)*.002);
+    return Object.freeze({proven:true,complete,ok:complete&&delta<=tolerance,expected,actual,delta,tolerance});
+  }
+
+  function reconcileSupportingEconomics(skeletons=[],supportRows=[]){
+    const validSupport=(supportRows||[]).filter(r=>(R?.economics?.(r)||{}).ok===true&&r.layoutEvidenceVerified===true&&r.economicEvidenceVerified===true);
+    const used=new Set(),out=[];
+    for(const skeleton of skeletons||[]){
+      const ranked=validSupport.map((row,index)=>({row,index,score:supportMatchScore(skeleton,row)}))
+        .filter(x=>x.score>=0&&!used.has(x.index)).sort((a,b)=>b.score-a.score);
+      const best=ranked[0],second=ranked[1];
+      if(!best){out.push(skeleton);continue;}
+      const bestSig=economicSignature(best.row),secondSig=second?economicSignature(second.row):'';
+      if(second&&Math.abs(best.score-second.score)<8&&bestSig&&secondSig&&bestSig!==secondSig){out.push(skeleton);continue;}
+      used.add(best.index);
+      const correctedModel=corroboratedModel(skeleton,best.row);
+      out.push({
+        ...skeleton,
+        ...(correctedModel?{sku:correctedModel,model:correctedModel}:{ }),
+        unit_price:Number(best.row.unit_price),
+        amount:Number(best.row.amount),
+        economicEvidenceVerified:true,
+        supportingDocumentEvidenceVerified:true,
+        supportRecoveryPending:false,
+        provenance:{
+          ...(skeleton.provenance||{}),
+          supportingDocument:{
+            source:best.row?.provenance?.source||'',
+            page:best.row?.provenance?.page||null,
+            rowId:best.row?.sourceRowId||'',
+            score:Math.round(best.score*100)/100,
+            economics:economicSignature(best.row),
+            modelCorrection:correctedModel?{from:skeleton.sku||skeleton.model||'',to:correctedModel,reason:'supporting-document-homoglyph-corroboration'}:null
+          }
+        }
+      });
+    }
+    return out;
+  }
+
   function assessPromotion(rowLedger=[],completeness={},finalComparison={}){
     const blockers=[];
     const equipment=(rowLedger||[]).filter(x=>x.disposition==='equipment');
@@ -59,12 +185,20 @@
     const evidence=E.buildDocumentEvidence({sources,raw,layout});
     const headers=H.resolveHeaders(evidence);
 
-    // Independent V2 path: evidence -> geometry -> table -> physical row -> accounting.
+    // Independent V2 path: invoice evidence -> geometry -> table -> physical row -> accounting.
+    // Explicit quotation/support pages may corroborate damaged invoice economics, but can never create rows by themselves.
     const tables=T.detectTables(evidence);
     const physical=B.buildRows(evidence,tables);
+    const supportTables=typeof T.detectSupportTables==='function'?T.detectSupportTables(evidence):[];
+    const supportPhysical=supportTables.length?B.buildRows(evidence,supportTables):{rows:[],tables:[]};
+    const skeletons=typeof B.buildSkeletonRows==='function'?tables.flatMap(t=>B.buildSkeletonRows(t)):[];
+    const reconciledSkeletons=reconcileSupportingEconomics(skeletons,supportPhysical.rows);
     const physicalCandidates=physical.tables.map(t=>({origin:'v2-physical:'+t.id,items:t.rows}));
+    if(reconciledSkeletons.length)physicalCandidates.push({origin:'v2-invoice-skeleton-recovery',items:reconciledSkeletons});
     const rowLedger=R.buildLedger(physicalCandidates);
     const completeness=R.summarize(rowLedger);
+    const invoiceRows=[...physical.rows,...reconciledSkeletons];
+    const invoiceSubtotal=invoiceSubtotalEvidence(evidence),invoiceSubtotalCheck=subtotalCheck(rowLedger,invoiceSubtotal);
 
     // Legacy candidates are retained for diagnostic comparison only.
     const legacyCandidateLedger=R.buildLedger(candidates);
@@ -74,7 +208,7 @@
 
     const sourceIssues=[];
     if(!tables.length)sourceIssues.push({code:'no-independent-table-evidence'});
-    if(tables.length&&!physical.rowCount)sourceIssues.push({code:'table-detected-no-physical-rows'});
+    if(tables.length&&!invoiceRows.length)sourceIssues.push({code:'table-detected-no-physical-rows'});
     if(!completeness.complete)sourceIssues.push({code:'unaccounted-source-rows',count:completeness.unexplainedRows});
 
     const comparisonIssues=[];
@@ -89,21 +223,25 @@
     if(!headers.invoice_date)headerIssues.push({code:'invoice-date-not-proven'});
 
     const promotion=assessPromotion(rowLedger,completeness,finalComparison);
+    const subtotalBlockers=invoiceSubtotalCheck.proven&&invoiceSubtotalCheck.ok===false?[{code:'invoice-subtotal-mismatch',expected:invoiceSubtotalCheck.expected,actual:invoiceSubtotalCheck.actual,delta:invoiceSubtotalCheck.delta}]:[];
     // Promotion blockers are merged immutably; source evidence must remain complete.
     const promotionBlockers=[
       ...promotion.blockers,
-      ...sourceIssues.filter(issue=>!promotion.blockers.some(x=>x.code===issue.code))
+      ...sourceIssues.filter(issue=>!promotion.blockers.some(x=>x.code===issue.code)),
+      ...subtotalBlockers
     ];
-    const safeToPromote=promotion.safe&&sourceIssues.length===0;
+    const safeToPromote=promotion.safe&&sourceIssues.length===0&&subtotalBlockers.length===0;
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.2-evidence-promotion',
+      version:'2.6-continuation-subtotal-guard',
       mode:'evidence-first-independent-table',
       headers,
       tables,
-      physicalRows:physical.rows,
+      physicalRows:invoiceRows,
       rowLedger,
+      supportEvidence:Object.freeze({tableCount:supportTables.length,rowCount:supportPhysical.rows.length,recoveredRowCount:reconciledSkeletons.filter(x=>x.supportingDocumentEvidenceVerified).length,pendingRowCount:reconciledSkeletons.filter(x=>!x.supportingDocumentEvidenceVerified).length}),
+      invoiceSubtotalCheck,
       completeness,
       finalComparison,
       headerDiff:Object.fromEntries(['supplier_name','invoice_number','invoice_date','reference_number'].map(field=>{
@@ -168,8 +306,10 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.2-evidence-promotion',
+    version:'2.6-continuation-subtotal-guard',
     analyze,
+    reconcileSupportingEconomics,
+    supportMatchScore,
     assessPromotion,
     promotionIdentity,
     economicSignature,

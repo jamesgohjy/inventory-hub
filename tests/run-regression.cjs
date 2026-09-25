@@ -431,6 +431,66 @@ const aerospaceHomoglyphMajority=v2ctx.InventoryHubParserV2Header.resolveHeaders
 );
 assert(aerospaceHomoglyphMajority.invoice_number==='VIN17-032365','Two corroborating invoice OCR reads must beat one 5/S homoglyph misread');
 
+// Complex mixed-document invoice locks derived from the Concept Systems scan.
+const conceptHeaderLayout=[{page:2,width:1200,height:1600,yTolerance:3,rows:[
+  {y:60,text:'Concept Systems Technologies Pte Ltd',items:[{text:'Concept Systems Technologies Pte Ltd',x:60,width:300}]},
+  {y:90,text:'TAX INVOICE',items:[{text:'TAX INVOICE',x:800,width:150}]},
+  {y:130,text:'Date: 16 Jul 2024',items:[{text:'Date:',x:700,width:50},{text:'16 Jul 2024',x:770,width:110}]},
+  {y:160,text:'Invoice No.: 2407/015',items:[{text:'Invoice No.:',x:700,width:100},{text:'2407/015',x:820,width:90}]},
+  {y:190,text:'Order Ref: PO2024/000134',items:[{text:'Order Ref:',x:700,width:90},{text:'PO2024/000134',x:810,width:130}]},
+  {y:1250,text:'Account Name Concept Systems Technologies Pte Ltd Bank Account No. 536-817513-001',items:[{text:'Account Name Concept Systems Technologies Pte Ltd Bank Account No. 536-817513-001',x:70,width:700}]}
+]}];
+const conceptHeaders=v2ctx.InventoryHubParserV2Header.resolveHeaders(
+  v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[{source:'concept-header',kind:'ocr',text:'',layout:conceptHeaderLayout}]})
+);
+assert(conceptHeaders.supplier_name==='Concept Systems Technologies Pte Ltd','Complex invoice supplier must ignore bank Account Name evidence');
+assert(conceptHeaders.invoice_number==='2407/015','Complex invoice number resolution failed');
+assert(conceptHeaders.invoice_date==='2024-07-16','Text-month invoice date resolution failed');
+assert(conceptHeaders.reference_number==='PO2024/000134','Order Ref must resolve as reference number');
+
+assert(v2ctx.InventoryHubParserV2TableDetector.pageDocumentRole({rows:[{text:'PURCHASE ORDER'}]})==='noninvoice','Purchase Order page must be excluded');
+assert(v2ctx.InventoryHubParserV2TableDetector.pageDocumentRole({rows:[{text:'DELIVERY ORDER'}]})==='noninvoice','Delivery Order page must be excluded');
+assert(v2ctx.InventoryHubParserV2TableDetector.pageDocumentRole({rows:[{text:'SCHEDULES OF PRICES AND TECHNICAL DATA'}]})==='support','Quotation/specification page must be support-only');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({item_name:'Supply and install cabling electrical audio data signal',quantity:1,unit_price:300,amount:300})==='service','Cabling scope line must be service');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({item_name:'Provide labelling and tidying the cabling setups',quantity:1,unit_price:100,amount:100})==='service','Labelling/tidying line must be service');
+assert(v2ctx.InventoryHubParserV2Rows.classifyDisposition({item_name:'Passive Loudspeakers with mounting brackets',model:'ZX1I-90',quantity:6,unit_price:800,amount:4800})==='equipment','Physical loudspeaker with mounting brackets must remain equipment');
+
+const conceptMiniInvoice=[
+  {page:2,width:1200,height:1600,yTolerance:3,rows:[
+    {y:40,text:'Concept Systems Technologies Pte Ltd',items:[{text:'Concept Systems Technologies Pte Ltd',x:40,width:300}]},
+    {y:70,text:'TAX INVOICE',items:[{text:'TAX INVOICE',x:850,width:130}]},
+    {y:100,text:'Date: 16 Jul 2024 Invoice No.: 2407/015',items:[{text:'Date: 16 Jul 2024',x:700,width:150},{text:'Invoice No.: 2407/015',x:870,width:180}]},
+    {y:160,text:'Description Qty Unit Price Amount',items:[{text:'Description',x:100,width:120},{text:'Qty',x:650,width:50},{text:'Unit Price',x:760,width:90},{text:'Amount',x:1000,width:80}]},
+    {y:210,text:'Wireless Handheld Microphone System 2 garbled 00.00',items:[{text:'Wireless Handheld Microphone System',x:100,width:360},{text:'2',x:665,width:12},{text:'garbled',x:765,width:70},{text:'00.00',x:1010,width:50}]},
+    {y:240,text:'Model: Shure SLXD24/SM5B',items:[{text:'Model: Shure SLXD24/SM5B',x:100,width:260}]},
+    {y:310,text:'System tuning and calibration 1 100.00 100.00',items:[{text:'System tuning and calibration',x:100,width:300},{text:'1',x:665,width:12},{text:'100.00',x:770,width:65},{text:'100.00',x:1010,width:65}]},
+    {y:380,text:'Subtotal 2,000.00 GST 9% 180.00 Invoice Total 2,180.00',items:[{text:'Subtotal',x:780,width:75},{text:'2,000.00',x:870,width:85},{text:'GST 9%',x:960,width:60},{text:'180.00',x:1030,width:65},{text:'Invoice Total',x:1100,width:95},{text:'2,180.00',x:1200,width:85}]}
+  ]},
+  {page:6,width:1200,height:1600,yTolerance:3,rows:[
+    {y:40,text:'SCHEDULES OF PRICES AND TECHNICAL DATA',items:[{text:'SCHEDULES OF PRICES AND TECHNICAL DATA',x:100,width:420}]},
+    {y:160,text:'Description Model Qty Unit Price Amount',items:[{text:'Description',x:100,width:120},{text:'Model',x:510,width:70},{text:'Qty',x:650,width:50},{text:'Unit Price',x:760,width:90},{text:'Amount',x:1000,width:80}]},
+    {y:210,text:'Wireless Handheld Microphone System SLXD24/SM58 2 950.00 1900.00',items:[{text:'Wireless Handheld Microphone System',x:100,width:330},{text:'SLXD24/SM58',x:500,width:120},{text:'2',x:665,width:12},{text:'950.00',x:770,width:65},{text:'1900.00',x:1010,width:75}]}
+  ]}
+];
+const conceptSupportRecovered=v2ctx.InventoryHubParserV2.analyze({sources:[{source:'concept-mini',kind:'ocr',text:'',layout:conceptMiniInvoice}],legacyResult:{doc:{},items:[]}});
+assert(conceptSupportRecovered.safeToPromote===true,'Matching quotation support + invoice subtotal should permit safe recovery');
+assert(conceptSupportRecovered.promotionRows.some(x=>x.sku==='SLXD24/SM58'&&x.quantity===2&&x.unit_price===950&&x.amount===1900),'B/8 model ambiguity must be corrected only by matched support evidence');
+assert(conceptSupportRecovered.invoiceSubtotalCheck?.expected===2000&&conceptSupportRecovered.invoiceSubtotalCheck?.actual===2000&&conceptSupportRecovered.invoiceSubtotalCheck?.ok===true,'Complex invoice subtotal guard exact-match failed');
+
+const conceptWrongSupport=JSON.parse(JSON.stringify(conceptMiniInvoice));
+const wrongSupportRow=conceptWrongSupport[1].rows.find(x=>/Wireless Handheld/.test(x.text));
+wrongSupportRow.text='Wireless Handheld Microphone System SLXD24/SM58 2 990.00 1980.00';
+wrongSupportRow.items[3].text='990.00';wrongSupportRow.items[4].text='1980.00';
+const conceptWrongSupportResult=v2ctx.InventoryHubParserV2.analyze({sources:[{source:'concept-wrong-support',kind:'ocr',text:'',layout:conceptWrongSupport}],legacyResult:{doc:{},items:[]}});
+assert(conceptWrongSupportResult.safeToPromote===false&&conceptWrongSupportResult.promotionDecision.blockers.some(x=>x.code==='invoice-subtotal-mismatch'),'Wrong supporting quotation price must be blocked by invoice subtotal');
+
+const conceptContinuationSubtotal=JSON.parse(JSON.stringify(conceptWrongSupport));
+conceptContinuationSubtotal[0].rows=conceptContinuationSubtotal[0].rows.map(r=>r);
+conceptContinuationSubtotal[0].rows.splice(1,1,{y:70,text:'Page 2 of 2',items:[{text:'Page 2 of 2',x:850,width:100}]});
+const conceptContinuationResult=v2ctx.InventoryHubParserV2.analyze({sources:[{source:'concept-continuation',kind:'ocr',text:'',layout:conceptContinuationSubtotal}],legacyResult:{doc:{},items:[]}});
+assert(conceptContinuationResult.safeToPromote===false&&conceptContinuationResult.invoiceSubtotalCheck?.proven===true&&conceptContinuationResult.promotionDecision.blockers.some(x=>x.code==='invoice-subtotal-mismatch'),'Continuation page without invoice title must still contribute subtotal safety evidence');
+
+
 const multiTableLayout=[{page:1,width:595,height:842,yTolerance:3,rows:[
   {y:100,text:'Description Quantity Unit Price Amount',items:[
     {text:'Description',x:36,width:48},{text:'Quantity',x:252,width:36},{text:'Unit Price',x:341,width:42},{text:'Amount',x:523,width:34}

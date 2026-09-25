@@ -6,21 +6,45 @@
   const compact=v=>clean(v).toUpperCase().replace(/\s+/g,'');
   const companySuffix=/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i;
   const rejectParty=/\b(?:SOLD\s+TO|BILL\s+TO|SHIP\s+TO|DELIVERED\s+TO|CUSTOMER|ATTN|ATTENTION)\b/i;
+  const rejectFinancialParty=/\b(?:ACCOUNT\s+NAME|BANK\s+ACCOUNT|PAYNOW|REMITTANCE|CHEQUE|BENEFICIARY|SWIFT\s+CODE|BRANCH\s+CODE)\b/i;
   const valueToken=/^[A-Z0-9][A-Z0-9._\/-]{2,}$/i;
-  const refLabel=/(?:\bREFERENCE(?:\s*(?:NO\.?|NUMBER|#))?|\bREF\.?\s*(?:NO\.?|NUMBER|#)?)(?=\s*[:#.-]|\s|$)/i;
+  const refLabel=/(?:\b(?:ORDER\s+REF(?:ERENCE)?|REFERENCE)(?:\s*(?:NO\.?|NUMBER|#))?|\bREF\.?\s*(?:NO\.?|NUMBER|#)?)(?=\s*[:#.-]|\s|$)/i;
   const invoiceLabel=/(?:\bINVOICE\s*(?:NO\.?|NUMBER|#)|\bINV\s*(?:NO\.?|#))(?=\s*[:#.-]|\s|$)/i;
   const dateLabel=/\b(?:INVOICE\s+DATE|DATE)\b/i;
+  const INVOICE_PAGE_RE=/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)\b/i;
+  const NONINVOICE_PAGE_RE=/\b(?:DELIVERY\s+ORDER|PURCHASE\s+ORDER|QUOTATION|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?)\b/i;
+  const MONTHS=Object.freeze({JAN:1,JANUARY:1,FEB:2,FEBRUARY:2,MAR:3,MARCH:3,APR:4,APRIL:4,MAY:5,JUN:6,JUNE:6,JUL:7,JULY:7,AUG:8,AUGUST:8,SEP:9,SEPT:9,SEPTEMBER:9,OCT:10,OCTOBER:10,NOV:11,NOVEMBER:11,DEC:12,DECEMBER:12});
 
+  function pageRole(page={}){
+    const t=clean((page.rows||[]).slice(0,90).map(r=>r.text||'').join(' '));
+    if(INVOICE_PAGE_RE.test(t))return 'invoice';
+    if(NONINVOICE_PAGE_RE.test(t))return 'noninvoice';
+    return 'unknown';
+  }
+  function relevantLayoutPages(src={}){
+    const pages=src.layout||[],invoicePages=pages.filter(pg=>pageRole(pg)==='invoice');
+    return invoicePages.length?invoicePages:pages;
+  }
   function dateToken(v=''){
-    const m=clean(v).match(/(?:^|[^A-Za-z0-9\/.-])([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*(?:\d{4}|\d{2}))(?![A-Za-z0-9])/);
-    return m?m[1]:'';
+    const s=clean(v);
+    const numeric=s.match(/(?:^|[^A-Za-z0-9\/.-])([0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*(?:\d{4}|\d{2}))(?![A-Za-z0-9])/);
+    if(numeric)return numeric[1];
+    const textual=s.match(/(?:^|[^A-Za-z0-9])([0-3]?\d(?:st|nd|rd|th)?\s+(?:JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:T|TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\s+(?:\d{4}|\d{2}))(?![A-Za-z0-9])/i);
+    return textual?textual[1]:'';
   }
   function parseDateStrict(v=''){
-    const m=clean(v).match(/^([0-3]?\d)\s*[/.\-]\s*([01]?\d)\s*[/.\-]\s*(\d{2}|\d{4})$/);
-    if(!m)return '';
-    let y=Number(m[3]);if(y<100)y=y<70?2000+y:1900+y;
-    const d=Number(m[1]),mo=Number(m[2]);if(!(y>=1990&&y<=2100&&mo>=1&&mo<=12&&d>=1&&d<=31))return '';
-    const dt=new Date(Date.UTC(y,mo-1,d));if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==d)return '';
+    const s=clean(v);let m,d,mo,y;
+    m=s.match(/^([0-3]?\d)\s*[/.\-]\s*([01]?\d)\s*[/.\-]\s*(\d{2}|\d{4})$/);
+    if(m){d=Number(m[1]);mo=Number(m[2]);y=Number(m[3]);}
+    else{
+      m=s.match(/^([0-3]?\d)(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{2}|\d{4})$/i);
+      if(!m)return '';
+      d=Number(m[1]);mo=MONTHS[String(m[2]||'').toUpperCase()]||0;y=Number(m[3]);
+    }
+    if(y<100)y=y<70?2000+y:1900+y;
+    if(!(y>=1990&&y<=2100&&mo>=1&&mo<=12&&d>=1&&d<=31))return '';
+    const dt=new Date(Date.UTC(y,mo-1,d));
+    if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==d)return '';
     return String(y).padStart(4,'0')+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
   }
   function pushCandidate(out,field,value,meta={}){
@@ -36,21 +60,21 @@
     if(!m)return '';
     const first=m[1],second=m[2]||'';
     if(/\d/.test(first))return first;
-    // Allow a short alphabetic prefix plus one identifier token, e.g. "INV LTA-00215840".
-    // Do not absorb arbitrary trailing prose or field labels.
     if(second&&/^[A-Z]{2,8}$/i.test(first)&&/\d/.test(second))return first+' '+second;
     return '';
   }
   function geometryValues(evidence,labelRe,field){
     const out=[];
-    for(const src of evidence.sources||[])for(const pg of src.layout||[])for(const row of pg.rows||[]){
+    for(const src of evidence.sources||[])for(const pg of relevantLayoutPages(src))for(const row of pg.rows||[]){
       const items=row.items||[];if(!items.length)continue;
-      const labelItems=items.filter(it=>labelRe.test(clean(it.text)));if(!labelItems.length&&!labelRe.test(row.text||''))continue;
+      const labelItems=items.filter(it=>labelRe.test(clean(it.text)));
+      if(!labelItems.length&&!labelRe.test(row.text||''))continue;
       const lx=labelItems.length?Math.min(...labelItems.map(it=>Number(it.x)||0)):Math.min(...items.map(it=>Number(it.x)||0));
       const lw=labelItems.length?Math.max(...labelItems.map(it=>(Number(it.x)||0)+(Number(it.width)||0)))-lx:0;
       const right=items.filter(it=>(Number(it.x)||0)>lx+lw-2).sort((a,b)=>(Number(a.x)||0)-(Number(b.x)||0)).map(it=>clean(it.text)).filter(Boolean);
       if(right.length)pushCandidate(out,field,right.join(' '),{source:src.id,kind:'geometry',score:120,evidence:row.text,page:pg.page});
-      const inline=lineValueAfterLabel(row.text||'',labelRe);if(inline)pushCandidate(out,field,inline,{source:src.id,kind:'geometry-text',score:105,evidence:row.text,page:pg.page});
+      const inline=lineValueAfterLabel(row.text||'',labelRe);
+      if(inline)pushCandidate(out,field,inline,{source:src.id,kind:'geometry-text',score:105,evidence:row.text,page:pg.page});
     }
     return out;
   }
@@ -59,10 +83,9 @@
     const suffixMatch=v.match(/\b(?:PTE\.?\s*LTD\.?|PRIVATE\s+LIMITED|LIMITED|LTD\.?|LLP|LLC|INC\.?|CORP(?:ORATION)?\.?|CO\.?\s*LTD\.?)\b/i);
     if(!suffixMatch)return '';
     const end=suffixMatch.index+suffixMatch[0].length;
-    let prefix=v.slice(0,end).trim();
-    let bestStart=-1;
+    let prefix=v.slice(0,end).trim(),bestStart=-1;
     for(const stem of domainStems||[]){
-      const escaped=String(stem).replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\  function supplierCandidates(evidence){');
+      const escaped=String(stem).replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&');
       const re=new RegExp('\\b'+escaped+'\\b','ig');
       let m;while((m=re.exec(prefix)))bestStart=m.index;
     }
@@ -74,13 +97,11 @@
   function supplierCandidates(evidence){
     const out=[];
     for(const src of evidence.sources||[]){
-      const allText=clean(src.text),lines=allText.split(/\n+/).filter(Boolean).slice(0,140);
-      const domainStems=new Set();
+      const allText=clean(src.text),lines=allText.split(/\n+/).filter(Boolean).slice(0,140),domainStems=new Set();
       for(const m of allText.matchAll(/(?:https?:\/\/)?(?:www\.)?([a-z0-9][a-z0-9-]{2,})\.[a-z]{2,}(?:\.[a-z]{2,})?/gi))domainStems.add(String(m[1]||'').toUpperCase());
       for(const m of allText.matchAll(/[A-Z0-9._%+-]+@([a-z0-9][a-z0-9-]{2,})\.[a-z]{2,}(?:\.[a-z]{2,})?/gi))domainStems.add(String(m[1]||'').toUpperCase());
-
       const addLine=(line,kind,index)=>{
-        const v=clean(line);if(!v||rejectParty.test(v))return;
+        const v=clean(line);if(!v||rejectParty.test(v)||rejectFinancialParty.test(v))return;
         const labelled=v.match(/^\s*(?:SUPPLIER|VENDOR|FROM|ISSUED\s+BY)\s*[:#.-]?\s*(.+)$/i);
         if(labelled&&clean(labelled[1]))pushCandidate(out,'supplier_name',labelled[1],{source:src.id,kind,score:Math.max(100,145-index),evidence:v});
         if(companySuffix.test(v)){
@@ -91,30 +112,28 @@
         }
       };
       lines.forEach((line,i)=>addLine(line,src.kind,i));
-      for(const pg of src.layout||[])(pg.rows||[]).slice(0,60).forEach((row,i)=>addLine(row.text,'geometry',i));
+      for(const pg of relevantLayoutPages(src))(pg.rows||[]).slice(0,60).forEach((row,i)=>addLine(row.text,'geometry',i));
     }
     return out;
+  }
+  function sourceLinesForHeader(src={}){
+    return (src.layout||[]).some(pg=>pageRole(pg)==='invoice')?[]:clean(src.text).split(/\n+/).filter(Boolean);
   }
   function invoiceCandidates(evidence){
     const out=[...geometryValues(evidence,invoiceLabel,'invoice_number')];
     for(const src of evidence.sources||[]){
-      const lines=clean(src.text).split(/\n+/).filter(Boolean);
+      const lines=sourceLinesForHeader(src);
       for(let i=0;i<lines.length;i++){
         const line=lines[i],v=lineValueAfterLabel(line,invoiceLabel);
         if(v)pushCandidate(out,'invoice_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
-        // OCR frequently separates a boxed label and its value onto adjacent lines.
-        // Recover only a tightly adjacent identifier-looking value; never absorb another field label.
         if(invoiceLabel.test(line)&&!identifierFromTail(v)){
           for(let j=i+1;j<=Math.min(lines.length-1,i+2);j++){
-            const next=clean(lines[j]);
-            if(!next)continue;
+            const next=clean(lines[j]);if(!next)continue;
             if(/^(?:REF(?:ERENCE)?|DATE|P\/?O|PURCHASE\s+ORDER|SALESMAN|TERMS|CUSTOMER|ACCOUNT|GST|UEN)\b/i.test(next))break;
             const id=identifierFromTail(next);
             if(id){pushCandidate(out,'invoice_number',id,{source:src.id,kind:src.kind,score:108,evidence:line+' -> '+next});break;}
           }
         }
-        // Some invoice boxes use only "NO:" beneath/next to TAX INVOICE.
-        // Accept this only with local invoice-title context; a generic account/customer NO remains rejected.
         const bare=line.match(/\bNO\.?\s*[:#.-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i);
         const nearby=lines.slice(Math.max(0,i-3),Math.min(lines.length,i+2)).join(' ');
         const forbiddenBare=/\b(?:REG(?:ISTRATION)?|GST|UEN|ACCOUNT|CUSTOMER|REF(?:ERENCE)?|D\/?O|P\/?O|ORDER|PHONE|TEL|FAX)\s*(?:NO\.?|NUMBER)?\b/i.test(line);
@@ -123,18 +142,18 @@
         }
       }
     }
-    return out.map(x=>({...x,value:identifierFromTail(x.value)})).filter(x=>x.value&&valueToken.test(compact(x.value))&&!/^(?:DATE|CUSTOMER|CODE|TERMS|SALESMAN|REF|REFERENCE)$/i.test(compact(x.value)));
+    return out.map(x=>({...x,value:identifierFromTail(x.value)}))
+      .filter(x=>x.value&&valueToken.test(compact(x.value))&&!/^(?:DATE|CUSTOMER|CODE|TERMS|SALESMAN|REF|REFERENCE)$/i.test(compact(x.value)));
   }
   function dateCandidates(evidence){
     const out=[...geometryValues(evidence,dateLabel,'invoice_date')];
     for(const src of evidence.sources||[]){
-      const lines=clean(src.text).split(/\n+/).filter(Boolean);
+      const lines=sourceLinesForHeader(src);
       for(let i=0;i<lines.length;i++){
         const line=lines[i];
         if(!dateLabel.test(line)||/\b(?:DUE|DELIVERY|PAYMENT|WARRANTY)\b/i.test(line))continue;
         const tail=lineValueAfterLabel(line,dateLabel),token=dateToken(tail||line);
         if(token){pushCandidate(out,'invoice_date',token,{source:src.id,kind:src.kind,score:105,evidence:line});continue;}
-        // Boxed invoice headers often OCR the DATE label and value onto successive rows.
         for(let j=i+1;j<=Math.min(lines.length-1,i+2);j++){
           const next=clean(lines[j]),nextToken=dateToken(next);
           if(nextToken){pushCandidate(out,'invoice_date',nextToken,{source:src.id,kind:src.kind,score:102,evidence:line+' -> '+next});break;}
@@ -146,10 +165,12 @@
   }
   function referenceCandidates(evidence){
     const out=[...geometryValues(evidence,refLabel,'reference_number')];
-    for(const src of evidence.sources||[])for(const line of clean(src.text).split(/\n+/).filter(Boolean)){
-      const v=lineValueAfterLabel(line,refLabel);if(v)pushCandidate(out,'reference_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
+    for(const src of evidence.sources||[])for(const line of sourceLinesForHeader(src)){
+      const v=lineValueAfterLabel(line,refLabel);
+      if(v)pushCandidate(out,'reference_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
     }
-    return out.map(x=>({...x,value:identifierFromTail(x.value)})).filter(x=>x.value&&valueToken.test(compact(x.value))&&/\d/.test(x.value)&&!parseDateStrict(x.value)&&!/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i.test(compact(x.value)));
+    return out.map(x=>({...x,value:identifierFromTail(x.value)}))
+      .filter(x=>x.value&&valueToken.test(compact(x.value))&&/\d/.test(x.value)&&!parseDateStrict(x.value)&&!/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i.test(compact(x.value)));
   }
   function choose(field,candidates,{strictConflict=true,minScore=90}={}){
     const grouped=new Map();
@@ -159,12 +180,11 @@
       if(!grouped.has(key))grouped.set(key,{key,value:c.value,score:0,maxScore:0,sources:new Set(),evidence:[]});
       const g=grouped.get(key);g.score+=Math.max(0,c.score);g.maxScore=Math.max(g.maxScore,c.score);g.sources.add(c.source);g.evidence.push(c);
     }
-    const ranked=[...grouped.values()].map(g=>({...g,sources:[...g.sources],support:g.sources.size})).sort((a,b)=>(b.maxScore+Math.min(30,b.score/10)+b.support*8)-(a.maxScore+Math.min(30,a.score/10)+a.support*8));
+    const ranked=[...grouped.values()].map(g=>({...g,sources:[...g.sources],support:g.sources.size}))
+      .sort((a,b)=>(b.maxScore+Math.min(30,b.score/10)+b.support*8)-(a.maxScore+Math.min(30,a.score/10)+a.support*8));
     const best=ranked[0],second=ranked[1];
     if(!best||best.maxScore<minScore)return {field,value:'',status:'blank',reason:'insufficient-evidence',candidates:ranked};
     if(strictConflict&&second&&second.maxScore>=minScore&&second.key!==best.key&&Math.abs(best.maxScore-second.maxScore)<20){
-      // For invoice IDs, two or more independent sources agreeing on the same value can
-      // outweigh one conflicting OCR read. A 1-vs-1 conflict still fails closed.
       const corroboratedInvoice=field==='invoice_number'&&Number(best.support)>=2&&Number(best.support)>Number(second.support||0);
       if(!corroboratedInvoice)return {field,value:'',status:'blank',reason:'conflicting-evidence',candidates:ranked};
     }
@@ -172,8 +192,7 @@
   }
   function guardSingleSourceOcrInvoice(evidence,decision){
     if(!decision||decision.status!=='resolved'||Number(decision.support)!==1)return decision;
-    const best=decision.candidates?.[0];
-    if(!best)return decision;
+    const best=decision.candidates?.[0];if(!best)return decision;
     const bestSources=new Set(best.sources||[]);
     const kinds=(best.evidence||[]).map(x=>String(x.kind||'').toLowerCase()).filter(Boolean);
     if(kinds.length&&!kinds.every(k=>k.includes('ocr')))return decision;
@@ -181,8 +200,7 @@
       .filter(src=>String(src.kind||'').toLowerCase().includes('ocr')&&invoiceLabel.test(String(src.text||'')))
       .map(src=>src.id);
     if(labelSources.length<2)return decision;
-    const unconfirmed=labelSources.some(id=>!bestSources.has(id));
-    if(!unconfirmed)return decision;
+    if(!labelSources.some(id=>!bestSources.has(id)))return decision;
     return {...decision,value:'',status:'blank',reason:'single-source-ocr-unconfirmed'};
   }
   function resolveHeaders(evidence){
@@ -190,7 +208,6 @@
     const rawInvoice=choose('invoice_number',invoiceCandidates(evidence),{minScore:95});
     const invoice=guardSingleSourceOcrInvoice(evidence,rawInvoice);
     const date=choose('invoice_date',dateCandidates(evidence),{minScore:95});
-    // Reference Number policy: exact evidence or blank. No repair, no review state, no guessing.
     const reference=choose('reference_number',referenceCandidates(evidence),{strictConflict:true,minScore:98});
     return Object.freeze({
       supplier_name:supplier.value,
@@ -200,5 +217,9 @@
       decisions:Object.freeze({supplier_name:supplier,invoice_number:invoice,invoice_date:date,reference_number:reference})
     });
   }
-  global.InventoryHubParserV2Header=Object.freeze({version:'2.5-ocr-corroboration',parseDateStrict,identifierFromTail,legalCompanyFromLine,supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders});
+  global.InventoryHubParserV2Header=Object.freeze({
+    version:'2.6-mixed-document-headers',
+    pageRole,relevantLayoutPages,parseDateStrict,identifierFromTail,legalCompanyFromLine,
+    supplierCandidates,invoiceCandidates,dateCandidates,referenceCandidates,choose,resolveHeaders
+  });
 })(typeof window!=='undefined'?window:globalThis);

@@ -225,14 +225,36 @@
     }
     return out;
   }
+  const INVOICE_PAGE_RE=/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)\b/i;
+  const SUPPORT_PAGE_RE=/\b(?:QUOTATION|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?)\b/i;
+  const NONINVOICE_PAGE_RE=/\b(?:DELIVERY\s+ORDER|PURCHASE\s+ORDER)\b/i;
+  function pageDocumentRole(page={}){
+    const t=clean((page.rows||[]).slice(0,100).map(r=>r.text||'').join(' '));
+    if(INVOICE_PAGE_RE.test(t))return 'invoice';
+    if(SUPPORT_PAGE_RE.test(t))return 'support';
+    if(NONINVOICE_PAGE_RE.test(t))return 'noninvoice';
+    return 'unknown';
+  }
   function detectTables(evidence={}){
     const all=[];
     for(const source of evidence.sources||[])for(const page of source.layout||[]){
+      const role=pageDocumentRole(page);
+      if(role==='noninvoice'||role==='support')continue;
       const headerTables=detectPageTables(source,page);
       if(headerTables.length)all.push(...headerTables);
       else all.push(...detectHeaderlessTables(source,page));
     }
     return all;
   }
-  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.4-body-evidence-direction',HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
+  function detectSupportTables(evidence={}){
+    const all=[];
+    for(const source of evidence.sources||[])for(const page of source.layout||[]){
+      if(pageDocumentRole(page)!=='support')continue;
+      const headerTables=detectPageTables(source,page);
+      if(headerTables.length)all.push(...headerTables.map(t=>({...t,supportingDocument:true})));
+      else all.push(...detectHeaderlessTables(source,page).map(t=>({...t,supportingDocument:true})));
+    }
+    return all;
+  }
+  global.InventoryHubParserV2TableDetector=Object.freeze({version:'2.6-support-document-evidence',pageDocumentRole,detectSupportTables,HEADER_RULES,TOTAL_RE,TAX_SUMMARY_RE,TAX_REGISTRATION_RE,isTotalRowText,HEADERLESS_META_RE,numericTokenValue,moneyLike,inferEconomicColumns,detectHeaderlessTables,findHeaderColumns,detectPageTables,detectTables});
 })(typeof window!=='undefined'?window:globalThis);
