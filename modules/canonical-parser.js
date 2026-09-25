@@ -10,6 +10,12 @@
   const clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
   const serials=v=>[...new Set(String(v||'').split(',').map(clean).filter(Boolean))];
 
+  function calculateAmount(quantity,unitPrice){
+    const q=Number(quantity),p=Number(unitPrice);
+    if(!(q>0)||!Number.isFinite(p)||p<0)return null;
+    return Math.round(q*p*100)/100;
+  }
+
   function canonicalIdentity(row={}){
     const brand=clean(row.brand||row.manufacturer||'');
     const model=clean(row.model||row.sku||'');
@@ -172,6 +178,7 @@
     version:ENGINE_VERSION,
     apiVersion:API_VERSION,
     canonicalIdentity,
+    calculateAmount,
     normalizeResult,
     fromPipeline,
     applyReviewEdits,
