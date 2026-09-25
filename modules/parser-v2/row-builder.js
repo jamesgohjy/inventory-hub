@@ -174,7 +174,11 @@
         ?anchorDescription:descriptionFromGroup(group,table.columns);
       const continuationDescription=continuationEquipmentDescription(following,table.columns);
       if(continuationDescription&&(GENERIC_DESC_RE.test(baseDescription)||!EQUIPMENT_HINT_RE.test(baseDescription)))baseDescription=continuationDescription;
-      const printedModel=printedModelFromRows([...group,...following],table.columns);
+      // Prefer model/replacement evidence on the current priced anchor and its trailing continuation.
+      // Do not let a previous row's post-anchor Model: line bleed into this row.
+      let printedModel=printedModelFromRows([anchor,...following],table.columns);
+      // If the economic anchor itself has no description, allow pre-anchor wrapped text as a fallback.
+      if(!printedModel&&!anchorDescription)printedModel=printedModelFromRows(group,table.columns);
       if(!sku&&printedModel)sku=printedModel;
       const description=cleanItemDescription([codeSpill,baseDescription].filter(Boolean).join(' '));
       const raw=clean([...group,...following].map(r=>r.text).join(' '));
@@ -205,5 +209,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.5-continuation-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.6-row-local-model-evidence',mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);
