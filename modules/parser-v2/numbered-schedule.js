@@ -20,13 +20,33 @@
       if(T.pageDocumentRole(page)!=='invoice')continue;
       const rows=page.rows||[],header=rows.findIndex(r=>/\bNO\.?\b/i.test(r.text)&&/\bDESCRIPTION\b/i.test(r.text));
       if(header<0)continue;
-      const starts=[];
+      const starts=[],floating=[];
       for(let i=header+1;i<rows.length;i++){
         if(/\bSUB\s*TOTAL\b|\bPAGE\s+\d+\s+OF\s+\d+\b/i.test(rows[i].text))break;
-        if(/\bMODEL\s*:/i.test(rows[i].text))continue;
+        if(/\bMODEL\s*:/i.test(rows[i].text)){
+          let k=i-1;
+          while(k>header&&!/[A-Za-z]{3}/.test(rows[k].text||''))k--;
+          const desc=rows[k];
+          if(k>header&&!numberedAnchor(desc,page)&&/\b(?:mixer|speaker|microphone|projector|controller|amplifier|player|camera|display|receiver|receptacle)\b/i.test(desc.text||'')&&!serviceRe.test(desc.text||'')){
+            floating.push({index:k,modelIndex:i});
+          }
+          continue;
+        }
         const ordinal=numberedAnchor(rows[i],page);
         if(ordinal&&ordinal<=20&&starts.at(-1)?.ordinal!==ordinal)starts.push({ordinal,index:i});
       }
+      // OCR frequently damages a row number while leaving the physical
+      // description + Model line intact. Infer only when unnumbered physical
+      // rows are bounded by numbered neighbours and exactly fill the ordinal gap.
+      const explicit=[...starts].sort((a,b)=>a.index-b.index);
+      for(let j=0;j<explicit.length-1;j++){
+        const prev=explicit[j],next=explicit[j+1],gap=next.ordinal-prev.ordinal-1;
+        if(gap<=0)continue;
+        const missing=floating.filter(x=>x.index>prev.index&&x.index<next.index&&!starts.some(s=>s.index===x.index)).sort((a,b)=>a.index-b.index);
+        if(missing.length!==gap)continue;
+        missing.forEach((x,k)=>starts.push({ordinal:prev.ordinal+k+1,index:x.index,inferredOrdinal:true}));
+      }
+      starts.sort((a,b)=>a.index-b.index);
       if(starts.length<4)continue;
       const scope=starts.find(s=>/\bSCOPE\s+OF\s+WORK\b/i.test(rows[s.index].text));
       for(let j=0;j<starts.length;j++){
@@ -55,22 +75,30 @@
     const out=[];
     for(const src of evidence.sources||[]){
       const text=String(src.text||'');if(!/SCHEDULES?\s+OF\s+PRICES/i.test(text))continue;
-      const lines=text.split(/\r?\n/),start=lines.findIndex(x=>/SCHEDULES?\s+OF\s+PRICES/i.test(x));
-      let current=null;
+      const lines=text.split(/\r?\n/),start=lines.findIndex(x=>/SCHEDULES?\s+OF\s+PRICES/i.test(x)),candidates=[];
       for(let i=start+1;i<lines.length;i++){
         const line=clean(lines[i]);if(/\b(?:SCOPE\s+OF\s+WORK|TERMS\s*&\s*CONDITIONS)\b/i.test(line))break;
-        const m=line.match(/^\|?\s*([1-9]|[1-9]\d)\s*[|. -]+(.+)$/);
-        if(!m)continue;
-        const ordinal=Number(m[1]);if(ordinal>50)continue;
-        const prices=[...line.matchAll(moneyRe)].map(x=>money(x[0])).filter(x=>x!==null);
+        const priceHits=[...line.matchAll(moneyRe)],prices=priceHits.map(x=>money(x[0])).filter(x=>x!==null);
         if(prices.length<2)continue;
         const amount=prices.at(-1),unit=prices.at(-2);
         if(!(amount>0)||!(unit>0))continue;
-        const beforeMoney=line.slice(0,line.indexOf([...line.matchAll(moneyRe)][0][0]));
+        const m=line.match(/^\|?\s*([1-9]|[1-9]\d)\s*[|. -]+(.+)$/),ordinal=m?Number(m[1]):null;
+        if(ordinal!==null&&ordinal>50)continue;
+        const beforeMoney=line.slice(0,line.indexOf(priceHits[0][0]));
         const q=beforeMoney.match(/(?:^|\s)(\d{1,3})\s*\|?\s*$/)?.[1];
-        out.push({source:src.id,ordinal,text:line,quantity:q?Number(q):null,unit,amount});
-        current=ordinal;
+        candidates.push({source:src.id,ordinal,text:line,quantity:q?Number(q):null,unit,amount});
       }
+      // Price-schedule row numbers can be damaged independently from the invoice.
+      // Recover only bounded gaps: 4, [priced physical row], 6 => row 5.
+      const explicit=candidates.map((c,i)=>({c,i})).filter(x=>x.c.ordinal!==null);
+      for(let j=0;j<explicit.length-1;j++){
+        const prev=explicit[j],next=explicit[j+1],gap=next.c.ordinal-prev.c.ordinal-1;
+        if(gap<=0)continue;
+        const missing=candidates.map((c,i)=>({c,i})).filter(x=>x.i>prev.i&&x.i<next.i&&x.c.ordinal===null);
+        if(missing.length!==gap)continue;
+        missing.forEach((x,k)=>{x.c.ordinal=prev.c.ordinal+k+1;});
+      }
+      for(const c of candidates)if(c.ordinal!==null)out.push(c);
     }
     return out;
   }
