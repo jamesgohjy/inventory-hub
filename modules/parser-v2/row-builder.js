@@ -225,11 +225,14 @@
       let desc=desc0,continuation=continuationEquipmentDescription(following,table.columns);
       if(continuation&&(GENERIC_DESC_RE.test(desc)||!EQUIPMENT_HINT_RE.test(desc)))desc=continuation;
       const model=printedModelFromRows([row,...following],table.columns);
+      const observedUnitPrice=strictMoney(cellText(row,table.columns.boundaries.unit_price));
+      const observedAmount=strictMoney(cellText(row,table.columns.boundaries.amount));
       desc=cleanItemDescription(desc);
       out.push({
         sourceRowId:table.id+':s'+(out.length+1),
         sku:model||'',model:model||'',item_name:desc,description:desc,
         quantity:q,unit_price:null,amount:null,
+        observedEconomics:Object.freeze({quantity:q,unit_price:observedUnitPrice,amount:observedAmount}),
         layoutEvidenceVerified:true,economicEvidenceVerified:false,parserV2PhysicalRow:true,supportRecoveryPending:true,
         provenance:{engine:'parser-v2',tableId:table.id,source:table.source,sourceKind:table.sourceKind,page:table.page,rowIndexes:[row,...following].flatMap(r=>r.sourceRowIndexes||[]),rawText:clean([row,...following].map(r=>r.text).join(' ')),printedModel:model||''}
       });
@@ -245,5 +248,5 @@
       rowCount:tableRows.reduce((n,x)=>n+x.rows.length,0)
     };
   }
-  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.8-damaged-row-boundaries',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
+  global.InventoryHubParserV2RowBuilder=Object.freeze({version:'2.9-partial-economic-observations',buildSkeletonRows,mergeBodyBands,parseNumericTokens,strictQuantity,strictMoney,numericCellCandidates,economicsFromGroup,codeFromRow,descriptionFromGroup,rowLooksLikeStart,buildTableRows,buildRows});
 })(typeof window!=='undefined'?window:globalThis);

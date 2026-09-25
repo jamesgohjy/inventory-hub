@@ -229,6 +229,19 @@
       "focused_retest": "PENDING_DEPLOYMENT",
       "permanent_regression_lock": "tests/run-regression.cjs — live V2 full-document handoff assertions",
       "status": "fix-implemented-awaiting-live-retest"
+    },
+    {
+      "id": "ADV-2026-09-25-018",
+      "type": "all-or-nothing-promotion-blocked-by-partial-economics",
+      "base_document_family": "Concept Systems Technologies / stamped player row",
+      "mutation": "Invoice OCR repeatedly reads Qty 1 and Unit Price 950 but stamp corrupts Amount to 850. Quotation OCR repeatedly reads Amount 950 while some modes misread quotation Qty as 4.",
+      "observed_failure": "The unresolved player skeleton blocked Parser V2 safe promotion, so the live Review fell back to the legacy parser's 2 equipment rows.",
+      "root_cause": "Damaged-row skeletons discarded readable individual economic cells, and support reconciliation only accepted fully coherent support rows.",
+      "generalized_fix": "Retain observed Qty/Unit/Amount cells on damaged rows. When no fully verified support row exists, allow recovery only if at least two independent support OCR sources agree on Amount, the invoice quantity produces a matching derived unit price corroborated by invoice/support price evidence, and the final invoice subtotal reconciles.",
+      "expected": "Recover XDP-3001 Qty 1, Unit 950, Amount 950; one support source alone remains unresolved.",
+      "focused_retest": "PENDING_CI",
+      "permanent_regression_lock": "tests/run-regression.cjs — partialRecoveryResult / partialSingleSupport / modelConsensus",
+      "status": "fix-implemented-awaiting-ci"
     }
   ],
   "unresolved": []

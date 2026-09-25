@@ -108,38 +108,124 @@
     return Object.freeze({proven:true,complete,ok:complete&&delta<=tolerance,expected,actual,delta,tolerance});
   }
 
-  function reconcileSupportingEconomics(skeletons=[],supportRows=[]){
+  function sourceId(row={}){return clean(row?.provenance?.source||row?.source||'');}
+  function observed(row={},field){
+    const v=Number(row?.observedEconomics?.[field]);
+    return Number.isFinite(v)?Math.round(v*100)/100:null;
+  }
+  function descriptionMatchScore(a={},b={}){
+    const at=recoveryTokens(a),bt=recoveryTokens(b);if(!at.size||!bt.size)return -1;
+    let shared=0;for(const t of at)if(bt.has(t))shared++;
+    const ratio=shared/Math.max(1,Math.min(at.size,bt.size));
+    return shared>=3&&ratio>=.5?shared*12+ratio*50:-1;
+  }
+  function normalizeCrossOcrSkeletonModels(rows=[]){
+    const out=(rows||[]).map(r=>({...r}));
+    for(let i=0;i<out.length;i++){
+      const row=out[i],q=Number(row.quantity);if(!(q>0))continue;
+      const peers=out.filter((p,j)=>j!==i&&Number(p.quantity)===q&&descriptionMatchScore(row,p)>=70);
+      const all=[row,...peers],byModel=new Map();
+      for(const p of all){
+        const model=clean(p.sku||p.model||'');if(!model)continue;
+        const key=keyText(model).replace(/\s+/g,'');if(!key)continue;
+        if(!byModel.has(key))byModel.set(key,{value:model,sources:new Set()});
+        byModel.get(key).sources.add(sourceId(p)||('row-'+all.indexOf(p)));
+      }
+      const ranked=[...byModel.values()].map(x=>({...x,support:x.sources.size})).sort((a,b)=>b.support-a.support);
+      if(ranked[0]?.support>=2&&ranked[0].support>Number(ranked[1]?.support||0)){
+        row.sku=ranked[0].value;row.model=ranked[0].value;
+        row.provenance={...(row.provenance||{}),modelConsensus:{value:ranked[0].value,support:ranked[0].support}};
+      }
+    }
+    return out;
+  }
+  function consensusValue(rows=[],field,{minSupport=2,tolerance=.02}={}){
+    const points=[];
+    for(const row of rows||[]){
+      const v=observed(row,field),src=sourceId(row);if(v===null||!src)continue;
+      points.push({value:v,source:src});
+    }
+    const clusters=[];
+    for(const p of points){
+      let cluster=clusters.find(c=>Math.abs(c.center-p.value)<=tolerance);
+      if(!cluster){cluster={values:[],sources:new Set(),center:p.value};clusters.push(cluster);}
+      cluster.values.push(p.value);cluster.sources.add(p.source);cluster.center=cluster.values.reduce((a,v)=>a+v,0)/cluster.values.length;
+    }
+    clusters.sort((a,b)=>b.sources.size-a.sources.size||b.values.length-a.values.length);
+    const best=clusters[0],second=clusters[1];
+    if(!best||best.sources.size<minSupport||best.sources.size===Number(second?.sources?.size||0))return null;
+    return {value:Math.round(best.center*100)/100,support:best.sources.size,sources:[...best.sources]};
+  }
+  function partialSupportRecovery(skeleton={},supportSkeletons=[]){
+    const q=Number(skeleton.quantity);if(!(q>0))return null;
+    const matches=(supportSkeletons||[]).filter(r=>descriptionMatchScore(skeleton,r)>=70);
+    if(!matches.length)return null;
+    const amountConsensus=consensusValue(matches,'amount',{minSupport:2,tolerance:.02});
+    if(!amountConsensus)return null;
+    const derivedUnit=Math.round((amountConsensus.value/q)*100)/100;
+    if(!(derivedUnit>=0))return null;
+    const invoiceUnit=observed(skeleton,'unit_price');
+    const supportUnit=consensusValue(matches,'unit_price',{minSupport:1,tolerance:.12});
+    const agrees=v=>v!==null&&Math.abs(v-derivedUnit)<=Math.max(.12,Math.abs(derivedUnit)*.001);
+    if(!agrees(invoiceUnit)&&!agrees(supportUnit?.value??null))return null;
+    const invoiceAmount=observed(skeleton,'amount');
+    // A conflicting damaged invoice amount is allowed only because two independent support OCR
+    // sources agree on the replacement amount and arithmetic is exact. Subtotal validation remains mandatory later.
+    const delta=Math.abs(q*derivedUnit-amountConsensus.value),tol=Math.max(.03,Math.abs(amountConsensus.value)*.003);
+    if(delta>tol)return null;
+    return {
+      quantity:q,unit_price:derivedUnit,amount:amountConsensus.value,
+      support:amountConsensus.support,sources:amountConsensus.sources,
+      invoiceObserved:{unit_price:invoiceUnit,amount:invoiceAmount},
+      method:'partial-economics-consensus'
+    };
+  }
+
+  function reconcileSupportingEconomics(skeletons=[],supportRows=[],supportSkeletons=[]){
+    const normalizedSkeletons=normalizeCrossOcrSkeletonModels(skeletons);
     const validSupport=(supportRows||[]).filter(r=>(R?.economics?.(r)||{}).ok===true&&r.layoutEvidenceVerified===true&&r.economicEvidenceVerified===true);
     const used=new Set(),out=[];
-    for(const skeleton of skeletons||[]){
+    for(const skeleton of normalizedSkeletons){
       const ranked=validSupport.map((row,index)=>({row,index,score:supportMatchScore(skeleton,row)}))
         .filter(x=>x.score>=0&&!used.has(x.index)).sort((a,b)=>b.score-a.score);
       const best=ranked[0],second=ranked[1];
-      if(!best){out.push(skeleton);continue;}
-      const bestSig=economicSignature(best.row),secondSig=second?economicSignature(second.row):'';
-      if(second&&Math.abs(best.score-second.score)<8&&bestSig&&secondSig&&bestSig!==secondSig){out.push(skeleton);continue;}
-      used.add(best.index);
-      const correctedModel=corroboratedModel(skeleton,best.row);
-      out.push({
-        ...skeleton,
-        ...(correctedModel?{sku:correctedModel,model:correctedModel}:{ }),
-        unit_price:Number(best.row.unit_price),
-        amount:Number(best.row.amount),
-        economicEvidenceVerified:true,
-        supportingDocumentEvidenceVerified:true,
-        supportRecoveryPending:false,
-        provenance:{
-          ...(skeleton.provenance||{}),
-          supportingDocument:{
-            source:best.row?.provenance?.source||'',
-            page:best.row?.provenance?.page||null,
-            rowId:best.row?.sourceRowId||'',
-            score:Math.round(best.score*100)/100,
-            economics:economicSignature(best.row),
-            modelCorrection:correctedModel?{from:skeleton.sku||skeleton.model||'',to:correctedModel,reason:'supporting-document-homoglyph-corroboration'}:null
-          }
+      if(best){
+        const bestSig=economicSignature(best.row),secondSig=second?economicSignature(second.row):'';
+        if(!(second&&Math.abs(best.score-second.score)<8&&bestSig&&secondSig&&bestSig!==secondSig)){
+          used.add(best.index);
+          const correctedModel=corroboratedModel(skeleton,best.row);
+          out.push({
+            ...skeleton,
+            ...(correctedModel?{sku:correctedModel,model:correctedModel}:{ }),
+            unit_price:Number(best.row.unit_price),
+            amount:Number(best.row.amount),
+            economicEvidenceVerified:true,
+            supportingDocumentEvidenceVerified:true,
+            supportRecoveryPending:false,
+            provenance:{
+              ...(skeleton.provenance||{}),
+              supportingDocument:{
+                source:best.row?.provenance?.source||'',
+                page:best.row?.provenance?.page||null,
+                rowId:best.row?.sourceRowId||'',
+                score:Math.round(best.score*100)/100,
+                economics:economicSignature(best.row),
+                modelCorrection:correctedModel?{from:skeleton.sku||skeleton.model||'',to:correctedModel,reason:'supporting-document-homoglyph-corroboration'}:null
+              }
+            }
+          });
+          continue;
         }
-      });
+      }
+      const partial=partialSupportRecovery(skeleton,supportSkeletons);
+      if(partial){
+        out.push({
+          ...skeleton,
+          unit_price:partial.unit_price,amount:partial.amount,
+          economicEvidenceVerified:true,supportingDocumentEvidenceVerified:true,supportRecoveryPending:false,
+          provenance:{...(skeleton.provenance||{}),supportingDocument:{method:partial.method,sources:partial.sources,support:partial.support,economics:`${partial.quantity}|${partial.unit_price}|${partial.amount}`,invoiceObserved:partial.invoiceObserved}}
+        });
+      }else out.push(skeleton);
     }
     return out;
   }
@@ -191,9 +277,18 @@
     const physical=B.buildRows(evidence,tables);
     const supportTables=typeof T.detectSupportTables==='function'?T.detectSupportTables(evidence):[];
     const supportPhysical=supportTables.length?B.buildRows(evidence,supportTables):{rows:[],tables:[]};
+    const supportSkeletons=typeof B.buildSkeletonRows==='function'?supportTables.flatMap(t=>B.buildSkeletonRows(t)):[];
     const skeletons=typeof B.buildSkeletonRows==='function'?tables.flatMap(t=>B.buildSkeletonRows(t)):[];
-    const reconciledSkeletons=reconcileSupportingEconomics(skeletons,supportPhysical.rows);
-    const physicalCandidates=physical.tables.map(t=>({origin:'v2-physical:'+t.id,items:t.rows}));
+    const reconciledSkeletons=reconcileSupportingEconomics(skeletons,supportPhysical.rows,supportSkeletons);
+    const skeletonTableIds=new Set(reconciledSkeletons.map(r=>clean(r?.provenance?.tableId||'')).filter(Boolean));
+    const physicalCandidates=physical.tables.map(t=>{
+      const rows=(t.rows||[]).filter(row=>{
+        const missing=v=>v===null||v===undefined||String(v).trim()===''||!Number.isFinite(Number(v));
+        const placeholder=String(row?.classification?.type||'').toLowerCase()==='unknown'&&missing(row?.quantity)&&missing(row?.unit_price)&&missing(row?.amount);
+        return !(placeholder&&skeletonTableIds.has(t.id));
+      });
+      return {origin:'v2-physical:'+t.id,items:rows};
+    }).filter(x=>x.items.length);
     if(reconciledSkeletons.length)physicalCandidates.push({origin:'v2-invoice-skeleton-recovery',items:reconciledSkeletons});
     const rowLedger=R.buildLedger(physicalCandidates);
     const completeness=R.summarize(rowLedger);
@@ -234,13 +329,13 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.6-continuation-subtotal-guard',
+      version:'2.8-skeleton-placeholder-supersession',
       mode:'evidence-first-independent-table',
       headers,
       tables,
       physicalRows:invoiceRows,
       rowLedger,
-      supportEvidence:Object.freeze({tableCount:supportTables.length,rowCount:supportPhysical.rows.length,recoveredRowCount:reconciledSkeletons.filter(x=>x.supportingDocumentEvidenceVerified).length,pendingRowCount:reconciledSkeletons.filter(x=>!x.supportingDocumentEvidenceVerified).length}),
+      supportEvidence:Object.freeze({tableCount:supportTables.length,rowCount:supportPhysical.rows.length,skeletonCount:supportSkeletons.length,recoveredRowCount:reconciledSkeletons.filter(x=>x.supportingDocumentEvidenceVerified).length,pendingRowCount:reconciledSkeletons.filter(x=>!x.supportingDocumentEvidenceVerified).length}),
       invoiceSubtotalCheck,
       completeness,
       finalComparison,
@@ -306,8 +401,10 @@
   }
 
   global.InventoryHubParserV2=Object.freeze({
-    version:'2.6-continuation-subtotal-guard',
+    version:'2.8-skeleton-placeholder-supersession',
     analyze,
+    partialSupportRecovery,
+    normalizeCrossOcrSkeletonModels,
     reconcileSupportingEconomics,
     supportMatchScore,
     assessPromotion,

@@ -494,6 +494,48 @@ conceptContinuationSubtotal[0].rows.splice(1,1,{y:70,text:'Page 2 of 2',items:[{
 const conceptContinuationResult=v2ctx.InventoryHubParserV2.analyze({sources:[{source:'concept-continuation',kind:'ocr',text:'',layout:conceptContinuationSubtotal}],legacyResult:{doc:{},items:[]}});
 assert(conceptContinuationResult.safeToPromote===false&&conceptContinuationResult.invoiceSubtotalCheck?.proven===true&&conceptContinuationResult.promotionDecision.blockers.some(x=>x.code==='invoice-subtotal-mismatch'),'Continuation page without invoice title must still contribute subtotal safety evidence');
 
+// Real stamped-player failure shape: invoice Qty/Unit survive, Amount is corrupted;
+// two quotation OCR sources agree on Amount but misread Qty. Recover only by field-level consensus.
+const partialInvoiceLayout=[{page:2,width:1200,height:1600,yTolerance:3,rows:[
+  {y:80,text:'TAX INVOICE',items:[{text:'TAX INVOICE',x:850,width:130}]},
+  {y:120,text:'Date: 16 Jul 2024 Invoice No.: 2407/015',items:[{text:'Date: 16 Jul 2024',x:650,width:150},{text:'Invoice No.: 2407/015',x:830,width:190}]},
+  {y:200,text:'Description Qty Unit Price Amount',items:[{text:'Description',x:100,width:120},{text:'Qty',x:650,width:50},{text:'Unit Price',x:760,width:90},{text:'Amount',x:1000,width:80}]},
+  {y:260,text:'Dual CD and MP3 player with USB supported Playback 1 950.00 850.00',items:[{text:'Dual CD and MP3 player with USB supported Playback',x:100,width:430},{text:'1',x:665,width:12},{text:'950.00',x:770,width:65},{text:'850.00',x:1010,width:65}]},
+  {y:290,text:'Model: Omnitronic XDP-3002',items:[{text:'Model: Omnitronic XDP-3002',x:100,width:260}]},
+  {y:320,text:'Note: replaced with XDP-3001',items:[{text:'Note: replaced with XDP-3001',x:100,width:250}]},
+  {y:390,text:'Subtotal 950.00 GST 9% 85.50 Invoice Total 1,035.50',items:[{text:'Subtotal',x:780,width:75},{text:'950.00',x:870,width:70},{text:'GST 9%',x:950,width:60},{text:'85.50',x:1020,width:55},{text:'Invoice Total',x:1080,width:95},{text:'1,035.50',x:1180,width:80}]}
+]}];
+const partialSupportLayout1=[{page:6,width:1200,height:1600,yTolerance:3,rows:[
+  {y:80,text:'SCHEDULES OF PRICES AND TECHNICAL DATA',items:[{text:'SCHEDULES OF PRICES AND TECHNICAL DATA',x:100,width:420}]},
+  {y:180,text:'Description Model Qty Unit Price Amount',items:[{text:'Description',x:100,width:120},{text:'Model',x:500,width:80},{text:'Qty',x:650,width:50},{text:'Unit Price',x:760,width:90},{text:'Amount',x:1000,width:80}]},
+  {y:240,text:'Dual CD and MP3 player with USB supported Playback XDP-3002 4 950.09 950.00',items:[{text:'Dual CD and MP3 player with USB supported Playback',x:100,width:400},{text:'XDP-3002',x:510,width:100},{text:'4',x:665,width:12},{text:'950.09',x:770,width:65},{text:'950.00',x:1010,width:65}]}
+]}];
+const partialSupportLayout2=JSON.parse(JSON.stringify(partialSupportLayout1));
+partialSupportLayout2[0].rows[2].text='Dual CD and MP3 player with USB supported Playback XDP-3002 4 950.00 950.00';
+partialSupportLayout2[0].rows[2].items[3].text='950.00';
+const partialRecoveryResult=v2ctx.InventoryHubParserV2.analyze({sources:[
+  {source:'invoice-ocr',kind:'ocr',text:'',layout:partialInvoiceLayout},
+  {source:'support-auto',kind:'ocr',text:'',layout:partialSupportLayout1},
+  {source:'support-column',kind:'ocr',text:'',layout:partialSupportLayout2}
+],legacyResult:{doc:{},items:[]}});
+assert(partialRecoveryResult.safeToPromote===true,'Two-source partial economics consensus should safely recover the stamped player row');
+assert(partialRecoveryResult.promotionRows.length===1&&partialRecoveryResult.promotionRows[0].sku==='XDP-3001'&&partialRecoveryResult.promotionRows[0].quantity===1&&partialRecoveryResult.promotionRows[0].unit_price===950&&partialRecoveryResult.promotionRows[0].amount===950,'Stamped player recovery must produce XDP-3001 1 x 950 = 950');
+assert(partialRecoveryResult.invoiceSubtotalCheck?.ok===true,'Partial economics recovery must still reconcile to the invoice subtotal');
+
+const partialSingleSupport=v2ctx.InventoryHubParserV2.analyze({sources:[
+  {source:'invoice-ocr',kind:'ocr',text:'',layout:partialInvoiceLayout},
+  {source:'support-auto',kind:'ocr',text:'',layout:partialSupportLayout1}
+],legacyResult:{doc:{},items:[]}});
+assert(partialSingleSupport.safeToPromote===false&&partialSingleSupport.promotionDecision.blockers.some(x=>x.code==='unverified-equipment-row'),'One support OCR source alone must not repair a conflicting invoice amount');
+
+const modelConsensus=v2ctx.InventoryHubParserV2.normalizeCrossOcrSkeletonModels([
+  {sku:'XDP-3001',model:'XDP-3001',item_name:'Dual CD and MP3 player with USB supported Playback',description:'Dual CD and MP3 player with USB supported Playback',quantity:1,provenance:{source:'ocr-auto'}},
+  {sku:'XDP-3001',model:'XDP-3001',item_name:'Dual CD and MP3 player with USB supported Playback',description:'Dual CD and MP3 player with USB supported Playback',quantity:1,provenance:{source:'ocr-column'}},
+  {sku:'XDP-3002',model:'XDP-3002',item_name:'Dual CD and MP3 player with USB supported Playback',description:'Dual CD and MP3 player with USB supported Playback',quantity:1,provenance:{source:'ocr-block'}}
+]);
+assert(modelConsensus.every(x=>x.sku==='XDP-3001'),'Two-to-one OCR model consensus must preserve the corroborated replacement model');
+
+
 
 const multiTableLayout=[{page:1,width:595,height:842,yTolerance:3,rows:[
   {y:100,text:'Description Quantity Unit Price Amount',items:[
