@@ -205,8 +205,8 @@ for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
 assert(/ASSET_REV='v703314x-[^']+'/.test(app),'v14x cache-busting asset revision marker missing');
-assert(runtime.includes("'Improved invoice parsing, Reference No. handling and automatic Amount calculation.'")&&runtime.includes("'Added a persistent Resolve option for valid Data Health exceptions.'"),'Direct runtime Patch Notes are not the concise user-facing version');
-assert(index.includes('Improved invoice parsing, Reference No. handling and automatic Amount calculation.')&&index.includes('Added a persistent Resolve option for valid Data Health exceptions.'),'Static Patch Notes fallback is not concise');
+assert(runtime.includes("'Restored equipment line-item recovery for previously supported multi-page invoice layouts.'")&&runtime.includes("'Improved equipment verification and manual-line Confirm & Save handling.'"),'Direct runtime Patch Notes are not the current concise user-facing version');
+assert(index.includes('Restored equipment line-item recovery for previously supported multi-page invoice layouts.')&&index.includes('Improved equipment verification and manual-line Confirm &amp; Save handling.'),'Static Patch Notes fallback is not current');
 assert(index.includes('app.js?v=7.03.3.14x-r3'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14x bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
