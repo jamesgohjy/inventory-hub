@@ -5,7 +5,7 @@ const read=p=>fs.readFileSync(p,'utf8');
 
 const core=read('v7033-core.js');
 const app=read('app.js');
-const runtime=read('runtime-v7.03.3.14u.js');
+const runtime=read('runtime-v7.03.3.14v.js');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
@@ -72,10 +72,10 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14u','Core version must be 7.03.3.14u');
+assert(cv==='7.03.3.14v','Core version must be 7.03.3.14v');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.14v','Upcoming version must be 7.03.3.14v');
+assert(uv==='7.03.3.14w','Upcoming version must be 7.03.3.14w');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
@@ -123,20 +123,20 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14u'"),'14u direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14v'"),'14v direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
-assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14u.js'),'14u bootstrap direct module references missing');
+assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14v.js'),'14v bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
-assert(index.includes('components.css?v=7.03.3.14v-r2'),'Reusable component stylesheet is not loaded');
+assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("ASSET_REV='v703314v-compact-grouping-20260925-2'"),'Compact grouping asset revision marker missing');
-assert(runtime.includes("'Improved invoice parsing accuracy and verification.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
-assert(index.includes('<li>Improved invoice parsing accuracy and verification.</li>')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14u-r5'),'Index app.js cache-bust revision missing');
-assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14u bootstrap still references an older runtime/baseline');
+assert(app.includes("ASSET_REV='v703314v-compact-audit-import-20260925-3'"),'v14v compact UI asset revision marker missing');
+assert(runtime.includes("'Unified invoice parsing through one canonical result.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
+assert(index.includes('<li>Unified invoice parsing through one canonical result.</li>')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
+assert(index.includes('app.js?v=7.03.3.14v-r1'),'Index app.js cache-bust revision missing');
+assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14v bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
@@ -151,6 +151,8 @@ assert(runtime.includes("host:$('inventoryTable'),groups,head,escapeHtml:esc,ite
 assert(componentsCss.includes('#documentsView #documentGroup,#inventoryView #inventoryGroup')&&componentsCss.includes('width:230px'),'Reusable grouped-view controls must preserve full company grouping labels');
 assert(componentsCss.includes('.ui-group__toggle,.v669-doc-group-toggle')&&componentsCss.includes('justify-content:space-between'),'Compact grouped-view accordion styling is missing');
 assert(index.indexOf('id="documentSort"')<index.indexOf('id="documentGroup"'),'Documents toolbar must remain Search → Sort → Group as in the established UI');
+assert(componentsCss.includes('#auditView #auditUser')&&componentsCss.includes('#auditView #auditAction')&&componentsCss.includes('flex:0 0 190px'),'Recent Activities dropdowns must match the date control width');
+assert(componentsCss.includes('#importDialog #dropZone.drop-zone')&&componentsCss.includes('min-height:56px')&&componentsCss.includes('height:56px'),'Import PDF drop zone must remain approximately 70% shorter on desktop');
 console.log('protected-company-grouping: Inventory + Documents controls/event/render paths PASS');
 assert(fs.existsSync('runtime-v7.03.3.14t.js')&&fs.existsSync('runtime-v7.03.3.14s.js')&&fs.existsSync('runtime-v7.03.3.14r.js')&&fs.existsSync('baseline-v6.55-d452.js'),'Rollback references must remain available');
 
@@ -284,4 +286,4 @@ const frozen=JSON.parse(read('tests/known-good-releases.json'));
 assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.14t regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.14v regression gates PASS.');
