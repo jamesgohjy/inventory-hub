@@ -63,7 +63,10 @@
   function invoiceSubtotalEvidence(evidence={}){
     const values=[];
     for(const src of evidence.sources||[])for(const pg of src.layout||[]){
-      if(typeof T.pageDocumentRole==='function'&&T.pageDocumentRole(pg)!=='invoice')continue;
+      // Continuation invoice pages may lose the invoice title in scans/OCR. Include "unknown"
+      // pages for subtotal evidence, but never PO/DO/quotation/support pages.
+      const role=typeof T.pageDocumentRole==='function'?T.pageDocumentRole(pg):'unknown';
+      if(role==='noninvoice'||role==='support')continue;
       for(const row of pg.rows||[]){
         const text=clean(row.text||'');
         if(!/\bSUB\s*TOTAL\b|\bSUBTOTAL\b/i.test(text))continue;
@@ -231,7 +234,7 @@
     const promotionRows=safeToPromote?promotion.rows:[];
 
     return Object.freeze({
-      version:'2.5-precise-subtotal-support-guard',
+      version:'2.6-continuation-subtotal-guard',
       mode:'evidence-first-independent-table',
       headers,
       tables,
