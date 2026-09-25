@@ -2578,9 +2578,54 @@ function v665StoredDocumentFilename(doc={},file=null){
   const ext=(source.match(/\.(pdf|png|jpe?g|webp|docx)$/i)||[])[1]||'pdf';
   return [date,supplier].filter(Boolean).join('-')+'.'+ext.replace('jpeg','jpg');
 }
-function cleanupPdfPreview(){if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}state.pdfLayout=null;state.ocrCandidates=null;if($('invoicePdfFrame'))$('invoicePdfFrame').src='about:blank';}
-function updatePdfPreview(){const frame=$('invoicePdfFrame');if(!frame||!state.pdfPreviewUrl)return;frame.src=`${state.pdfPreviewUrl}#page=${Math.max(1,state.pdfPreviewPage||1)}&zoom=${encodeURIComponent(state.pdfPreviewZoom||'page-width')}`;if($('pdfPageLabel'))$('pdfPageLabel').textContent=`Page ${Math.max(1,state.pdfPreviewPage||1)}`;}
-function setPdfZoom(value){state.pdfPreviewZoom=value;updatePdfPreview();}
+let pdfPreviewDocument14x=null,pdfPreviewRenderTask14x=null,pdfPreviewLoadToken14x=0;
+function updatePdfPreviewControls14x(){
+  const total=Math.max(1,Number(pdfPreviewDocument14x?.numPages||1)),page=Math.min(total,Math.max(1,Number(state.pdfPreviewPage||1)));
+  state.pdfPreviewPage=page;
+  if($('pdfPageLabel'))$('pdfPageLabel').textContent=`Page ${page} of ${total}`;
+  if($('pdfPrevPageBtn'))$('pdfPrevPageBtn').disabled=page<=1;
+  if($('pdfNextPageBtn'))$('pdfNextPageBtn').disabled=page>=total;
+}
+function cleanupPdfPreview(){
+  pdfPreviewLoadToken14x++;try{pdfPreviewRenderTask14x?.cancel?.();}catch(_e){}pdfPreviewRenderTask14x=null;
+  try{pdfPreviewDocument14x?.destroy?.();}catch(_e){}pdfPreviewDocument14x=null;
+  if(state.pdfPreviewUrl){URL.revokeObjectURL(state.pdfPreviewUrl);state.pdfPreviewUrl=null;}
+  state.pdfLayout=null;state.ocrCandidates=null;state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';
+  const canvas=$('invoicePdfCanvas');if(canvas){canvas.width=1;canvas.height=1;}
+  updatePdfPreviewControls14x();
+}
+async function ensurePdfPreviewDocument14x(){
+  if(pdfPreviewDocument14x)return pdfPreviewDocument14x;
+  const file=state.importSourceFile||state.file;if(!file||v662FileKind(file)!=='pdf')return null;
+  const token=++pdfPreviewLoadToken14x,pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+  const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  if(token!==pdfPreviewLoadToken14x){try{pdf.destroy();}catch(_e){}return null;}
+  pdfPreviewDocument14x=pdf;updatePdfPreviewControls14x();return pdf;
+}
+async function updatePdfPreview(){
+  const viewportEl=$('invoicePdfViewport'),canvas=$('invoicePdfCanvas');if(!viewportEl||!canvas)return;
+  const pdf=await ensurePdfPreviewDocument14x();if(!pdf)return;
+  const total=pdf.numPages||1;state.pdfPreviewPage=Math.min(total,Math.max(1,Number(state.pdfPreviewPage||1)));updatePdfPreviewControls14x();
+  const page=await pdf.getPage(state.pdfPreviewPage),base=page.getViewport({scale:1});
+  let scale;
+  if(state.pdfPreviewZoom==='page-width'){
+    const available=Math.max(240,viewportEl.clientWidth-34);scale=Math.max(.35,Math.min(3,available/base.width));
+  }else scale=Math.max(.5,Math.min(3,Number(state.pdfPreviewZoom)||1));
+  const vp=page.getViewport({scale}),ratio=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  canvas.width=Math.round(vp.width*ratio);canvas.height=Math.round(vp.height*ratio);canvas.style.width=Math.round(vp.width)+'px';canvas.style.height=Math.round(vp.height)+'px';
+  const ctx=canvas.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);
+  try{pdfPreviewRenderTask14x?.cancel?.();}catch(_e){}
+  pdfPreviewRenderTask14x=page.render({canvasContext:ctx,viewport:vp,transform:ratio===1?null:[ratio,0,0,ratio,0,0]});
+  try{await pdfPreviewRenderTask14x.promise;}catch(err){if(err?.name!=='RenderingCancelledException')throw err;}
+  finally{pdfPreviewRenderTask14x=null;}
+  updatePdfPreviewControls14x();
+}
+function setPdfZoom(value){
+  if(value==='page-width')state.pdfPreviewZoom='page-width';
+  else state.pdfPreviewZoom=Math.max(.5,Math.min(3,Number(value)||1));
+  updatePdfPreview().catch(err=>console.error('PDF preview zoom failed',err));
+}
 async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);if(v662FileKind(file)==='pdf'&&/AVs+MEDIA/i.test(text)){try{await addAvMediaTargetedOcr(file);}catch(targetErr){console.warn('AV Media targeted OCR skipped',targetErr);}}await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed=window.InventoryHubCanonicalParser.fromPipeline(state.parsed,{raw:state.parsed.raw||state.parsed.rawText||text});renderParsedItems();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
 
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userRole'))$('userRole').textContent=currentRole().replace(/^./,c=>c.toUpperCase());if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();applyRoleUI();}
