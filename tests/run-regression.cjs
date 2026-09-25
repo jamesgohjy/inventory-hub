@@ -11,6 +11,7 @@ const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const groupModule=read('modules/grouped-company-ui.js');
+const componentsCss=read('components.css');
 const backupUiModule=read('modules/backup-verification-ui.js');
 const parser=read('parser-v7-core.js');
 const index=read('index.html');
@@ -81,9 +82,15 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
-assert(runtime.includes('InventoryHubCanonicalParser.normalizeResult'),'Production finalizer does not return canonical parser result');
+assert(runtime.includes('InventoryHubCanonicalParser.fromPipeline'),'Production finalizer does not publish through the canonical parser API');
 assert(!runtime.includes('globalThis.AVParserV7.enhanceParsed({parsed:normalized'),'Independent post-finalizer parser mutation still exists');
 assert(!runtime.includes('globalThis.AVParserV7.prepareSave(state.parsed.items'),'Independent save-time parser correction still exists');
+assert(!runtime.includes('applyParsedFixes(state.parsed'),'Review UI must not re-run an independent parser correction layer');
+assert(!runtime.includes('state.parsed.items=v689SerialIntegrityGate'),'Save flow must not mutate canonical rows with a separate serial gate');
+assert(!runtime.includes('state.parsed.items=inventoryOnlyItems'),'Save flow must not independently filter canonical rows');
+assert(!runtime.includes('sanitizeParsedInventoryItems(state.parsed'),'Review rendering must consume canonical rows without a separate sanitizer');
+assert(runtime.includes('InventoryHubCanonicalParser.applyReviewEdits'),'Review edits do not route through the canonical parser API');
+assert(runtime.includes('__canonicalAuthorityV11'),'Final canonical parser authority boundary is missing');
 assert(runtime.includes("this.sb.rpc('confirm_and_save_invoice_v703314v'"),'Confirm & Save does not use canonical PostgreSQL RPC');
 assert(!runtime.includes("this.sb.rpc('import_invoice_atomic'"),'Legacy import_invoice_atomic remains in production Confirm & Save path');
 assert(canonicalSaveSql.includes('create or replace function public.confirm_and_save_invoice_v703314v'),'Canonical Confirm & Save RPC missing');
@@ -99,9 +106,15 @@ const identity=canonicalApi.canonicalIdentity({brand:'Remaco',model:'MAS-1818',s
 assert(identity.key==='REMACO::MAS1818','Canonical brand+model identity normalization failed');
 assert(identity.verifiedAliases.includes('MAS1818'),'Verified alias retention failed');
 const canonicalResult=canonicalApi.normalizeResult({doc:{invoice_number:'ANON-1'},items:[{brand:'Remaco',model:'MAS-1818',sku:'MAS-1818',item_name:'Projector mount controller',description:'Original invoice wording',quantity:2,unit_price:350,amount:700,verified_aliases:['MAS1818']}],rawText:'anonymized invoice evidence',parseEvidence:{evidenceRanking:{review:[]}}});
-assert(canonicalResult.apiVersion==='1.0'&&canonicalResult.status==='accepted','Canonical result contract failed');
+assert(canonicalResult.apiVersion==='1.1'&&canonicalResult.canonical===true&&canonicalResult.status==='accepted','Canonical result contract failed');
 assert(canonicalResult.items[0].invoice_evidence.original_description==='Original invoice wording','Canonical normalization lost original invoice evidence');
 assert(canonicalResult.items[0].canonical_identity.key==='REMACO::MAS1818','Canonical result lost identity');
+const editedCanonical=canonicalApi.applyReviewEdits(canonicalResult,{doc:{invoice_date:'2026-09-25'},items:[{...canonicalResult.items[0],item_name:'Reviewed controller'}]});
+assert(editedCanonical.items[0].item_name==='Reviewed controller','Canonical review edits were not applied');
+assert(editedCanonical.items[0].invoice_evidence.original_description==='Original invoice wording','Canonical review edit overwrote original invoice evidence');
+const serialConflict=canonicalApi.normalizeResult({doc:{invoice_number:'ANON-2'},items:[{item_name:'A',quantity:1,serials:'SER-1'},{item_name:'B',quantity:1,serials:'SER-1'}],parseEvidence:{evidenceRanking:{review:[]}}});
+assert(canonicalApi.prepareSave(serialConflict).status==='block','Canonical save validation must block duplicate serial ownership');
+assert(canonicalApi.diagnostics(editedCanonical).canonical===true,'Canonical diagnostics contract failed');
 console.log('canonical-parser-and-atomic-save: API, identity, evidence and RPC contracts PASS');
 assert(runtime.includes('evidenceEngine.runPipeline(candidates,{subtotal:doc.subtotal,confidenceThreshold:.72})'),'Production finalizer must use candidate -> evidence -> economics -> confidence -> review pipeline');
 assert(runtime.includes("pipeline.status==='accepted'?(pipeline.items||[]):[]"),'Production finalizer must not accept rows when pipeline requires review');
@@ -115,10 +128,14 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14u.js'),'14u bootstrap direct module references missing');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
-assert(app.includes("ASSET_REV='v703314u-ui-fix-20260925-2'"),'UI fix asset revision/cache-bust marker missing');
+assert(index.includes('components.css?v=7.03.3.14v-r1'),'Reusable component stylesheet is not loaded');
+for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
+assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
+assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
+assert(app.includes("ASSET_REV='v703314v-canonical-components-20260925-1'"),'Canonical/components asset revision marker missing');
 assert(runtime.includes("'Improved invoice parsing accuracy and verification.'")&&runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not the concise user-facing version');
 assert(index.includes('<li>Improved invoice parsing accuracy and verification.</li>')&&index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not concise');
-assert(index.includes('app.js?v=7.03.3.14u-r3'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14u-r4'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14u bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -220,7 +237,7 @@ vm.runInContext(groupModule,mctx,{filename:'modules/grouped-company-ui.js'});
 const host={innerHTML:'',querySelectorAll(){return[];}};
 const groups=new Map([['AV Media Pte Ltd',[{html:'<tr></tr>'},{html:'<tr></tr>'}]],['Loud Technologies Asia Pte Ltd',[{html:'<tr></tr>'}]]]);
 assert(mctx.InventoryHubGroupedCompanyUI.renderGroupedCompanyCards({host,groups,head:'<thead></thead>',escapeHtml:v=>String(v)}),'Grouped-company module returned false');
-assert(/v669-doc-group-body hidden/.test(host.innerHTML)&&/2 items ▸/.test(host.innerHTML),'Grouped-company module output regression failed');
+assert(/class="[^"]*v669-doc-group-body[^"]*hidden[^"]*"/.test(host.innerHTML)&&/2 items ▸/.test(host.innerHTML),'Grouped-company module output regression failed');
 
 assert(backupUiModule.includes("version:'7.03.3.14t'"),'Backup UI version marker missing');
 assert(backupUiModule.includes("String(role).toLowerCase()==='admin'"),'Backup UI is not admin-only');
