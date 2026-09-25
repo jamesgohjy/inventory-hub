@@ -46,22 +46,42 @@
   }
   function supplierCandidates(evidence){
     const out=[];
-    const addLine=(line,source,kind,index)=>{
-      const v=clean(line);if(!v||rejectParty.test(v))return;
-      const labelled=v.match(/^\s*(?:SUPPLIER|VENDOR|FROM|ISSUED\s+BY)\s*[:#.-]?\s*(.+)$/i);
-      if(labelled&&clean(labelled[1]))pushCandidate(out,'supplier_name',labelled[1],{source,kind,score:140-index,evidence:v});
-      if(companySuffix.test(v))pushCandidate(out,'supplier_name',v,{source,kind,score:105-index,evidence:v});
-    };
     for(const src of evidence.sources||[]){
-      clean(src.text).split(/\n+/).filter(Boolean).slice(0,35).forEach((line,i)=>addLine(line,src.id,src.kind,i));
-      for(const pg of src.layout||[])(pg.rows||[]).slice(0,24).forEach((row,i)=>addLine(row.text,src.id,'geometry',i));
+      const allText=clean(src.text),lines=allText.split(/\n+/).filter(Boolean).slice(0,140);
+      const domainStems=new Set();
+      for(const m of allText.matchAll(/(?:https?:\/\/)?(?:www\.)?([a-z0-9][a-z0-9-]{2,})\.[a-z]{2,}(?:\.[a-z]{2,})?/gi))domainStems.add(String(m[1]||'').toUpperCase());
+      for(const m of allText.matchAll(/[A-Z0-9._%+-]+@([a-z0-9][a-z0-9-]{2,})\.[a-z]{2,}(?:\.[a-z]{2,})?/gi))domainStems.add(String(m[1]||'').toUpperCase());
+
+      const addLine=(line,kind,index)=>{
+        const v=clean(line);if(!v||rejectParty.test(v))return;
+        const labelled=v.match(/^\s*(?:SUPPLIER|VENDOR|FROM|ISSUED\s+BY)\s*[:#.-]?\s*(.+)$/i);
+        if(labelled&&clean(labelled[1]))pushCandidate(out,'supplier_name',labelled[1],{source:src.id,kind,score:Math.max(100,145-index),evidence:v});
+        if(companySuffix.test(v)){
+          const first=(v.match(/^\s*([A-Z0-9][A-Z0-9&._-]*)/i)||[])[1]||'';
+          const domainBoost=domainStems.has(first.toUpperCase())?40:0;
+          pushCandidate(out,'supplier_name',v,{source:src.id,kind,score:Math.max(80,108-Math.min(index,28))+domainBoost,evidence:v});
+        }
+      };
+      lines.forEach((line,i)=>addLine(line,src.kind,i));
+      for(const pg of src.layout||[])(pg.rows||[]).slice(0,60).forEach((row,i)=>addLine(row.text,'geometry',i));
     }
     return out;
   }
   function invoiceCandidates(evidence){
     const out=[...geometryValues(evidence,invoiceLabel,'invoice_number')];
-    for(const src of evidence.sources||[])for(const line of clean(src.text).split(/\n+/).filter(Boolean)){
-      const v=lineValueAfterLabel(line,invoiceLabel);if(v)pushCandidate(out,'invoice_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
+    for(const src of evidence.sources||[]){
+      const lines=clean(src.text).split(/\n+/).filter(Boolean);
+      for(let i=0;i<lines.length;i++){
+        const line=lines[i],v=lineValueAfterLabel(line,invoiceLabel);
+        if(v)pushCandidate(out,'invoice_number',v,{source:src.id,kind:src.kind,score:100,evidence:line});
+        // Some invoice boxes use only "NO:" beneath/next to TAX INVOICE.
+        // Accept this only with local invoice-title context; a generic account/customer NO remains rejected.
+        const bare=line.match(/\bNO\.?\s*[:#.-]\s*([A-Z0-9][A-Z0-9._\/-]{2,})/i);
+        const nearby=lines.slice(Math.max(0,i-3),Math.min(lines.length,i+2)).join(' ');
+        if(bare&&/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE|INVOICE)\b/i.test(nearby)){
+          pushCandidate(out,'invoice_number',bare[1],{source:src.id,kind:src.kind,score:112,evidence:line});
+        }
+      }
     }
     return out.map(x=>({...x,value:identifierFromTail(x.value)})).filter(x=>x.value&&valueToken.test(compact(x.value))&&!/^(?:DATE|CUSTOMER|CODE|TERMS|SALESMAN|REF|REFERENCE)$/i.test(compact(x.value)));
   }
