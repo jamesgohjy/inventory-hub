@@ -106,9 +106,18 @@
     }
     return models;
   }
-  function extractReplacements(text=''){
-    const section=invoiceSection(text),out=[];REPLACEMENT_RE.lastIndex=0;
-    let m;while((m=REPLACEMENT_RE.exec(section)))out.push(clean(m[1]));
+  function extractReplacementMap(text='',invoiceModels=[]){
+    const section=invoiceSection(text),out=new Map();
+    const hits=[];MODEL_RE.lastIndex=0;let m;
+    while((m=MODEL_RE.exec(section))){
+      const model=modelFromInvoiceValue(m[1]);if(model)hits.push({model,index:m.index??0,end:MODEL_RE.lastIndex});
+    }
+    for(let i=0;i<hits.length;i++){
+      const hit=hits[i],band=section.slice(hit.end,hits[i+1]?.index??section.length);
+      REPLACEMENT_RE.lastIndex=0;const r=REPLACEMENT_RE.exec(band);if(!r)continue;
+      const ordinal=invoiceModels.findIndex(x=>norm(x)===norm(hit.model))+1;
+      if(ordinal>0&&!out.has(ordinal))out.set(ordinal,clean(r[1]));
+    }
     return out;
   }
   function vote(values=[]){
@@ -178,7 +187,7 @@
     }
     const aggregated=aggregateSupport(support,invoiceModels);
     if(aggregated.length<4)return {version:VERSION,mode:'blocked',rows:baseline,recovered:[],pending:[],rejected:[],reason:'insufficient-support-rows',aggregated};
-    const replacements=extractReplacements(invoiceText);
+    const replacements=extractReplacementMap(invoiceText,invoiceModels);
     const recovered=[],pending=[],rejected=[];
     for(const row of aggregated){
       const model=invoiceModels[row.ordinal-1]||'';
@@ -193,8 +202,8 @@
       if(supportModel&&row.modelVotes>=2&&sim>=.65&&sim<1){
         pending.push({...row,sku:model,reason:'model-source-conflict',invoiceModel:model,supportModel,modelSimilarity:round2(sim)});continue;
       }
-      const replacement=replacements.find(x=>norm(x)!==norm(model) && /XDP|MODEL|[A-Z].*\d/i.test(x));
-      if(replacement&&row.ordinal===6){
+      const replacement=replacements.get(row.ordinal);
+      if(replacement&&norm(replacement)!==norm(model)){
         pending.push({...row,sku:model,reason:'replacement-note-conflict',invoiceModel:model,replacementModel:replacement});continue;
       }
       const physical=PHYSICAL_RE.test(row.description)||!!model;
@@ -220,5 +229,5 @@
     return {ok:failures.length===0,failures};
   }
 
-  global.InventoryHubParserV3=Object.freeze({VERSION,recover,selfTest,extractInvoiceModels,parseScheduleRows,aggregateSupport,modelSimilarity});
+  global.InventoryHubParserV3=Object.freeze({VERSION,recover,selfTest,extractInvoiceModels,extractReplacementMap,parseScheduleRows,aggregateSupport,modelSimilarity});
 })(typeof window!=='undefined'?window:globalThis);
