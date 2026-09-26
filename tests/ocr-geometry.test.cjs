@@ -1,0 +1,61 @@
+// Exercise the runtime boundary, not manually repaired Parser V2 layouts.
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const runtime=fs.readFileSync('runtime-v7.03.3.14y.js','utf8'),ctx={};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);
+vm.runInContext(runtime.slice(runtime.indexOf('function wordsToLayout('),runtime.indexOf('function layoutInvoiceQuality(')),ctx);
+for(const file of ['evidence-model','table-detector','numbered-schedule'])vm.runInContext(fs.readFileSync('modules/parser-v2/'+file+'.js','utf8'),ctx);
+const word=(text,x,y)=>({text,bbox:{x0:x,y0:y,x1:x+Math.max(6,text.length*6),y1:y+12},symbols:[...text].map((s,i)=>({text:s,bbox:{x0:x+i*6,y0:y,x1:x+(i+1)*6,y1:y+12}}))});
+const lines=[[word('TAX',200,20),word('INVOICE',230,20)],['No.','Description','Qty','Unit Price','Amount'].map((t,i)=>word(t,[80,230,650,760,870][i],50))];
+const names=['Digital mixer console','Power amplifier DSP','Passive loudspeaker system','Wireless microphone system','Monitor speaker console','Dual media player playback','Outdoor microphone wall receptacle'];
+for(let i=0;i<7;i++){
+ lines.push([word(String(i+1),80,80+i*40),word(names[i],230,80+i*40),word('1',650,80+i*40),word('100.00',760,80+i*40),word('100.00',870,80+i*40)]);
+ lines.push([word('Model: DEV-'+(i+1),230,98+i*40)]);
+}
+for(let i=0;i<lines.length;i++)lines[i]=lines[i].flatMap(w=>{let x=w.bbox.x0;return w.text.split(' ').map(t=>{const v=word(t,x,w.bbox.y0);x+=t.length*6+6;return v;});});
+const blocks=[{paragraphs:[{lines:lines.map(words=>({words}))}]}];
+const layout=ctx.ocrResultToLayout({blocks},1,1200,1000);
+assert.equal(layout.width,1000);assert.equal(layout.height,1200);
+assert.equal(layout.rows[0].text,'TAX INVOICE','symbols must not duplicate words');
+assert.equal(layout.items.length,lines.flat().length,'exactly one token per word');
+assert.equal(layout.items[0].width,layout.items[0].w);
+const schedule=['SCHEDULES OF PRICES',...names.map((n,i)=>`${i+1} ${n} UK 1 $100.00 $100.00`),'Scope of Work','Total Amount = $700.00'].join('\n');
+const sources=[{source:'invoice',kind:'ocr',layout:[layout]},...['auto','column'].map(s=>({source:s,kind:'ocr',text:schedule}))];
+const ev=ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources});
+assert.equal(ev.sources[0].layout[0].rows[0].items[0].width,18);
+assert.equal(ctx.InventoryHubParserV2TableDetector.pageDocumentRole(ev.sources[0].layout[0]),'invoice');
+const result=ctx.InventoryHubParserV2NumberedSchedule.recover(ev,{proven:true,value:700});
+assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.rows.length,7);
+const inconsistent=schedule.replace('4 Wireless microphone system UK 1 $100.00 $100.00','4 Wireless microphone system UK 1 $100.00 $90.00');
+const noisy=[...sources,{source:'hires-a',kind:'ocr',text:inconsistent},{source:'hires-b',kind:'ocr',text:inconsistent}];
+const recover=s=>ctx.InventoryHubParserV2NumberedSchedule.recover(ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:s}),{proven:true,value:700});
+assert.equal(recover(noisy).ok,true,'inconsistent OCR triplets must not veto two valid witnesses');
+const conflict=schedule.replace('4 Wireless microphone system UK 1 $100.00 $100.00','4 Wireless microphone system UK 1 $90.00 $90.00');
+assert.equal(recover([...sources,{source:'conflict',kind:'ocr',text:conflict}]).ok,false,'valid economic conflicts must still block');
+assert.equal(recover([sources[0],sources[1],{source:'bad',kind:'ocr',text:inconsistent}]).ok,false,'one valid witness is insufficient');
+const bad=JSON.parse(JSON.stringify(sources));delete bad[0].layout[0].width;
+assert.equal(ctx.InventoryHubParserV2NumberedSchedule.recover(ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:bad}),{proven:true,value:700}).ok,false,'missing page dimensions must not fabricate rows');
+for(const format of ['tsv','hocr']){
+ const data=format==='tsv'?{tsv:'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t80\t50\t18\t12\t99\tTAX'}:{hocr:'<span class="ocrx_word" title="bbox 80 50 98 62">TAX</span>'};
+ const page=ctx.ocrResultToLayout(data,2,1200,1000);assert.equal(page.width,1000);assert.equal(page.rows[0].items[0].width,18);
+}
+assert(runtime.includes('ocrResultToLayout(r.data||{},i,c.height,c.width)'));
+assert(runtime.includes('ocrResultToLayout(r.data||{},page,input.height,input.width)'));
+assert(runtime.includes('ocrResultToLayout(r.data||{},1,bitmap.height,bitmap.width)'));
+assert(runtime.includes('ocrResultToLayout(r.data||{},1,input.height,input.width)'));
+console.log('OCR geometry: word-only blocks, TSV/HOCR, dimensions, seven-row runtime recovery and missing-width rejection PASS');
+ctx.normalizePdfText=v=>String(v||'');
+vm.runInContext(runtime.slice(runtime.indexOf('function v676IsSupportCoverageLine('),runtime.indexOf('function v676CanonicalItemName(')),ctx);
+for(const text of ['Digital Mixer console. Support up to 12 channels with 7 inch Multi Touch Screen','Matrix supports 8 inputs','Controller supporting 4 outputs'])assert.equal(ctx.v676IsSupportCoverageLine({item_name:text}),false,text);
+for(const text of ['12 months support','Premium support plan','Extended warranty','Digital Mixer supports 12 channels with support service','Mixer support up to 12 channels plus warranty coverage'])assert.equal(ctx.v676IsSupportCoverageLine({item_name:text}),true,text);
+console.log('Support coverage: technical capacity retained; service contracts and warranties excluded PASS');
+const identitySources=JSON.parse(JSON.stringify(sources));
+identitySources[0].layout[0].rows.push({text:'8 Scope of Work',items:[{text:'8',x:80},{text:'Scope of Work',x:230}]});
+const identityCopy=JSON.parse(JSON.stringify(identitySources[0]));identityCopy.source='other-ocr';identityCopy.layout[0].rows.unshift({text:'Independent OCR page text',items:[]});
+const hires={source:'invoice-hires-column',kind:'ocr',text:'TAX INVOICE\nSECTION 2:\n'+names.map((_,i)=>'Model: DEV-'+(i===2?99:i+1)).join('\n')+'\nScope of Work'};
+const supported=recover([...identitySources,identityCopy,hires]);
+assert.equal(supported.ok,true);assert.equal(supported.rows[2].model,'DEV-3','two distinct complete invoice lists corroborate the model');
+const alias=JSON.parse(JSON.stringify(identitySources[0]));alias.source='chosen-alias';
+assert.equal(recover([...identitySources,alias,hires]).rows[2].model,'','duplicate page aliases cannot establish model consensus');
+const otherA=JSON.parse(JSON.stringify(identityCopy));otherA.source='conflict-a';otherA.layout[0].rows.unshift({text:'Conflict A',items:[]});otherA.layout[0].rows=otherA.layout[0].rows.map(r=>({...r,text:r.text.replace('DEV-3','DEV-99')}));
+const otherB=JSON.parse(JSON.stringify(otherA));otherB.source='conflict-b';otherB.layout[0].rows.unshift({text:'Conflict B',items:[]});
+assert.equal(recover([...identitySources,identityCopy,otherA,otherB,hires]).rows[2].model,'','tied model evidence remains unresolved');
+console.log('Invoice model corroboration: complete lists, alias deduplication and tied conflicts PASS');
