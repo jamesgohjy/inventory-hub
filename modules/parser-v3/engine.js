@@ -42,7 +42,7 @@
     return (evidence.sources||[]).filter(s=>/\bSCHEDULES?\s+OF\s+PRICES\b/i.test(String(s.text||''))&&!/\bPURCHASE\s+ORDER\b/i.test(String(s.text||'')));
   }
   function corroboratedScheduleTotal(evidence,doc={}){
-    const target=Number(doc.subtotal??doc.total_amount??doc.total);
+    const target=[doc.subtotal,doc.total_amount,doc.total].map(Number).find(n=>Number.isFinite(n)&&n>0);
     if(!(target>0))return {ok:false,target:null,witnesses:0};
     const seen=new Set(),hits=[];
     for(const s of supportScheduleSources(evidence)){
@@ -95,46 +95,48 @@
     return groups;
   }
   function completeInvoiceModelVotes(evidence,expectedOrdinals=[]){
-    const count=expectedOrdinals.length;if(!count)return new Map();
-    const seen=new Set(),votes=new Map();
+    const count=expectedOrdinals.length,modelsByOrdinal=new Map(),replacementsByOrdinal=new Map();
+    if(!count)return {modelsByOrdinal,replacementsByOrdinal};
+    const seen=new Set();
     for(const src of evidence.sources||[]){
       const text=String(src.text||'');if(!/\b(?:TAX\s+)?INVOICE\b/i.test(text))continue;
-      const beforeScope=text.split(/\bSCOPE\s+OF\s+WORK\b/i)[0];
-      const key=sourceId(src);if(!key||seen.has(key))continue;seen.add(key);
-      const models=[];
-      for(const line of beforeScope.split(/\r?\n/)){
-        const m=clean(line).match(MODEL_RE);if(m?.[1])models.push(clean(m[1]));
+      const beforeScope=text.split(/\bSCOPE\s+OF\s+WORK\b/i)[0],key=sourceId(src);
+      if(!key||seen.has(key))continue;seen.add(key);
+      const lines=beforeScope.split(/\r?\n/),hits=[];
+      for(let li=0;li<lines.length;li++){
+        const m=clean(lines[li]).match(MODEL_RE);if(m?.[1])hits.push({model:clean(m[1]),line:li});
       }
-      const dedup=models.filter((m,i)=>i===0||compact(m)!==compact(models[i-1]));
+      const dedup=hits.filter((h,i)=>i===0||compact(h.model)!==compact(hits[i-1].model));
       if(dedup.length!==count)continue;
       expectedOrdinals.forEach((ord,i)=>{
-        if(!votes.has(ord))votes.set(ord,new Map());
-        const k=compact(dedup[i]);if(!k)return;
-        const vm=votes.get(ord);if(!vm.has(k))vm.set(k,{model:dedup[i],count:0,sources:[]});
-        const entry=vm.get(k);entry.count++;entry.sources.push(sourceId(src));
+        const hit=dedup[i],mk=compact(hit.model);
+        if(mk){
+          if(!modelsByOrdinal.has(ord))modelsByOrdinal.set(ord,new Map());
+          const vm=modelsByOrdinal.get(ord);if(!vm.has(mk))vm.set(mk,{model:hit.model,count:0,sources:[]});
+          const entry=vm.get(mk);entry.count++;entry.sources.push(sourceId(src));
+        }
+        const local=clean(lines.slice(Math.max(0,hit.line-2),Math.min(lines.length,hit.line+4)).join(' '));
+        const rm=local.match(/\breplac(?:ed|ement)\s+with\s+([A-Z0-9][A-Z0-9+._\/-]{2,})/i);
+        if(rm?.[1]){
+          const rk=compact(rm[1]);if(!replacementsByOrdinal.has(ord))replacementsByOrdinal.set(ord,new Map());
+          const rv=replacementsByOrdinal.get(ord);if(!rv.has(rk))rv.set(rk,{model:clean(rm[1]),count:0,sources:[]});
+          const re=rv.get(rk);re.count++;re.sources.push(sourceId(src));
+        }
       });
     }
-    return votes;
+    return {modelsByOrdinal,replacementsByOrdinal};
   }
-  function replacementModels(evidence){
-    const out=new Map();
-    for(const src of evidence.sources||[]){
-      const text=String(src.text||'');
-      for(const m of text.matchAll(/\breplac(?:ed|ement)\s+with\s+([A-Z0-9][A-Z0-9+._\/-]{2,})/gi)){
-        const k=compact(m[1]);if(!out.has(k))out.set(k,new Set());out.get(k).add(sourceId(src));
-      }
-    }
-    return out;
-  }
-  function modelDecision(ordinal,anchors,modelVotes,replacements){
-    const direct=(anchors.get(ordinal)||[]).map(a=>clean(a.model)).filter(Boolean);
-    const variants=new Map();
+  function modelDecision(ordinal,anchors,modelEvidence){
+    const direct=(anchors.get(ordinal)||[]).map(a=>clean(a.model)).filter(Boolean),variants=new Map();
     for(const m of direct){const k=compact(m);if(!variants.has(k))variants.set(k,{model:m,count:0,sources:[]});variants.get(k).count+=2;}
-    for(const e of modelVotes.get(ordinal)?.values?.()||[]){const k=compact(e.model);if(!variants.has(k))variants.set(k,{model:e.model,count:0,sources:[]});const v=variants.get(k);v.count+=e.count;v.sources.push(...e.sources);}
+    for(const e of modelEvidence.modelsByOrdinal.get(ordinal)?.values?.()||[]){
+      const k=compact(e.model);if(!variants.has(k))variants.set(k,{model:e.model,count:0,sources:[]});
+      const v=variants.get(k);v.count+=e.count;v.sources.push(...e.sources);
+    }
     const ranked=[...variants.values()].sort((a,b)=>b.count-a.count);
     let model=ranked[0]?.count>=2&&ranked[0].count>Number(ranked[1]?.count||0)?ranked[0].model:'';
-    const replacementRank=[...replacements].sort((a,b)=>b[1].size-a[1].size);
-    const replacement=replacementRank[0]?.[1].size>=2&&replacementRank[0][1].size>Number(replacementRank[1]?.[1].size||0)?replacementRank[0][0]:'';
+    const replacements=[...(modelEvidence.replacementsByOrdinal.get(ordinal)?.values?.()||[])].sort((a,b)=>b.count-a.count);
+    const replacement=replacements[0]?.count>=2&&replacements[0].count>Number(replacements[1]?.count||0)?replacements[0].model:'';
     const conflict=[];
     if(ranked.length>1&&ranked[0].count===ranked[1].count)conflict.push(...ranked.slice(0,3).map(x=>x.model));
     if(replacement&&model&&compact(replacement)!==compact(model))conflict.push(model,replacement);
@@ -208,8 +210,8 @@
       report.status='countercheck-only';report.countercheckWarnings.push('support-schedule-sequence-not-contiguous');
       return {parsed:{...parsed,v3Verification:report,parserV3Mode:'countercheck'},report};
     }
-    const modelVotes=completeInvoiceModelVotes(evidence,ordinals),replacements=replacementModels(evidence);
-    const candidates=scheduleRows.map(row=>makeCandidate(row,modelDecision(row.ordinal,anchors,modelVotes,replacements),anchors));
+    const modelEvidence=completeInvoiceModelVotes(evidence,ordinals);
+    const candidates=scheduleRows.map(row=>makeCandidate(row,modelDecision(row.ordinal,anchors,modelEvidence),anchors));
     let nextItems=[...(parsed.items||[])],pending=[...(parsed?.v2Verification?.pending||[])],rejected=[...(parsed?.v2Verification?.rejected||[])];
     for(const candidate of candidates){
       const match=existingMatch(candidate,nextItems);
