@@ -280,7 +280,19 @@
         report.conflicts.push({id:'v3-conflict-'+candidate.v3Provenance.ordinal,type:'identity-conflict',ordinal:candidate.v3Provenance.ordinal,v2Row:match?.row||null,v3Row:conflictRow,v3VerificationStatus:checked?.bucket||'pending',v3VerificationReason:checked?.reason||'v3-conflict-needs-user',reason:intrinsicConflict?'v3-secondary-evidence-ambiguous':'v2-v3-identity-disagreement',resolved:false});
         continue;
       }
-      if(match)continue;
+      if(match){
+        // A V2 pending row may be enriched by uniquely proven V3 identity evidence.
+        // Never alter an already verified V2 row here.
+        if(csku&&!vsku){
+          const pidx=pending.indexOf(match.row);
+          if(pidx>=0){
+            const enriched={...match.row,sku:candidate.sku||candidate.model||'',model:candidate.model||candidate.sku||'',v3IdentityEnriched:true,v3Provenance:candidate.v3Provenance};
+            pending[pidx]=enriched;
+            report.recovered.push({ordinal:candidate.v3Provenance.ordinal,status:'identity-enriched',row:enriched});
+          }
+        }
+        continue;
+      }
       if(!isIncomplete(parsed,scheduleRows))continue;
       const gate=ctx.verifyGate;
       let result=null;
@@ -330,6 +342,7 @@
     if(!isIncomplete({items:[{sku:'A'}],v2Verification:{pendingCount:0}},[{ordinal:1},{ordinal:2}]))failures.push('missing-row recovery trigger');
     const match=existingMatch({sku:'PT-VW540',item_name:'Projector',quantity:1,amount:804},[{sku:'PT-VW540',item_name:'Projector',quantity:1,amount:804}]);
     if(!match?.skuSame)failures.push('countercheck exact agreement');
+    if(!String(evaluate).includes("status:'identity-enriched'")||!String(evaluate).includes("const pidx=pending.indexOf(match.row)"))failures.push('pending row identity enrichment contract');
     const replacementEvidence={sources:[
       {id:'inv-a',text:'TAX INVOICE\nMixer\nModel: CQ12T\nPlayer\nModel: XDP-3002\nNote: replaced with XDP-3001\nSCOPE OF WORK',layout:[]},
       {id:'inv-b',text:'TAX INVOICE\nMixer\nModel: CQ12T\nPlayer\nModel: XDP-3002\nNote: replaced with XDP-3001\nSCOPE OF WORK',layout:[]}
