@@ -117,6 +117,24 @@
     const supportOrdinals=[...new Set(support.map(s=>s.ordinal))].filter(n=>n>=ordinals[0]&&n<=ordinals.at(-1)+1).sort((a,b)=>a-b);
     if(supportOrdinals.some(n=>!byOrdinal.has(n)))return {ok:false,reason:'support-row-missing-from-invoice',missing:supportOrdinals.filter(n=>!byOrdinal.has(n)),rows:[]};
     const highModels=new Map();
+    const invoiceModelVotes=new Map();
+    // Header OCR can prevent an otherwise intact invoice from supplying row
+    // anchors. Its complete ordered Model list can still corroborate identity.
+    // Deduplicate identical page evidence so chosen/raw aliases do not vote twice.
+    const seenModelPages=new Set();
+    for(const src of evidence.sources||[])for(const page of src.layout||[]){
+      if(global.InventoryHubParserV2TableDetector.pageDocumentRole(page)!=='invoice')continue;
+      const rows=page.rows||[],scope=rows.findIndex(r=>/\bSCOPE\s+OF\s+WORK\b/i.test(r.text||''));
+      if(scope<0)continue;
+      const band=rows.slice(0,scope),models=band.filter(r=>/\bMODEL\s*:/i.test(r.text||'')).map(r=>modelFrom(r.text));
+      if(models.length!==ordinals.length||models.some(x=>!x))continue;
+      const pageKey=norm(band.map(r=>r.text).join(' '));if(seenModelPages.has(pageKey))continue;seenModelPages.add(pageKey);
+      ordinals.forEach((n,i)=>{
+        if(!invoiceModelVotes.has(n))invoiceModelVotes.set(n,new Map());
+        const key=models[i].toUpperCase().replace(/[^A-Z0-9]/g,''),votes=invoiceModelVotes.get(n);
+        if(!votes.has(key))votes.set(key,{model:models[i],count:0});votes.get(key).count++;
+      });
+    }
     const replacementVotes=new Map();
     for(const src of evidence.sources||[]){
       if(src.kind==='ocr'&&/\bTAX\s+INVOICE\b/i.test(src.text||'')){
@@ -136,7 +154,10 @@
       if(serviceRe.test(best.title)&&!/\breceptacle\b/i.test(best.title))continue;
       const genericTitle=/^(?:RE\s*:|SCOPE\s+OF\s+WORK|SECTION\b)/i.test(best.title);
       const invoiceIdentity=norm(genericTitle?best.raw:best.title);
-      const matched=support.filter(s=>s.ordinal===ordinal&&norm(s.text).split(' ').filter(w=>w.length>4&&invoiceIdentity.includes(w)).length>=(genericTitle?3:2));
+      const matched=support.filter(s=>s.ordinal===ordinal&&norm(s.text).split(' ').filter(w=>w.length>4&&invoiceIdentity.includes(w)).length>=(genericTitle?3:2))
+        // A complete but internally contradictory OCR triplet is not a price
+        // witness. Keep genuine conflicts between arithmetically valid rows.
+        .filter(s=>!(s.quantity>0)||Math.abs(s.quantity*s.unit-s.amount)<=.03);
       const amounts=new Map();for(const s of matched){const key=s.amount.toFixed(2);if(!amounts.has(key))amounts.set(key,new Set());amounts.get(key).add(s.source);}
       const amountRank=[...amounts].sort((a,b)=>b[1].size-a[1].size);
       if(amountRank.length!==1||amountRank[0][1].size<2)return {ok:false,reason:'schedule-amount-not-corroborated',ordinal,rows:[]};
@@ -165,8 +186,10 @@
       const candidates=[...new Set(witnesses.map(w=>w.model).concat(highModels.get(ordinal)||'').filter(Boolean).map(x=>x.toUpperCase().replace(/[^A-Z0-9]/g,'')))];
       // A single plausible OCR rendering cannot settle a disputed model token.
       // Keep the equipment and verified economics while leaving its SKU blank.
-      const modelUncertain=!replacement&&candidates.length>1;
-      const model=replacement||(modelUncertain?'':highModels.get(ordinal)||best.model);
+      const modelRank=[...(invoiceModelVotes.get(ordinal)?.values()||[])].sort((a,b)=>b.count-a.count);
+      const corroboratedModel=modelRank[0]?.count>=2&&modelRank[0].count>(modelRank[1]?.count||0)?modelRank[0].model:null;
+      const modelUncertain=!replacement&&candidates.length>1&&!corroboratedModel;
+      const model=replacement||(modelUncertain?'':corroboratedModel||highModels.get(ordinal)||best.model);
       let continuation='';
       for(const src of evidence.sources||[]){
         if(!/^invoice-hires-/.test(src.id))continue;
@@ -174,6 +197,7 @@
         if(at<1)continue;
         const segments=lines[at-1].split('|').flatMap(x=>x.split(/\s{3,}/)).map(x=>clean(x).replace(/^\d{1,2}\s*/,''));
         const prior=(segments.filter(x=>/[A-Za-z]{3}/.test(x)).sort((a,b)=>b.length-a.length)[0]||'')
+          .replace(/\s+\d{1,3}\s+\$?\d[\d,]*\.\d{2}(?:\s|$).*$/,'')
           .replace(/(\b(?:system|console|playback|receptacle)\b)\s+(?:or\s+)?\d+\b.*$/i,'$1');
         const shared=norm(prior).split(' ').filter(w=>w.length>4&&norm(best.raw).includes(w)).length;
         if(shared>=2&&/\b(?:mixer|speaker|microphone|projector|controller|amplifier|player|camera|display|receiver|receptacle)\b/i.test(prior)){continuation=prior;break;}
