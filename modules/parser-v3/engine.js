@@ -8,7 +8,7 @@
   const norm=v=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const compact=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const nearly=(a,b,t=.03)=>Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Math.abs(Number(a)-Number(b))<=t;
-  const EQUIPMENT_RE=/\b(?:projector|microphone|speaker|loudspeaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter|dsp|video processor|matrix|scaler)\b/i;
+  const EQUIPMENT_RE=/\b(?:projector|microphone|mic|speaker|loudspeaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|pre\s*amplifier|preamplifier|processor|switcher|visualizer|document camera|console|player|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter|dsp|video processor|matrix|scaler|nvr|dvr|network video recorder|digital video recorder)\b/i;
   const SERVICE_RE=/\b(?:scope of work|installation|installing|labou?r|commissioning|testing|programming|dismantle|dismount|delivery|freight|repair|relocate|reinstatement|training|warranty|service contract)\b/i;
   const MODEL_RE=/\bmodel\s*:\s*(?:[A-Za-z][A-Za-z &.]*?\s+)?([A-Z0-9][A-Z0-9+._\/-]*\d[A-Z0-9+._\/-]*)\b/i;
   const money=v=>{let s=String(v??'').replace(/[$\s}\])]/g,'');if(/,\d{2}$/.test(s)&&!s.includes('.'))s=s.replace(',','.');else s=s.replace(/,/g,'');const n=Number(s);return Number.isFinite(n)?n:null;};
