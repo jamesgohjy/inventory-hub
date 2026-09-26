@@ -279,6 +279,12 @@ const conceptMutationInputs=[
   {name:'model-conflict-never-auto-resolves',sources:[scheduleA,scheduleB,scheduleC],invoice:conceptInvoice},
   {name:'replacement-conflict-never-auto-resolves',sources:[scheduleA,scheduleB,scheduleC],invoice:conceptInvoice}
 ];
+conceptMutationInputs.find(x=>x.name==='scope-service-injection-stays-excluded').sources=[scheduleA.replace('9 Scope of Work',`8 Fake Delivery Fee 1 $999.00 $999.00
+9 Scope of Work`),scheduleB,scheduleC];
+conceptMutationInputs.find(x=>x.name==='invoice-address-header-noise').invoice=`Address: One Example Lane Singapore 575954
+Supplier Pte Ltd
+${conceptInvoice}`;
+
 const conceptFamilies=[
   {key:'CQ12T',aliases:['CQ12T']},
   {key:'1604DSP',aliases:['1604DSP','DUECANALI1604DSP']},
