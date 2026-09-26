@@ -143,19 +143,22 @@
   async function verifyOne(row={},ctx={}){
     const l1=level1(row,ctx);if(l1.status==='reject')return {bucket:'rejected',row,level1:l1,reason:l1.reason};
     const inv=chooseInventoryMatch(row,ctx.inventoryItems||[],ctx.supplierName||'');
-    if(inv.status==='confirmed')return {bucket:'verified',row:canonicalizeFromInventory(row,inv),level1:l1,inventory:inv,reason:'inventory-confirmed'};
-    if(inv.status==='rejected')return {bucket:'rejected',row,level1:l1,inventory:inv,reason:'inventory-match-below-60'};
-    if(l1.status==='verified'&&!clean(row.sku||row.model||''))return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,reason:'equipment-description-proven-model-unavailable'};
     const web=ctx.webVerifier;
+    let candidate=null,webResult={status:'unavailable',reason:'Mandatory public product verification could not be started.',sources:[]};
     if(web&&typeof web.candidateForRow==='function'&&typeof web.requestWebEvidence==='function'){
-      const candidate=web.candidateForRow(row,ctx.raw||'');
-      if(candidate){
-        const result=await web.requestWebEvidence(candidate,{timeoutMs:6500});
-        if(result?.status==='confirmed')return {bucket:'verified',row:{...row,parserV2Verification:{level:'2B',status:'confirmed',method:'public-web',confidence:result.confidence??null,sources:(result.sources||[]).slice(0,3)},humanReviewRequired:false,needsReview:false,parserReviewRequired:false},level1:l1,inventory:inv,web:result,reason:'web-confirmed'};
-        return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,web:result,reason:result?.status==='unavailable'?'web-unavailable':'web-unconfirmed'};
-      }
+      candidate=web.candidateForRow(row,ctx.raw||'');
+      if(candidate)webResult=await web.requestWebEvidence(candidate,{timeoutMs:9000});
+      else webResult={status:'unconfirmed',reason:'No reliable brand/model token could be extracted for mandatory public verification.',sources:[]};
     }
-    return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,reason:l1.status==='verified'?'equipment-proven-model-needs-user-check':'equipment-candidate-needs-user-check'};
+    const sourceStrong=!!l1?.proof?.ok&&!!l1?.economics?.ok;
+    if(webResult?.status==='confirmed'&&sourceStrong){
+      let verifiedRow={...row};
+      if(inv.status==='confirmed')verifiedRow=canonicalizeFromInventory(verifiedRow,inv);
+      verifiedRow={...verifiedRow,parserV2Verification:{...(verifiedRow.parserV2Verification||{}),level:'2B',status:'confirmed',method:'mandatory-public-web',confidence:webResult.confidence??null,sources:(webResult.sources||[]).slice(0,3),inventoryMatchStatus:inv.status,inventoryMatchScore:inv.score??0},webVerification:{...webResult,candidate,checkedAt:new Date().toISOString()},humanReviewRequired:false,needsReview:false,parserReviewRequired:false};
+      return {bucket:'verified',row:verifiedRow,level1:l1,inventory:inv,web:webResult,reason:'web-confirmed'};
+    }
+    const pendingReason=webResult?.status==='unavailable'?'mandatory-web-unavailable':webResult?.status==='confirmed'&&!sourceStrong?'invoice-item-evidence-unproven':'mandatory-web-unconfirmed';
+    return {bucket:'pending',row:{...row,webVerification:{...webResult,candidate,checkedAt:new Date().toISOString()},humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,web:webResult,reason:pendingReason};
   }
   async function mapLimit(list=[],limit=3,fn=async x=>x){
     const out=new Array(list.length);let cursor=0;
@@ -246,6 +249,7 @@
     if(classifyInventoryMatchScore(60,false)!=='unconfirmed'||classifyInventoryMatchScore(70,false)!=='unconfirmed')failures.push('inventory match 60 through 70 stays review');
     if(classifyInventoryMatchScore(70.1,false)!=='confirmed')failures.push('inventory match above 70 auto confirm');
     if(classifyInventoryMatchScore(1,true)!=='confirmed')failures.push('exact inventory sku remains confirmed');
+    if(!String(verifyOne).includes('mandatory-public-web')||String(verifyOne).includes("inv.status==='rejected')return {bucket:'rejected'"))failures.push('mandatory web verification ordering');
     const reviewHighRow={sku:'PT-YW540',item_name:'Panasonic Projector WXGA 5500 Lumens',description:'Panasonic Projector WXGA 5500 Lumens',quantity:1,unit_price:804,amount:804};
     const reviewHighInv=[{id:21,sku:'PT-VW540',item_name:'Panasonic Projector WXGA 5500 Lumens',category:'Projection / Video'}];
     const reviewHighL1=level1(reviewHighRow,{raw:''});
