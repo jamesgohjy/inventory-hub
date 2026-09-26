@@ -215,8 +215,13 @@
       const match=existingMatch(candidate,nextItems);
       if(match){
         const csku=compact(candidate.sku||candidate.model||''),vsku=compact(match.row.sku||match.row.model||'');
-        if(csku&&vsku&&csku!==vsku){
-          report.conflicts.push({id:'v3-conflict-'+candidate.v3Provenance.ordinal,type:'identity-conflict',ordinal:candidate.v3Provenance.ordinal,v2Row:match.row,v3Row:candidate,reason:'v2-v3-identity-disagreement'});
+        const modelAmbiguous=!csku&&Array.isArray(candidate?.v3Provenance?.modelVariants)&&candidate.v3Provenance.modelVariants.length>1;
+        if((csku&&vsku&&csku!==vsku)||modelAmbiguous){
+          let checked={bucket:'pending',row:candidate,reason:'v3-conflict-needs-level3'};
+          if(ctx.verifyGate?.verifyOne){
+            checked=await ctx.verifyGate.verifyOne(candidate,{raw:(evidence.sources||[]).map(s=>String(s.text||'')).join('\n'),inventoryItems:ctx.inventoryItems||[],supplierName:String(parsed?.doc?.supplier_name||''),doc:parsed?.doc||{},webVerifier:ctx.webVerifier||null});
+          }
+          report.conflicts.push({id:'v3-conflict-'+candidate.v3Provenance.ordinal,type:'identity-conflict',ordinal:candidate.v3Provenance.ordinal,v2Row:match.row,v3Row:checked?.row||candidate,v3VerificationStatus:checked?.bucket||'pending',v3VerificationReason:checked?.reason||'v3-conflict-needs-level3',reason:modelAmbiguous?'v3-secondary-evidence-ambiguous':'v2-v3-identity-disagreement',resolved:false});
         }
         continue;
       }
