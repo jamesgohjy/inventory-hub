@@ -2941,10 +2941,15 @@ function resolveParserV3Conflict14y(id,useV3){
     const key=v714yNormalizedSkuKey(target),qty=Number(target.quantity),amount=Number(target.amount);
     let at=items.findIndex(row=>key&&v714yNormalizedSkuKey(row)===key&&(!Number.isFinite(qty)||Number(row.quantity)===qty)&&(!Number.isFinite(amount)||Math.abs(Number(row.amount)-amount)<=.06));
     if(at<0)at=items.findIndex(row=>key&&v714yNormalizedSkuKey(row)===key);
-    const explicit=!!(candidate.quantityReviewRequired||candidate.priceReviewRequired||candidate.unit_priceReviewRequired||candidate.amountReviewRequired||candidate.serialConflict||candidate.serialConflictReviewRequired||candidate.serialCountReview||candidate.skuReviewRequired);
-    const approved={...candidate,v3Level3Confirmed:true,v3ConflictResolution:'use-v3',humanReviewRequired:explicit,needsReview:explicit,parserReviewRequired:explicit};
-    if(at>=0)items.splice(at,1,approved);else items.push(approved);
-    conflicts[idx]={...conflict,resolved:'use-v3'};
+    if(conflict.type==='reject-conflict'){
+      if(at>=0)items.splice(at,1);
+      conflicts[idx]={...conflict,resolved:'reject-row'};
+    }else{
+      const explicit=!!(candidate.quantityReviewRequired||candidate.priceReviewRequired||candidate.unit_priceReviewRequired||candidate.amountReviewRequired||candidate.serialConflict||candidate.serialConflictReviewRequired||candidate.serialCountReview||candidate.skuReviewRequired);
+      const approved={...candidate,v3Level3Confirmed:true,v3ConflictResolution:'use-v3',humanReviewRequired:explicit,needsReview:explicit,parserReviewRequired:explicit};
+      if(at>=0)items.splice(at,1,approved);else items.push(approved);
+      conflicts[idx]={...conflict,resolved:'use-v3'};
+    }
   }else conflicts[idx]={...conflict,resolved:'keep-v2'};
   const v3Report={...report,conflicts,unresolvedConflictCount:conflicts.filter(x=>!x.resolved).length};
   const base={...parsed,items,v3Verification:v3Report};
@@ -2970,10 +2975,12 @@ function renderParserV3Verification14y(){
     '<div style="margin-top:6px">Mode: <b>'+esc(modes)+'</b> · Status: <b>'+esc(report.status||'countercheck')+'</b> · Auto-recovered: <b>'+auto+'</b> · Recovery Level 3: <b>'+review+'</b> · Rejected recovery: <b>'+rejected+'</b> · V2↔V3 conflicts: <b>'+unresolved.length+'</b></div>';
   if(report.supportScheduleDetected)html+='<div style="margin-top:4px"><small>Support schedule: '+(report.supportScheduleCorroborated?'<b>corroborated</b>':'detected but not strong enough for automatic recovery')+'</small></div>';
   for(const conflict of unresolved){
-    const a=conflict.v2Row||{},b=conflict.v3Row||{},id=esc(String(conflict.id||'')),variants=(b?.v3Provenance?.modelVariants||[]).join(' / ');
+    const a=conflict.v2Row||{},b=conflict.v3Row||{},id=esc(String(conflict.id||'')),variants=(b?.v3Provenance?.modelVariants||[]).join(' / '),rejectOnly=conflict.type==='reject-conflict';
+    const v3Line=rejectOnly?('Reject row — '+esc(String(conflict.reason||'V3 countercheck rejected this as equipment'))):(esc(b.sku||b.model||variants||'Unresolved model')+' — '+esc(b.item_name||b.description||''));
+    const values=rejectOnly?'':('<br>Qty / Unit / Amount: '+esc(String(b.quantity??'—'))+' / '+esc(String(b.unit_price??'—'))+' / '+esc(String(b.amount??'—')));
     html+='<div style="margin-top:10px;padding:10px;border:1px solid #f6d88a;border-radius:8px;background:#fff8df;color:#694c00">'+
-      '<b>Level 3 — V2 / V3 conflict</b><br><small>V2: '+esc(a.sku||a.model||'—')+' — '+esc(a.item_name||a.description||'')+'<br>V3: '+esc(b.sku||b.model||variants||'Unresolved model')+' — '+esc(b.item_name||b.description||'')+'<br>Qty / Unit / Amount: '+esc(String(b.quantity??'—'))+' / '+esc(String(b.unit_price??'—'))+' / '+esc(String(b.amount??'—'))+'<br>Only this disputed row needs your decision.</small>'+
-      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="secondary small-btn" data-v3-keep="'+id+'">Keep V2</button><button type="button" class="secondary small-btn" data-v3-use="'+id+'">Use V3</button></div></div>';
+      '<b>Level 3 — V2 / V3 conflict</b><br><small>V2: '+esc(a.sku||a.model||'—')+' — '+esc(a.item_name||a.description||'')+'<br>V3: '+v3Line+values+'<br>Only this disputed row needs your decision.</small>'+
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="secondary small-btn" data-v3-keep="'+id+'">Keep V2</button><button type="button" class="secondary small-btn" data-v3-use="'+id+'">'+(rejectOnly?'Reject row':'Use V3')+'</button></div></div>';
   }
   box.innerHTML=html;
   box.querySelectorAll('[data-v3-keep]').forEach(btn=>btn.onclick=()=>resolveParserV3Conflict14y(btn.dataset.v3Keep,false));
