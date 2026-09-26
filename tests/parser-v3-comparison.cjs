@@ -334,3 +334,4 @@ const summary={
 };
 console.log('PARSER_V3_COMPARISON_JSON '+JSON.stringify(summary));
 console.log('parser-v3-comparison: PASS');
+module.exports={conceptInvoice,scheduleA,scheduleB,scheduleC,historicalV2ConceptRows,conceptRun,conceptMutationInputs,conceptMetrics};
