@@ -141,7 +141,6 @@
   }
   async function verifyOne(row={},ctx={}){
     const l1=level1(row,ctx);if(l1.status==='reject')return {bucket:'rejected',row,level1:l1,reason:l1.reason};
-    if(l1.status==='review')return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,reason:l1.reason};
     const inv=chooseInventoryMatch(row,ctx.inventoryItems||[],ctx.supplierName||'');
     if(inv.status==='confirmed')return {bucket:'verified',row:canonicalizeFromInventory(row,inv),level1:l1,inventory:inv,reason:'inventory-confirmed'};
     if(inv.status==='rejected')return {bucket:'rejected',row,level1:l1,inventory:inv,reason:'inventory-match-below-60'};
@@ -242,6 +241,16 @@
     if(classifyInventoryMatchScore(60,false)!=='unconfirmed'||classifyInventoryMatchScore(70,false)!=='unconfirmed')failures.push('inventory match 60 through 70 stays review');
     if(classifyInventoryMatchScore(70.1,false)!=='confirmed')failures.push('inventory match above 70 auto confirm');
     if(classifyInventoryMatchScore(1,true)!=='confirmed')failures.push('exact inventory sku remains confirmed');
+    const reviewHighRow={sku:'PT-YW540',item_name:'Panasonic Projector WXGA 5500 Lumens',description:'Panasonic Projector WXGA 5500 Lumens',quantity:1,unit_price:804,amount:804};
+    const reviewHighInv=[{id:21,sku:'PT-VW540',item_name:'Panasonic Projector WXGA 5500 Lumens',category:'Projection / Video'}];
+    const reviewHighL1=level1(reviewHighRow,{raw:''});
+    const reviewHighMatch=chooseInventoryMatch(reviewHighRow,reviewHighInv,'');
+    if(reviewHighL1.status!=='review'||reviewHighMatch.status!=='confirmed')failures.push('level1 review above 70 inventory match setup');
+    const reviewLowRow={sku:'MIC',item_name:'Headset Mic for BSD9701 Amplifier',description:'Headset Mic for BSD9701 Amplifier',quantity:1,unit_price:100,amount:100};
+    const reviewLowInv=[{id:22,sku:'M018',item_name:'Amplifier Module',category:'Audio / Equipment'}];
+    const reviewLowL1=level1(reviewLowRow,{raw:''});
+    const reviewLowMatch=chooseInventoryMatch(reviewLowRow,reviewLowInv,'');
+    if(reviewLowL1.status!=='review'||reviewLowMatch.status!=='rejected')failures.push('level1 review below 60 inventory match setup');
     const dupeSame=consolidateUniqueSku(
       [{sku:'PT-VW540',item_name:'Panasonic projector',quantity:1,unit_price:804,amount:804,v2CandidateId:'a',parserV2Verification:{level:'2A',method:'exact-inventory-sku'}},{sku:'pt vw540',item_name:'Panasonic projector',quantity:1,unit_price:804,amount:804,v2CandidateId:'b'}],
       [],[]
