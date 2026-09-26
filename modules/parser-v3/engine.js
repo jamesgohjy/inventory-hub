@@ -8,9 +8,9 @@
   const norm=v=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const compact=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const nearly=(a,b,t=.03)=>Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Math.abs(Number(a)-Number(b))<=t;
-  const EQUIPMENT_RE=/\b(?:projector|microphone|mic|speaker|loudspeaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|pre\s*amplifier|preamplifier|processor|switcher|visualizer|document camera|console|player|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter|dsp|video processor|matrix|scaler|nvr|dvr|network video recorder|digital video recorder)\b/i;
+  const EQUIPMENT_RE=/\b(?:projectors?|microphones?|mics?|speakers?|loudspeakers?|controllers?|control panels?|keypads?|cameras?|mixers?|displays?|monitors?|transmitters?|receivers?|screens?|wireless systems?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visualizers?|document cameras?|consoles?|players?|receptacles?|audio testers?|signal testers?|testers?|analyzers?|analysers?|meters?|dsp|video processors?|matrix|scalers?|nvr|dvr|network video recorders?|digital video recorders?)\b/i;
   const SERVICE_RE=/\b(?:scope of work|installation|installing|labou?r|commissioning|testing|programming|dismantle|dismount|delivery|freight|repair|relocate|reinstatement|training|warranty|service contract)\b/i;
-  const MODEL_RE=/\bmodel\s*:\s*(?:[A-Za-z][A-Za-z &.]*?\s+)?([A-Z0-9][A-Z0-9+._\/-]*\d[A-Z0-9+._\/-]*)\b/i;
+  const MODEL_RE=/\bmodel\s*:\s*(?:[A-Za-z][A-Za-z &.]*?\s+)?([A-Z0-9][A-Z0-9+._\/-]*\d[A-Z0-9+._\/-]*|[A-Za-z][A-Za-z0-9+._\/-]{3,})\b/i;
   const money=v=>{let s=String(v??'').replace(/[$\s}\])]/g,'');if(/,\d{2}$/.test(s)&&!s.includes('.'))s=s.replace(',','.');else s=s.replace(/,/g,'');const n=Number(s);return Number.isFinite(n)?n:null;};
   const hashText=v=>norm(String(v||'')).slice(0,9000);
   const sourceId=s=>String(s?.id||s?.source||'source');
@@ -52,6 +52,12 @@
     }
     return {ok:hits.length>=2,target,witnesses:hits.length,sources:hits};
   }
+  function scheduleModelToken(text=''){
+    const before=clean(String(text||'').split(/\$?\s*\d[\d,]*(?:[.,]\d{2})/)[0]);
+    const hits=[...before.matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(m=>m[0]).filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+    hits.sort((a,b)=>(/[-/]/.test(b)?2:0)-(/[-/]/.test(a)?2:0)||b.length-a.length);
+    return clean(hits[0]||'');
+  }
   function scheduleConsensus(evidence){
     const S=global.InventoryHubParserV2NumberedSchedule;
     if(!S?.schedules)return [];
@@ -84,7 +90,10 @@
       if(!(unit>0)&&quantity>0)unit=Math.round(amount/quantity*100)/100;
       if(!(quantity>0)||!(unit>0)||!nearly(quantity*unit,amount,.06))continue;
       const best=[...matching].sort((a,b)=>String(b.text||'').length-String(a.text||'').length)[0];
-      out.push({ordinal,quantity,unit_price:unit,amount,description:scheduleDescription(best?.text||''),supportWitnesses:ar[0][1].size,supportSources:[...ar[0][1]],rawRows:matching});
+      const modelVotes=new Map();for(const r of matching){const m=scheduleModelToken(r.text||'');if(!m)continue;const k=compact(m);if(!modelVotes.has(k))modelVotes.set(k,{model:m,sources:new Set()});modelVotes.get(k).sources.add(String(r.source||''));}
+      const mr=[...modelVotes.values()].sort((a,b)=>b.sources.size-a.sources.size);
+      const scheduleModel=mr[0]?.sources.size>=2&&mr[0].sources.size>Number(mr[1]?.sources.size||0)?mr[0].model:'';
+      out.push({ordinal,quantity,unit_price:unit,amount,description:scheduleDescription(best?.text||''),scheduleModel,supportWitnesses:ar[0][1].size,supportSources:[...ar[0][1]],rawRows:matching});
     }
     return out;
   }
@@ -127,13 +136,15 @@
     }
     return {modelsByOrdinal,replacementsByOrdinal};
   }
-  function modelDecision(ordinal,anchors,modelEvidence){
+  function modelDecision(ordinal,anchors,modelEvidence,scheduleRow={}){
     const direct=(anchors.get(ordinal)||[]).map(a=>clean(a.model)).filter(Boolean),variants=new Map();
     for(const m of direct){const k=compact(m);if(!variants.has(k))variants.set(k,{model:m,count:0,sources:[]});variants.get(k).count+=2;}
     for(const e of modelEvidence.modelsByOrdinal.get(ordinal)?.values?.()||[]){
       const k=compact(e.model);if(!variants.has(k))variants.set(k,{model:e.model,count:0,sources:[]});
       const v=variants.get(k);v.count+=e.count;v.sources.push(...e.sources);
     }
+    const scheduleModel=clean(scheduleRow.scheduleModel||'');
+    if(scheduleModel){const k=compact(scheduleModel);if(!variants.has(k))variants.set(k,{model:scheduleModel,count:0,sources:[]});variants.get(k).count+=Math.max(2,Number(scheduleRow.supportWitnesses||0));}
     const ranked=[...variants.values()].sort((a,b)=>b.count-a.count);
     let model=ranked[0]?.count>=2&&ranked[0].count>Number(ranked[1]?.count||0)?ranked[0].model:'';
     const replacements=[...(modelEvidence.replacementsByOrdinal.get(ordinal)?.values?.()||[])].sort((a,b)=>b.count-a.count);
@@ -238,7 +249,7 @@
       return {parsed:{...parsed,v3Verification:report,parserV3Mode:'countercheck'},report};
     }
     const modelEvidence=completeInvoiceModelVotes(evidence,ordinals);
-    const candidates=scheduleRows.map(row=>makeCandidate(row,modelDecision(row.ordinal,anchors,modelEvidence),anchors));
+    const candidates=scheduleRows.map(row=>makeCandidate(row,modelDecision(row.ordinal,anchors,modelEvidence,row),anchors));
     let nextItems=[...(parsed.items||[])],pending=[...(parsed?.v2Verification?.pending||[])],rejected=[...(parsed?.v2Verification?.rejected||[])];
     for(const candidate of candidates){
       const match=existingMatch(candidate,nextItems);
