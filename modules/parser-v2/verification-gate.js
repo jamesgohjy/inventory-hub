@@ -31,7 +31,10 @@
     if(COMPANY_RE.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'company-header'};
     if(ADDRESS_RE.test(text))return {reject:true,reason:'address-metadata'};
     if(WARRANTY_RE.test(text))return {reject:true,reason:'warranty-or-support'};
-    if(SERVICE_RE.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'service-or-labour'};
+    const sku=clean(row.sku||row.model||'');
+    const serviceSku=/^(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DELIVERY|FREIGHT|TRANSPORT|COURIER|DISMOUNT|DISMANTLE)/i.test(sku);
+    const strongServiceStart=/^(?:installation|installing|labou?r|professional services?|service|repair|delivery|freight|transport|courier|commissioning|testing|programming|dismantle|dismount)\b/i.test(clean(row.item_name||row.description||''));
+    if(serviceSku||strongServiceStart||(SERVICE_RE.test(text)&&!EQUIPMENT_RE.test(text)))return {reject:true,reason:'service-or-labour'};
     if(ACCESSORY_RE.test(text)&&!/\b(?:microphone|mic)\s+stands?\b/i.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'excluded-accessory'};
     return {reject:false,reason:''};
   }
@@ -108,6 +111,7 @@
   }
   async function verifyOne(row={},ctx={}){
     const l1=level1(row,ctx);if(l1.status==='reject')return {bucket:'rejected',row,level1:l1,reason:l1.reason};
+    if(l1.status==='review')return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,reason:l1.reason};
     const inv=chooseInventoryMatch(row,ctx.inventoryItems||[],ctx.supplierName||'');if(inv.status==='confirmed')return {bucket:'verified',row:canonicalizeFromInventory(row,inv),level1:l1,inventory:inv,reason:'inventory-confirmed'};
     if(l1.status==='verified'&&!clean(row.sku||row.model||''))return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,reason:'equipment-description-proven-model-unavailable'};
     const web=ctx.webVerifier;
@@ -121,10 +125,16 @@
     }
     return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,reason:l1.status==='verified'?'equipment-proven-model-needs-user-check':'equipment-candidate-needs-user-check'};
   }
+  async function mapLimit(list=[],limit=3,fn=async x=>x){
+    const out=new Array(list.length);let cursor=0;
+    async function worker(){for(;;){const i=cursor++;if(i>=list.length)return;out[i]=await fn(list[i],i);}}
+    await Promise.all(Array.from({length:Math.min(limit,list.length)},()=>worker()));return out;
+  }
   async function verifyParsed(parsed={},ctx={}){
-    const verified=[],pending=[],rejected=[],decisions=[];
-    for(let i=0;i<(parsed.items||[]).length;i++){
-      const original={...(parsed.items[i]||{})},result=await verifyOne(original,{...ctx,supplierName:ctx.supplierName||parsed?.doc?.supplier_name||''}),id=String(original.rowId||original.v7RowId||'candidate-'+(i+1));
+    const verified=[],pending=[],rejected=[],decisions=[],items=parsed.items||[];
+    const results=await mapLimit(items,3,async(original,i)=>({original:{...(original||{})},result:await verifyOne({...original},{...ctx,supplierName:ctx.supplierName||parsed?.doc?.supplier_name||''}),i}));
+    for(const entry of results){
+      const original=entry.original,result=entry.result,i=entry.i,id=String(original.rowId||original.v7RowId||'candidate-'+(i+1));
       const decision={id,index:i+1,bucket:result.bucket,reason:result.reason,level1:result.level1,inventory:result.inventory?{status:result.inventory.status,score:result.inventory.score,secondScore:result.inventory.secondScore,margin:result.inventory.margin,matchedSku:clean(result.inventory.item?.sku||'')}:null,web:result.web?{status:result.web.status,confidence:result.web.confidence??null,reason:result.web.reason||'',sources:(result.web.sources||[]).slice(0,3)}:null};
       decisions.push(decision);
       if(result.bucket==='verified')verified.push({...result.row,v2CandidateId:id});
