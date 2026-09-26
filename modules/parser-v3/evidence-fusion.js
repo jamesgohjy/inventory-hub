@@ -160,6 +160,11 @@
     return out;
   }
   function rowKey(row={}){return norm(row.sku||row.model||row.item_name||row.description||'');}
+  function physicalItemName(description=''){
+    const original=clean(description);
+    if(!PHYSICAL_RE.test(original))return original;
+    return clean(original.replace(/^(?:SUPPLY\s*(?:&|AND)\s*INSTALL(?:ATION)?|SUPPLY\s+AND\s+INSTALL(?:ATION)?|INSTALL(?:ATION)?\s+OF)\s+/i,''));
+  }
   function baselineMatch(rows=[],model=''){
     const key=norm(model);if(!key)return null;
     return rows.find(r=>rowKey(r)===key||norm(r.sku||r.model||'')===key)||null;
@@ -210,8 +215,9 @@
       if(!physical|| (SERVICE_RE.test(row.description)&&!PHYSICAL_RE.test(row.description))){
         rejected.push({...row,sku:model,reason:'not-proven-physical-equipment'});continue;
       }
-      recovered.push({sku:model,model,item_name:row.description,description:row.description,quantity:row.quantity,unit_price:row.unit_price,amount:row.amount,
-        parserV3Recovery:{ordinal:row.ordinal,source:'support-schedule+invoice-model',evidenceCount:Math.min(row.quantityVotes,row.unitVotes,row.amountVotes)}});
+      const canonicalDescription=physicalItemName(row.description);
+      recovered.push({sku:model,model,item_name:canonicalDescription,description:canonicalDescription,quantity:row.quantity,unit_price:row.unit_price,amount:row.amount,
+        parserV3Recovery:{ordinal:row.ordinal,source:'support-schedule+invoice-model',sourceDescription:row.description,evidenceCount:Math.min(row.quantityVotes,row.unitVotes,row.amountVotes)}});
     }
     const rows=[...baseline,...recovered];
     const equipmentTotal=round2([...rows,...pending.filter(x=>x.quantity&&x.unit_price&&x.amount)].reduce((s,r)=>s+(Number(r.amount)||0),0));
@@ -229,5 +235,5 @@
     return {ok:failures.length===0,failures};
   }
 
-  global.InventoryHubParserV3=Object.freeze({VERSION,recover,selfTest,extractInvoiceModels,extractReplacementMap,parseScheduleRows,aggregateSupport,modelSimilarity});
+  global.InventoryHubParserV3=Object.freeze({VERSION,recover,selfTest,extractInvoiceModels,extractReplacementMap,parseScheduleRows,aggregateSupport,modelSimilarity,physicalItemName});
 })(typeof window!=='undefined'?window:globalThis);
