@@ -72,4 +72,6 @@ jobs:
           node --check modules/backup-verification-ui.js
           node --check scripts/verify-backups.mjs
       - name: Run parser, module, backup and release regression gates
-        run: node tests/run-regression.cjs
+        run: |
+          node tests/run-regression.cjs
+          node tests/parser-v4-unseen-holdout.cjs
