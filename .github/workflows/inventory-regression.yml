@@ -75,3 +75,5 @@ jobs:
         run: node tests/run-regression.cjs
       - name: Run Parser V2 vs V3 differential and mutation harness
         run: node tests/parser-v3-comparison.cjs
+      - name: Run Parser V2 vs V3 full authoritative Concept gate
+        run: node tests/parser-v3-authoritative-gate.cjs
