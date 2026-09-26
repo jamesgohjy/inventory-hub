@@ -48,7 +48,7 @@
     for(const s of supportScheduleSources(evidence)){
       const text=String(s.text||''),m=text.match(/\bTOTAL\s+AMOUNT\s*[=|:\s]*\$?\s*([\d,]+\.\d{2})/i);
       if(!m||!nearly(money(m[1]),target,.03))continue;
-      const key=hashText(text);if(seen.has(key))continue;seen.add(key);hits.push(sourceId(s));
+      const key=sourceId(s);if(seen.has(key))continue;seen.add(key);hits.push(key);
     }
     return {ok:hits.length>=2,target,witnesses:hits.length,sources:hits};
   }
@@ -100,7 +100,7 @@
     for(const src of evidence.sources||[]){
       const text=String(src.text||'');if(!/\b(?:TAX\s+)?INVOICE\b/i.test(text))continue;
       const beforeScope=text.split(/\bSCOPE\s+OF\s+WORK\b/i)[0];
-      const key=hashText(beforeScope);if(!key||seen.has(key))continue;seen.add(key);
+      const key=sourceId(src);if(!key||seen.has(key))continue;seen.add(key);
       const models=[];
       for(const line of beforeScope.split(/\r?\n/)){
         const m=clean(line).match(MODEL_RE);if(m?.[1])models.push(clean(m[1]));
@@ -244,12 +244,12 @@
     }
     if(report.recovered.length)report.modes.push('recovery');
     if(report.conflicts.length)report.modes.push('conflict-review');
-    const v2Report={...(parsed.v2Verification||{}),pending,rejected,pendingCount:pending.length,rejectedCount:rejected.length};
+    const v2Report={...(parsed.v2Verification||{}),pending,rejected,pendingCount:pending.length,rejectedCount:rejected.length,verifiedCount:nextItems.length};
     const dedup=ctx.verifyGate?.consolidateUniqueSku?.(nextItems,pending,rejected);
     if(dedup){
       nextItems=dedup.verified;
       v2Report.pending=dedup.pending;v2Report.pendingCount=dedup.pending.length;
-      v2Report.rejected=dedup.rejected;v2Report.rejectedCount=dedup.rejected.length;
+      v2Report.rejected=dedup.rejected;v2Report.rejectedCount=dedup.rejected.length;v2Report.verifiedCount=nextItems.length;
     }
     report.v3FinalVerifiedCount=nextItems.length;
     report.status=report.conflicts.length?'conflict-review':report.recovered.some(x=>x.status==='auto-filled')?'recovered':report.recovered.some(x=>x.status==='level3')?'recovery-needs-review':'agree';
