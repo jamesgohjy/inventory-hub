@@ -10,7 +10,7 @@ const rowView=r=>({sku:String(r?.sku||r?.model||''),quantity:Number(r?.quantity)
 const sortedRows=rows=>(rows||[]).map(rowView).sort((a,b)=>compact(a.sku).localeCompare(compact(b.sku))||a.quantity-b.quantity||a.unit_price-b.unit_price||a.amount-b.amount);
 const sameRows=(a,b)=>JSON.stringify(sortedRows(a))===JSON.stringify(sortedRows(b));
 const hasSku=(rows,sku)=>rows.some(r=>compact(r.sku||r.model)===compact(sku));
-const noText=(rows,re)=>rows.every(r=>!re.test([r.sku,r.item_name,r.description].filter(Boolean).join(' ')));
+const noText=(rows,re)=>rows.every(r=>!re.test([r.sku,r.item_name].filter(Boolean).join(' ')));
 const uniqueSku=rows=>{const ks=rows.map(r=>compact(r.sku||r.model)).filter(Boolean);return new Set(ks).size===ks.length;};
 
 function v2Apply(raw,items,doc={}){return V2.applyParsedFixes({doc:{...doc},items:items.map(x=>({...x}))},raw);}
