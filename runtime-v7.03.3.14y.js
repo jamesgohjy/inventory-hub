@@ -1659,7 +1659,8 @@ renderParsedItems=function(){
       trace.trace_error?'Trace error: '+trace.trace_error:'',
       trace.v2_error?'V2 error: '+trace.v2_error:''
     ].filter(Boolean).join('\n');
-    wrap.appendChild(box);
+    const wrap=$('parsedItems');
+    if(wrap)wrap.appendChild(box);
   }
 };
 
