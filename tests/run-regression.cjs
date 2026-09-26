@@ -1,4 +1,5 @@
 const fs=require('fs');
+require('./ocr-geometry.test.cjs');
 const vm=require('vm');
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 const read=p=>fs.readFileSync(p,'utf8');
@@ -246,7 +247,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r5'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r6'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');

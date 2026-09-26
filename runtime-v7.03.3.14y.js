@@ -531,6 +531,10 @@ function blocksToLayout(blocks,pageNumber=1,pageHeight=0){
     if(!node)return;
     if(Array.isArray(node)){node.forEach(walk);return;}
     if(typeof node!=='object')return;
+    // A word already contains its symbols. Walking both repeats every letter,
+    // corrupting headers and making this candidate win by inflated item count.
+    const children=['blocks','paragraphs','lines','words'].filter(k=>Array.isArray(node[k])&&node[k].length);
+    if(children.length){children.forEach(k=>walk(node[k]));return;}
     const text=String(node.text||node.symbol||'').trim();
     const b=node.bbox||node.boundingBox||node.box;
     if(text&&b){
@@ -538,7 +542,6 @@ function blocksToLayout(blocks,pageNumber=1,pageHeight=0){
       const x1=Number(b.x1??(b.right??(x0+Number(b.width||0)))),y1=Number(b.y1??(b.bottom??(y0+Number(b.height||0))));
       if([x0,y0,x1,y1].every(Number.isFinite)&&x1>x0&&y1>y0&&!/\s/.test(text))words.push({text,x:x0,top:y0,w:x1-x0,h:y1-y0,conf:node.confidence??node.conf??0});
     }
-    for(const k of ['blocks','paragraphs','lines','words','symbols'])if(node[k])walk(node[k]);
   };
   walk(blocks);
   const dedup=[],seen=new Set();
@@ -554,13 +557,22 @@ function hocrToLayout(hocr,pageNumber=1,pageHeight=0){
   while((m=re.exec(html))){const x0=+m[1],y0=+m[2],x1=+m[3],y1=+m[4],text=strip(m[5]);if(text&&x1>x0&&y1>y0)words.push({text,x:x0,top:y0,w:x1-x0,h:y1-y0,conf:0});}
   return wordsToLayout(words,pageNumber,pageHeight,'ocr-hocr');
 }
-function ocrResultToLayout(data,pageNumber=1,pageHeight=0){
+function ocrResultToLayout(data,pageNumber=1,pageHeight=0,pageWidth=0){
   const candidates=[];
   if(data?.tsv){const x=tsvToLayout(data.tsv,pageNumber,pageHeight);if(x.items?.length)candidates.push(x);}
   if(data?.blocks){const x=blocksToLayout(data.blocks,pageNumber,pageHeight);if(x.items?.length)candidates.push(x);}
   if(data?.hocr){const x=hocrToLayout(data.hocr,pageNumber,pageHeight);if(x.items?.length)candidates.push(x);}
   candidates.sort((a,b)=>(b.items?.length||0)-(a.items?.length||0));
-  return candidates[0]||{page:pageNumber,rows:[],items:[],source:'ocr-none'};
+  const layout=candidates[0]||{page:pageNumber,rows:[],items:[],source:'ocr-none'};
+  // Keep the rendered image coordinate system intact across the V2 boundary.
+  // Legacy consumers still use w/h, so expose canonical aliases as well.
+  layout.width=Number(pageWidth)>0?Number(pageWidth):null;
+  layout.height=Number(pageHeight)>0?Number(pageHeight):null;
+  for(const item of [...(layout.items||[]),...(layout.rows||[]).flatMap(r=>r.items||[])]){
+    item.width=Number(item.width??item.w)||0;
+    item.height=Number(item.height??item.h)||0;
+  }
+  return layout;
 }
 function layoutInvoiceQuality(layout){
   const rows=layout?.rows||[];
@@ -644,7 +656,7 @@ async function extractPdf(file){
           setProgress(pct,`Running OCR ${mode.label}… page ${i} of ${pdf.numPages}`);
           await worker.setParameters({tessedit_pageseg_mode:mode.psm,preserve_interword_spaces:'1',user_defined_dpi:'180'});
           const r=await worker.recognize(c,{}, {text:true,tsv:true,hocr:true,blocks:true});
-          const layout=ocrResultToLayout(r.data||{},i,c.height);
+          const layout=ocrResultToLayout(r.data||{},i,c.height,c.width);
           mode.layouts.push(layout);
           const natural=String(r.data?.text||'').trim();
           const reconstructed=layout.rows?.map(x=>x.text).join('\n').trim();
@@ -1841,7 +1853,7 @@ function v662FileKind(file){const n=String(file?.name||'').toLowerCase(),t=Strin
 async function v662EnsureJSZip(){if(window.JSZip)return window.JSZip;await new Promise((res,rej)=>{const old=document.querySelector('script[data-v662-jszip]');if(old){old.addEventListener('load',res,{once:true});old.addEventListener('error',rej,{once:true});return;}const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';sc.async=true;sc.dataset.v662Jszip='1';sc.onload=res;sc.onerror=()=>rej(new Error('DOCX reader could not be loaded.'));document.head.appendChild(sc);});return window.JSZip;}
 async function v662OcrBlob(blob,source='image-ocr'){
   const T=await v661EnsureTesseract(),worker=await T.createWorker('eng');
-  try{await worker.setParameters({tessedit_pageseg_mode:T.PSM?.AUTO??'3',preserve_interword_spaces:'1',user_defined_dpi:'220'});const r=await worker.recognize(blob,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},1,0),text=String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim();if(text)state.ocrCandidates=[...(state.ocrCandidates||[]),{source,text,layout:[layout],score:ocrTextQuality(text)+layoutInvoiceQuality(layout)}];if(layout?.rows?.length)state.pdfLayout=[layout];return text;}finally{await worker.terminate();}
+  try{await worker.setParameters({tessedit_pageseg_mode:T.PSM?.AUTO??'3',preserve_interword_spaces:'1',user_defined_dpi:'220'});const r=await worker.recognize(blob,{}, {text:true,tsv:true,hocr:true,blocks:true});const bitmap=await createImageBitmap(blob);const layout=ocrResultToLayout(r.data||{},1,bitmap.height,bitmap.width);bitmap.close();const text=String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim();if(text)state.ocrCandidates=[...(state.ocrCandidates||[]),{source,text,layout:[layout],score:ocrTextQuality(text)+layoutInvoiceQuality(layout)}];if(layout?.rows?.length)state.pdfLayout=[layout];return text;}finally{await worker.terminate();}
 }
 async function v662ExtractDocx(file){
   const JSZip=await v662EnsureJSZip(),zip=await JSZip.loadAsync(await file.arrayBuffer()),xml=await zip.file('word/document.xml')?.async('text');if(!xml)throw new Error('DOCX document.xml was not found.');
@@ -2265,7 +2277,10 @@ function v676SafeFallbackSku(itemName='',existingItems=[],usedSkus=new Map()){
   return candidate;
 }
 function v676IsSupportCoverageLine(line={}){
-  const text=normalizePdfText([line.sku,line.item_name,line.description].filter(Boolean).join(' ')).replace(/\s+/g,' ').trim();
+  const text=normalizePdfText([line.sku,line.item_name,line.description].filter(Boolean).join(' ')).replace(/\s+/g,' ').trim()
+    // Technical capacity is not a service contract. Remove only the bounded
+    // capability phrase; any separate warranty/support-plan wording remains.
+    .replace(/\bsupport(?:s|ing)?\s+(?:up\s+to\s+)?\d+\s*(?:channels?|inputs?|outputs?|ports?|displays?|microphones?)\b/gi,'');
   if(!text)return false;
   return /\b(?:hi[- ]?care|care\s*pack|support\s*(?:plan|service|coverage)?|maintenance\s*(?:plan|service|contract)?|service\s*contract|extended\s+warranty|warranty\s*(?:extension|coverage|service)?|subscription|software\s+assurance|\d+\s*months?\s*(?:support|warranty|care))\b/i.test(text)
     || /\b(?:basic|premium|standard)\s+.*\b\d{1,3}\s*months?\b/i.test(text);
@@ -2516,7 +2531,7 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
       const traceSchedule=traceEvidence?window.InventoryHubParserV2NumberedSchedule?.schedules?.(traceEvidence)||[]:[];
       liveParserTrace={
         build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',
-        asset_revision:'v703314y-live-trace-20260925-13',
+        asset_revision:'v703314y-ocr-geometry-20260926-14',
         ocr_trigger:state.v2OcrTrigger||null,
         evidence_sources:v2Sources.map(src=>({
           source:String(src?.source||src?.id||'unknown'),
@@ -2535,7 +2550,7 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
         review_row_count:Array.isArray(v2?.reviewRows)?v2.reviewRows.length:0
       };
     }catch(traceErr){
-      liveParserTrace={build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',asset_revision:'v703314y-live-trace-20260925-13',trace_error:String(traceErr?.message||traceErr)};
+      liveParserTrace={build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',asset_revision:'v703314y-ocr-geometry-20260926-14',trace_error:String(traceErr?.message||traceErr)};
     }
     const v2ItemKey=row=>{
       const sku=String(row?.sku||row?.model||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
@@ -2619,7 +2634,7 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
       normalized={...normalized,parseEvidence:{...(normalized.parseEvidence||{}),v2Evidence:v2,v2Promotion:promotion,liveParserTrace}};
     }
   }catch(v2Err){
-    state.lastParserTrace={build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',asset_revision:'v703314y-live-trace-20260925-13',v2_error:String(v2Err?.message||v2Err)};
+    state.lastParserTrace={build:window.__AV_INVENTORY_BUILD__||'7.03.3.14y',asset_revision:'v703314y-ocr-geometry-20260926-14',v2_error:String(v2Err?.message||v2Err)};
     console.warn('Parser V2 evidence analysis failed; legacy canonical result preserved.',v2Err);
   }
   return window.InventoryHubCanonicalParser.fromPipeline(normalized,{raw:evidence});
@@ -2791,7 +2806,7 @@ async function forceOcrRecovery(file){
   const canvases=[];
   if(kind==='pdf'){const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i),vp=p.getViewport({scale:3.2}),c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;canvases.push({c,page:i});}}
   else if(kind==='image'){const bmp=await createImageBitmap(file),c=document.createElement('canvas'),scale=Math.min(3,Math.max(1,2400/Math.max(bmp.width,bmp.height)));c.width=Math.round(bmp.width*scale);c.height=Math.round(bmp.height*scale);c.getContext('2d',{willReadFrequently:true}).drawImage(bmp,0,0,c.width,c.height);canvases.push({c,page:1});bmp.close?.();}
-  const worker=await T.createWorker('eng');try{for(let ci=0;ci<canvases.length;ci++){for(let mi=0;mi<modes.length;mi++){const {c,page}=canvases[ci],m=modes[mi],pct=42+Math.round(45*((ci*modes.length+mi+1)/(canvases.length*modes.length))),input=m.preprocess?v703314nPreprocessCanvas(c):c;setProgress(pct,`Recovery OCR ${m.label}… page ${page} of ${canvases.length}`);await worker.setParameters({tessedit_pageseg_mode:m.psm,preserve_interword_spaces:'1',user_defined_dpi:'240'});const r=await worker.recognize(input,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},page,input.height);m.layouts.push(layout);m.texts.push(String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim());}}}finally{await worker.terminate();}
+  const worker=await T.createWorker('eng');try{for(let ci=0;ci<canvases.length;ci++){for(let mi=0;mi<modes.length;mi++){const {c,page}=canvases[ci],m=modes[mi],pct=42+Math.round(45*((ci*modes.length+mi+1)/(canvases.length*modes.length))),input=m.preprocess?v703314nPreprocessCanvas(c):c;setProgress(pct,`Recovery OCR ${m.label}… page ${page} of ${canvases.length}`);await worker.setParameters({tessedit_pageseg_mode:m.psm,preserve_interword_spaces:'1',user_defined_dpi:'240'});const r=await worker.recognize(input,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},page,input.height,input.width);m.layouts.push(layout);m.texts.push(String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim());}}}finally{await worker.terminate();}
   const recovered=modes.map(m=>{const text=m.texts.join('\n\f\n').trim();return{source:m.key,label:m.label,text,layout:m.layouts,score:ocrTextQuality(text)+m.layouts.reduce((n,l)=>n+layoutInvoiceQuality(l),0)};}).filter(x=>x.text);
   const headerRecovered=[];
   try{
@@ -4644,7 +4659,7 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
         for(let i=0;i<specs.length;i++){
           const s=specs[i],rawCrop=crop(s.x,s.y,s.w,s.h),input=s.prep&&typeof v703314nPreprocessCanvas==='function'?v703314nPreprocessCanvas(rawCrop):rawCrop;
           setProgress(86+Math.round(((i+1)/specs.length)*8),'Deep recovery '+s.label+'…');await worker.setParameters({tessedit_pageseg_mode:s.psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
-          const r=await worker.recognize(input,{}, {text:true,tsv:true,hocr:true,blocks:true}),layout=typeof ocrResultToLayout==='function'?ocrResultToLayout(r.data||{},1,input.height):null,text=String(r.data?.text||'').trim()||(layout?.rows||[]).map(x=>x.text).join('\n').trim();
+          const r=await worker.recognize(input,{}, {text:true,tsv:true,hocr:true,blocks:true}),layout=typeof ocrResultToLayout==='function'?ocrResultToLayout(r.data||{},1,input.height,input.width):null,text=String(r.data?.text||'').trim()||(layout?.rows||[]).map(x=>x.text).join('\n').trim();
           if(text)out.push({source:s.key,label:s.label,text,layout:layout?[layout]:[],score:1800+(typeof ocrTextQuality==='function'?ocrTextQuality(text):0)+(layout&&typeof layoutInvoiceQuality==='function'?layoutInvoiceQuality(layout):0)});
         }
       }finally{await worker.terminate();}
