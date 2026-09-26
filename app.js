@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14y',ASSET_REV='v703314y-ocr-geometry-20260926-15-wrap-scope-fix';
+  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v2-initial-shadow-20260926-16-wrap-fix';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -22,13 +22,10 @@
       if(!reviewPreservationGate?.ok)throw new Error('Parser review-preservation gate failed: '+(reviewPreservationGate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/parser-v2/evidence-model.js?v='+key,'InventoryHubParserV2Evidence');
       await loadScript('modules/parser-v2/header-resolver.js?v='+key,'InventoryHubParserV2Header');
-      await loadScript('modules/parser-v2/table-detector.js?v='+key,'InventoryHubParserV2TableDetector');
-      await loadScript('modules/parser-v2/row-builder.js?v='+key,'InventoryHubParserV2RowBuilder');
       await loadScript('modules/parser-v2/row-accounting.js?v='+key,'InventoryHubParserV2Rows');
-      await loadScript('modules/parser-v2/numbered-schedule.js?v='+key,'InventoryHubParserV2NumberedSchedule');
       const parserV2=await loadScript('modules/parser-v2/engine.js?v='+key,'InventoryHubParserV2');
       const parserV2Gate=parserV2.selfTest?.();
-      if(!parserV2Gate?.ok)throw new Error('Parser V2 evidence-promotion gate failed: '+(parserV2Gate?.failures||['self-test unavailable']).join(', '));
+      if(!parserV2Gate?.ok)throw new Error('Parser V2 shadow gate failed: '+(parserV2Gate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
@@ -37,7 +34,7 @@
       await window.__AV_DIRECT_RUNTIME_READY__;
       if(window.__AV_DIRECT_RUNTIME_LOADED__!==VERSION)throw new Error('Direct runtime did not initialise as '+VERSION+'.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
-      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='direct repository modules v7.03.3.14y';
+      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='initial Parser V2 shadow baseline + current UI v7.03.3.14y';
       console.info('AV Inventory Hub '+VERSION+' loaded with evidence-ranked parsing.',Object.fromEntries(gates));
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
