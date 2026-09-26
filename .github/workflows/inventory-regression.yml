@@ -2,7 +2,7 @@ name: Inventory Hub Regression Gate
 
 on:
   push:
-    branches: [main]
+    branches: [main, experiment/parser-v3-evidence-fusion-r14]
     paths:
       - "app.js"
       - "v7033-core.js"
@@ -66,9 +66,12 @@ jobs:
           node --check modules/parser-v2/numbered-schedule.js
           node --check modules/parser-v2/engine.js
           node --check modules/parser-v2/verification-gate.js
+          node --check modules/parser-v3/evidence-fusion.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
           node --check modules/backup-verification-ui.js
           node --check scripts/verify-backups.mjs
       - name: Run parser, module, backup and release regression gates
         run: node tests/run-regression.cjs
+      - name: Run Parser V2 vs V3 differential and mutation harness
+        run: node tests/parser-v3-comparison.cjs
