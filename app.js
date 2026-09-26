@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14y',ASSET_REV='v703314y-v2-v3-production-20260926-26-active-countercheck';
+  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v4-mandatory-web-20260926-27';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -44,8 +44,8 @@
       await window.__AV_DIRECT_RUNTIME_READY__;
       if(window.__AV_DIRECT_RUNTIME_LOADED__!==VERSION)throw new Error('Direct runtime did not initialise as '+VERSION+'.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
-      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='Parser V2 primary + Parser V3 countercheck/recovery + current UI v7.03.3.14y';
-      console.info('AV Inventory Hub '+VERSION+' loaded with Parser V2 primary + Parser V3 countercheck/recovery.',Object.fromEntries(gates));
+      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='Parser V4 = V2 primary + V3 countercheck/recovery + mandatory web verification';
+      console.info('AV Inventory Hub '+VERSION+' loaded with Parser V4 (V2 primary + V3 countercheck/recovery + mandatory web verification).',Object.fromEntries(gates));
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
