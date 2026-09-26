@@ -526,8 +526,8 @@
   // V7.03.3.12l: scanned numbered-table recovery is based on actual OCR evidence,
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
   const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
-  const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bwires?\b|\bwiring\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
-  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|keypad|button\s+keypad|projector|microphone|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player)\b/i;
+  const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bcabling\b|\bwires?\b|\bwiring\b|\bconnectors?\b|\baccessories?\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
+  const V703312J_EQUIPMENT_RE=/\b(?:controller|control\s+panel|keypad|button\s+keypad|projector|microphone|mic|speaker|camera|mixer|display|monitor|receiver|transmitter|amplifier|pre\s*amplifier|preamplifier|processor|switcher|visuali[sz]er|document\s+camera|lighting\s+controller|media\s+player|cd\/?mp3\s+player|nvr|dvr|network\s+video\s+recorder|digital\s+video\s+recorder)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
   function v703314kHasStrongEquipmentIdentity(row={}){
     const text=v703312jRowText(row),sku=clean(row.sku||''),primary=clean(row.item_name||'');
@@ -557,8 +557,8 @@
   function v703312jCategory(text=''){
     const t=norm(text);
     if(/controller|control panel|keypad|button keypad|processor|switcher/.test(t))return 'AV Control';
-    if(/projector|visualizer|document camera|display|monitor/.test(t))return 'Projection / Video';
-    if(/microphone|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
+    if(/projector|visualizer|document camera|display|monitor|camera|nvr|dvr|network video recorder|digital video recorder/.test(t))return 'Projection / Video';
+    if(/microphone|\bmic\b|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
     return '';
   }
 
@@ -613,18 +613,35 @@
     let line=clean(String(original||'').replace(/[\[\]{}|]/g,' ').replace(/\/(\s*\$)/g,' $1').replace(/\s+/g,' '));
     if(!line||!V703312J_EQUIPMENT_RE.test(line))return null;
     const itemNo=line.match(/^\s*(\d{1,3})\s+/);if(itemNo)line=line.slice(itemNo[0].length).trim();
-    const money=[...line.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(m=>({value:v703312jMoney(m[1]),index:m.index??0})).filter(x=>x.value!==null);
+    const money=[...line.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(m=>({value:v703312jMoney(m[1]),index:m.index??0,end:(m.index??0)+m[0].length,raw:m[0]})).filter(x=>x.value!==null);
     if(money.length<2){
       if(!itemNo)return null;
       const qOnly=line.match(/^(.*?)\s+(\d{1,4})\s*$/);if(!qOnly)return null;
       return v703312kBuildCandidate(clean(qOnly[1]),Number(qOnly[2]),null,null,{source,line:original,qtyDerived:false});
     }
-    const firstIndex=money[0].index,pre=clean(line.slice(0,firstIndex).replace(/[$/]+/g,' '));
-    let desc=pre,qty=null,qtyDerived=false;const qm=pre.match(/^(.*?)\s+(\d{1,4})\s*$/);
-    if(qm){desc=clean(qm[1]);qty=Number(qm[2]);}
-    const unitPrice=money[money.length-2].value,amount=money[money.length-1].value;
-    if(!(qty>0)&&unitPrice>0&&amount>=0){const r=amount/unitPrice,n=Math.round(r);if(n>=1&&n<=999&&Math.abs(r-n)<.001){qty=n;qtyDerived=true;}}
-    return v703312kBuildCandidate(desc,qty,unitPrice,amount,{source,line:original,qtyDerived});
+    const qtyFromText=text=>{
+      const hits=[...clean(text).matchAll(/(?:^|\s)(\d{1,3})(?:\.00)?(?:\s*(?:PCS?|EA|NOS?|UNITS?))?(?=\s|$)/gi)];
+      if(!hits.length)return null;const n=Number(hits.at(-1)[1]);return n>=1&&n<=999?n:null;
+    };
+    const options=[];
+    for(let i=0;i<money.length-1;i++)for(let j=i+1;j<money.length;j++){
+      const unit=Number(money[i].value),amount=Number(money[j].value);if(!(unit>0)||!(amount>=0))continue;
+      let quantity=null,kind='',score=0,descEnd=money[i].index;
+      const between=line.slice(money[i].end,money[j].index),betweenQty=qtyFromText(between);
+      if(betweenQty&&Math.abs(betweenQty*unit-amount)<=Math.max(.03,Math.abs(amount)*.002)){quantity=betweenQty;kind='between';score=130;}
+      const pre=line.slice(0,money[i].index),preQty=qtyFromText(pre);
+      if(!quantity&&preQty&&Math.abs(preQty*unit-amount)<=Math.max(.03,Math.abs(amount)*.002)){quantity=preQty;kind='pre';score=115;}
+      if(!quantity&&i>0&&Number.isInteger(money[i-1].value)&&money[i-1].value>=1&&money[i-1].value<=999&&Math.abs(money[i-1].value*unit-amount)<=Math.max(.03,Math.abs(amount)*.002)){quantity=money[i-1].value;kind='money-qty';score=110;descEnd=money[i-1].index;}
+      if(!quantity){const ratio=amount/unit,n=Math.round(ratio);if(n>=1&&n<=999&&Math.abs(ratio-n)<.001){quantity=n;kind='derived';score=80;}}
+      if(!(quantity>0))continue;
+      score-=Math.max(0,j-i-1)*6;score-=i*2;
+      options.push({score,quantity,unit,amount,kind,descEnd,unitIndex:i,amountIndex:j});
+    }
+    if(!options.length)return null;
+    options.sort((a,b)=>b.score-a.score);const best=options[0];
+    let desc=clean(line.slice(0,best.descEnd).replace(/[$/]+/g,' '));
+    desc=desc.replace(/\s+\d{1,3}(?:\.00)?\s*(?:PCS?|EA|NOS?|UNITS?)?\s*$/i,'').trim();
+    return v703312kBuildCandidate(desc,best.quantity,best.unit,best.amount,{source,line:original,qtyDerived:best.kind==='derived'});
   }
   function v703312kRecoverSparseRows(text='',source=''){
     const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),out=[];
