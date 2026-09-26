@@ -20,8 +20,8 @@
           text:clean(item?.text),
           x:Number(item?.x),
           y:Number(item?.y),
-          width:Number(item?.width??item?.w),
-          height:Number(item?.height??item?.h)
+          width:Number(item?.width),
+          height:Number(item?.height)
         }))
       }))
     }));
