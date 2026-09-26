@@ -104,7 +104,7 @@
 
     // Warranty wording may be OCR-joined onto a real equipment row. Treat it as warranty-only
     // only when the row lacks strong equipment identity/economic evidence.
-    const equipmentEvidence=/\b(?:projector|microphone|head(?:set)?\s+mic|speaker|controller|control panel|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|audio tester|amplifier|processor|switcher|visualizer|document camera|lighting controller|dmx[- ]?\d+)\b/i.test(t);
+    const equipmentEvidence=/\b(?:projector|microphone|mic|head(?:set)?\s+mic|speaker|controller|control panel|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|audio tester|amplifier|pre\s*amplifier|preamplifier|processor|switcher|visualizer|document camera|lighting controller|dmx[- ]?\d+|nvr|dvr|network video recorder|digital video recorder)\b/i.test(t);
     const hasMoney=v=>v!==null&&v!==undefined&&String(v).trim()!==''&&Number.isFinite(Number(v));
     const hasEconomics=Number(row.quantity)>0&&(hasMoney(row.unit_price)||hasMoney(row.amount));
     const warrantyEvidence=/\b(?:warranty|extended warranty|warranty cost|support coverage|support plan|maintenance plan|service contract|subscription)\b/i.test(t);
@@ -115,7 +115,7 @@
        || /(?:INSTALLATION|LABOU?R|SERVICE|DELIVERY|FREIGHT|TRANSPORT|COURIER)/i.test(sku))
       return {type:'service',reason:'Service/labour/delivery rows are excluded from inventory.'};
 
-    const accessory = /\b(?:power adapt(?:er|or)|ac adapt(?:er|or)|adapt(?:er|or)|security lock|projector lock|kensington lock|safety wire|safety cable|bracket|mounting bracket|speaker bracket|projector bracket|display bracket|ceiling mount|wall mount|lamp kit|replacement projector lamp|projector lamp|cart|trolley|cable|cord|patch lead|fly lead|fastener)\b/i.test(t)
+    const accessory = /\b(?:power adapt(?:er|or)|ac adapt(?:er|or)|adapt(?:er|or)|security lock|projector lock|kensington lock|safety wire|safety cable|bracket|mounting bracket|speaker bracket|projector bracket|display bracket|ceiling mount|wall mount|lamp kit|replacement projector lamp|projector lamp|cart|trolley|cable|cabling|cord|patch lead|fly lead|connector|connectors|accessory|accessories|fastener)\b/i.test(t)
       || /\b(?:cat\s*6a?|sftp|awg\s*\d*)\b[\s\S]{0,80}\b\d+(?:\.\d+)?\s*m\b/i.test(t)
       || (/\bstand(?:s)?\b/i.test(t)&&!/\b(?:microphone|mic) stand(?:s)?\b/i.test(t));
     if(accessory)return {type:'accessory',reason:'Configured accessory exclusion.'};
