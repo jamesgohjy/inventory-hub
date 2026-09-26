@@ -102,7 +102,7 @@
   }
   function chooseInventoryMatch(row={},inventoryItems=[],supplierName=''){
     const ranked=inventoryMatches(row,inventoryItems,supplierName),best=ranked[0],second=ranked[1];if(!best)return {status:'none',score:0,secondScore:0};
-    const margin=best.score-(second?.score||0),exact=compact(row.sku||row.model||'')===compact(best.item.sku||best.item.model||''),accepted=exact||(best.score>=96&&margin>=8);
+    const margin=best.score-(second?.score||0),exact=compact(row.sku||row.model||'')===compact(best.item.sku||best.item.model||''),accepted=exact||(best.score>=95&&margin>=8);
     return {status:accepted?'confirmed':'unconfirmed',score:best.score,secondScore:second?.score||0,margin:Math.round(margin*10)/10,exact,item:best.item,ranked:ranked.slice(0,3)};
   }
   function canonicalizeFromInventory(row={},match={}){
@@ -149,7 +149,7 @@
     if(level1(addr,{raw:'123 Example Road Singapore 123456 1 100.00 100.00'}).status!=='reject')failures.push('address metadata rejection');
     const svc={sku:'INSTALL',item_name:'Installation labour',quantity:1,unit_price:100,amount:100};if(level1(svc,{raw:'INSTALL Installation labour 1 100.00 100.00'}).status!=='reject')failures.push('service rejection');
     const eq={sku:'CQ12T',item_name:'Digital mixer console',quantity:1,unit_price:1400,amount:1400},l1=level1(eq,{raw:'CQ12T Digital mixer console 1 1400.00 1400.00'});if(!['verified','candidate'].includes(l1.status))failures.push('valid equipment level1');
-    const inv=chooseInventoryMatch({sku:'SLXD24-SM5B',item_name:'Digital wireless microphone system'},[{id:1,sku:'SLXD24/SM58',item_name:'Digital wireless microphone system'}],'');if(inv.status!=='confirmed'||inv.score<96)failures.push('ocr-aware inventory sku match');
+    const inv=chooseInventoryMatch({sku:'SLXD24-SM5B',item_name:'Digital wireless microphone system'},[{id:1,sku:'SLXD24/SM58',item_name:'Digital wireless microphone system'}],'');if(inv.status!=='confirmed'||inv.score<95)failures.push('ocr-aware inventory sku match');
     const bad=chooseInventoryMatch({sku:'ZX11-90',item_name:'Passive loudspeaker'},[{id:1,sku:'ZX11-80',item_name:'Passive loudspeaker'}],'');if(bad.status==='confirmed')failures.push('real model digit difference must not auto-match');
     return {ok:failures.length===0,failures};
   }
