@@ -112,7 +112,7 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
 assert(runtime.includes('applyParserV2AuthoritativeVerification14y'),'Production runtime must apply Parser V2 verification before Review renders');
-assert(runtime.includes('pendingV2')&&runtime.includes('Resolve every Parser V2 Level 3 candidate'),'Unresolved Level 3 candidates must block Confirm & Save');
+assert(runtime.includes('pendingV2')&&runtime.includes("const blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2||pendingV3")&&runtime.includes('One or more invoice items still need confirmation before saving.'),'Unresolved item verification must block Confirm & Save without exposing verification-level wording');
 assert(!runtime.includes("reason:'partial-v2-review'")&&!runtime.includes('v2Promotion:promotion')&&!runtime.includes('independent-geometry-complete'),'Retired broad promotion/review mutation paths must remain disabled');
 assert(app.includes('modules/parser-v2/engine.js')&&app.includes('modules/parser-v2/verification-gate.js')&&app.includes('Parser V2 authoritative verification gate failed'),'App bootstrap must load and gate authoritative Parser V2 verification');
 assert(app.includes('modules/parser-v3/engine.js')&&app.includes('Parser V3 evidence-recovery gate failed'),'App bootstrap must load and self-test Parser V3 after V2');
