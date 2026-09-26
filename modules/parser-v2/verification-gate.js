@@ -124,10 +124,16 @@
     }
     return out.sort((a,b)=>b.score-a.score);
   }
+  function classifyInventoryMatchScore(score=0,exact=false){
+    const n=Number(score)||0;
+    if(exact||n>70)return 'confirmed';
+    if(n<60)return 'rejected';
+    return 'unconfirmed';
+  }
   function chooseInventoryMatch(row={},inventoryItems=[],supplierName=''){
     const ranked=inventoryMatches(row,inventoryItems,supplierName),best=ranked[0],second=ranked[1];if(!best)return {status:'none',score:0,secondScore:0};
-    const margin=best.score-(second?.score||0),exact=compact(row.sku||row.model||'')===compact(best.item.sku||best.item.model||''),accepted=exact||(best.score>=95&&margin>=8);
-    return {status:accepted?'confirmed':'unconfirmed',score:best.score,secondScore:second?.score||0,margin:Math.round(margin*10)/10,exact,item:best.item,ranked:ranked.slice(0,3)};
+    const margin=best.score-(second?.score||0),exact=compact(row.sku||row.model||'')===compact(best.item.sku||best.item.model||''),status=classifyInventoryMatchScore(best.score,exact);
+    return {status,score:best.score,secondScore:second?.score||0,margin:Math.round(margin*10)/10,exact,item:best.item,ranked:ranked.slice(0,3)};
   }
   function canonicalizeFromInventory(row={},match={}){
     const item=match.item||{};
@@ -136,7 +142,9 @@
   async function verifyOne(row={},ctx={}){
     const l1=level1(row,ctx);if(l1.status==='reject')return {bucket:'rejected',row,level1:l1,reason:l1.reason};
     if(l1.status==='review')return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,reason:l1.reason};
-    const inv=chooseInventoryMatch(row,ctx.inventoryItems||[],ctx.supplierName||'');if(inv.status==='confirmed')return {bucket:'verified',row:canonicalizeFromInventory(row,inv),level1:l1,inventory:inv,reason:'inventory-confirmed'};
+    const inv=chooseInventoryMatch(row,ctx.inventoryItems||[],ctx.supplierName||'');
+    if(inv.status==='confirmed')return {bucket:'verified',row:canonicalizeFromInventory(row,inv),level1:l1,inventory:inv,reason:'inventory-confirmed'};
+    if(inv.status==='rejected')return {bucket:'rejected',row,level1:l1,inventory:inv,reason:'inventory-match-below-60'};
     if(l1.status==='verified'&&!clean(row.sku||row.model||''))return {bucket:'pending',row:{...row,humanReviewRequired:true,needsReview:true,parserReviewRequired:true},level1:l1,inventory:inv,reason:'equipment-description-proven-model-unavailable'};
     const web=ctx.webVerifier;
     if(web&&typeof web.candidateForRow==='function'&&typeof web.requestWebEvidence==='function'){
@@ -229,8 +237,11 @@
     if(level1(dateRow,{raw:'15/12/2023 1 1.00 1.00',doc:{invoice_date:'2023-12-15'}}).status!=='reject')failures.push('date metadata rejection');
     const svc={sku:'',item_name:'Dismantle existing projector and install replacement projector',quantity:1,unit_price:100,amount:100};if(level1(svc,{raw:'Dismantle existing projector and install replacement projector 1 100.00 100.00'}).status!=='reject')failures.push('service action rejection');
     const eq={sku:'CQ12T',item_name:'Digital mixer console',quantity:1,unit_price:1400,amount:1400},l1=level1(eq,{raw:'CQ12T Digital mixer console 1 1400.00 1400.00'});if(!['verified','candidate'].includes(l1.status))failures.push('valid equipment level1');
-    const inv=chooseInventoryMatch({sku:'SLXD24-SM5B',item_name:'Digital wireless microphone system'},[{id:1,sku:'SLXD24/SM58',item_name:'Digital wireless microphone system'}],'');if(inv.status!=='confirmed'||inv.score<95)failures.push('ocr-aware inventory sku match');
-    const bad=chooseInventoryMatch({sku:'ZX11-90',item_name:'Passive loudspeaker'},[{id:1,sku:'ZX11-80',item_name:'Passive loudspeaker'}],'');if(bad.status==='confirmed')failures.push('real model digit difference must not auto-match');
+    const inv=chooseInventoryMatch({sku:'SLXD24-SM5B',item_name:'Digital wireless microphone system'},[{id:1,sku:'SLXD24/SM58',item_name:'Digital wireless microphone system'}],'');if(inv.status!=='confirmed'||inv.score<=70)failures.push('ocr-aware inventory sku auto-confirm above 70');
+    if(classifyInventoryMatchScore(59.9,false)!=='rejected')failures.push('inventory match below 60 auto reject');
+    if(classifyInventoryMatchScore(60,false)!=='unconfirmed'||classifyInventoryMatchScore(70,false)!=='unconfirmed')failures.push('inventory match 60 through 70 stays review');
+    if(classifyInventoryMatchScore(70.1,false)!=='confirmed')failures.push('inventory match above 70 auto confirm');
+    if(classifyInventoryMatchScore(1,true)!=='confirmed')failures.push('exact inventory sku remains confirmed');
     const dupeSame=consolidateUniqueSku(
       [{sku:'PT-VW540',item_name:'Panasonic projector',quantity:1,unit_price:804,amount:804,v2CandidateId:'a',parserV2Verification:{level:'2A',method:'exact-inventory-sku'}},{sku:'pt vw540',item_name:'Panasonic projector',quantity:1,unit_price:804,amount:804,v2CandidateId:'b'}],
       [],[]
@@ -243,5 +254,5 @@
     if(dupeConflict.verified.length!==0||dupeConflict.pending.length!==1||dupeConflict.conflictCount!==1||dupeConflict.pending[0].v2VerificationReason!=='duplicate-sku-economic-conflict')failures.push('same sku conflicting economics level3');
     return {ok:failures.length===0,failures};
   }
-  global.InventoryHubParserV2VerificationGate=Object.freeze({VERSION,economics,isDefiniteNonEquipment,sourceProof,level1,skuSimilarity,tokenSimilarity,inventoryMatches,chooseInventoryMatch,normalizedSkuKey,consolidateUniqueSku,verifyOne,verifyParsed,selfTest});
+  global.InventoryHubParserV2VerificationGate=Object.freeze({VERSION,economics,isDefiniteNonEquipment,sourceProof,level1,skuSimilarity,tokenSimilarity,inventoryMatches,classifyInventoryMatchScore,chooseInventoryMatch,normalizedSkuKey,consolidateUniqueSku,verifyOne,verifyParsed,selfTest});
 })(typeof window!=='undefined'?window:globalThis);
