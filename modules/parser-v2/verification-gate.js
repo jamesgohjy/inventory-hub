@@ -7,7 +7,7 @@
   const norm=v=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const compact=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const round=n=>Math.round(Number(n)*100)/100;
-  const EQUIPMENT_RE=/\b(?:projector|microphone|mic|speaker|loudspeaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|pre\s*amplifier|preamplifier|processor|switcher|visualizer|document camera|console|player|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter|dsp|video processor|matrix|scaler|nvr|dvr|network video recorder|digital video recorder)\b/i;
+  const EQUIPMENT_RE=/\b(?:projectors?|microphones?|mics?|speakers?|loudspeakers?|controllers?|control panels?|keypads?|cameras?|mixers?|displays?|monitors?|transmitters?|receivers?|screens?|wireless systems?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visualizers?|document cameras?|consoles?|players?|receptacles?|audio testers?|signal testers?|testers?|analyzers?|analysers?|meters?|dsp|video processors?|matrix|scalers?|nvr|dvr|network video recorders?|digital video recorders?)\b/i;
   const SERVICE_RE=/\b(?:install(?:ation|ing|ed)?|labou?r|professional services?|commission(?:ing|ed)?|test(?:ing|ed)?|programming|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|transport|delivery(?: fee| charge| service)?|return trip|redelivery|courier|freight|service charge|repair(?:ing|ed| service| work)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|system tuning|calibration|training|consultancy|consulting|manpower|on[- ]?site support|setup|configuration)\b/i;
   const SERVICE_ACTION_RE=/\b(?:install(?:ation|ing|ed)?|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|repair(?:ing|ed)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|test(?:ing|ed)?|commission(?:ing|ed)?|programming|setup|configuration)\b/i;
   const ACCESSORY_RE=/\b(?:security lock|kensington lock|safety (?:wire|cable)|cables?|cabling|wires?|wiring|cords?|patch leads?|connectors?|accessories?|brackets?|mounts?|lamp kits?|lampkits?|replacement projector lamp|projector lamp|carts?|trolleys?|power adapt(?:er|or)s?|ac adapt(?:er|or)s?)\b/i;
@@ -58,7 +58,8 @@
     if(WARRANTY_RE.test(text))return {reject:true,reason:'warranty-or-support'};
     const serviceSku=/^(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DELIVERY|FREIGHT|TRANSPORT|COURIER|DISMOUNT|DISMANTL|REMOV|RELOCAT|REINSTAT|TEST|COMMISSION|PROGRAM)/i.test(sku);
     const strongServiceStart=/^(?:installation|installing|installed|labou?r|professional services?|services?|repair|delivery|freight|transport|courier|commissioning|testing|programming|dismantle|dismantling|dismount|dismounting|remove|removal|relocate|relocation|reinstate|reinstatement|setup|configuration)\b/i.test(primary);
-    if(serviceSku||strongServiceStart||SERVICE_ACTION_RE.test(primary)||(SERVICE_RE.test(text)&&!EQUIPMENT_RE.test(text)))return {reject:true,reason:'service-or-labour'};
+    const suppliedPhysical=/^\s*supply\s*(?:&|and)?\s*install\b/i.test(primary)&&EQUIPMENT_RE.test(primary)&&!ACCESSORY_RE.test(primary);
+    if(serviceSku||strongServiceStart||(!suppliedPhysical&&SERVICE_ACTION_RE.test(primary))||(SERVICE_RE.test(text)&&!EQUIPMENT_RE.test(text)))return {reject:true,reason:'service-or-labour'};
     if(ACCESSORY_RE.test(text)&&!/\b(?:microphone|mic)\s+stands?\b/i.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'excluded-accessory'};
     return {reject:false,reason:''};
   }
