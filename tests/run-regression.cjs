@@ -17,6 +17,7 @@ const parserV2Builder=read('modules/parser-v2/row-builder.js');
 const parserV2Rows=read('modules/parser-v2/row-accounting.js');
 const parserV2Numbered=read('modules/parser-v2/numbered-schedule.js');
 const parserV2Engine=read('modules/parser-v2/engine.js');
+const parserV2Verification=read('modules/parser-v2/verification-gate.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
 const healthResolutionSql=read('supabase-v7-03-3-14x-data-health-resolution.sql');
@@ -33,7 +34,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -108,11 +109,13 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
-assert(runtime.includes('Parser V2 restored to the initial shadow-mode baseline.')&&runtime.includes('v2Shadow:v2'),'Production finalizer must attach Parser V2 shadow diagnostics without replacing Review rows');
-assert(!runtime.includes("reason:'partial-v2-review'")&&!runtime.includes('v2Promotion:promotion')&&!runtime.includes('independent-geometry-complete'),'Later Parser V2 promotion/review mutation paths must remain disabled after rollback');
-assert(app.includes('modules/parser-v2/engine.js')&&app.includes('Parser V2 shadow gate failed'),'App bootstrap must load and gate the initial Parser V2 shadow engine');
-assert(!app.includes('modules/parser-v2/table-detector.js')&&!app.includes('modules/parser-v2/row-builder.js')&&!app.includes('modules/parser-v2/numbered-schedule.js'),'Later Parser V2 geometry/schedule recovery modules must not be loaded in rollback mode');
-assert(parserV2Engine.includes("version:'2.0-shadow'")&&parserV2Engine.includes("mode:'shadow'")&&!parserV2Engine.includes('assessPromotion'),'Parser V2 engine must match the initial shadow-only baseline');
+assert(runtime.includes('applyParserV2AuthoritativeVerification14y')&&runtime.includes('Parser V2 — Authoritative verification'),'Production runtime must apply Parser V2 verification before Review renders');
+assert(runtime.includes('pendingV2')&&runtime.includes('Resolve every Parser V2 Level 3 candidate'),'Unresolved Level 3 candidates must block Confirm & Save');
+assert(!runtime.includes("reason:'partial-v2-review'")&&!runtime.includes('v2Promotion:promotion')&&!runtime.includes('independent-geometry-complete'),'Retired broad promotion/review mutation paths must remain disabled');
+assert(app.includes('modules/parser-v2/engine.js')&&app.includes('modules/parser-v2/verification-gate.js')&&app.includes('Parser V2 authoritative verification gate failed'),'App bootstrap must load and gate authoritative Parser V2 verification');
+assert(!app.includes('modules/parser-v2/table-detector.js')&&!app.includes('modules/parser-v2/row-builder.js')&&!app.includes('modules/parser-v2/numbered-schedule.js'),'Retired aggressive geometry/schedule recovery modules must not be loaded');
+assert(parserV2Engine.includes("version:'2.1-authoritative-verification'")&&parserV2Engine.includes("mode:'authoritative-verification'")&&parserV2Engine.includes('authoritative:true'),'Parser V2 engine must identify as authoritative verification mode');
+assert(parserV2Verification.includes("mode:'authoritative'")&&parserV2Verification.includes('chooseInventoryMatch')&&parserV2Verification.includes('requestWebEvidence'),'Verification gate must implement Level 2A Inventory matching and Level 2B web verification');
 
 
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
@@ -273,7 +276,9 @@ vm.runInContext(parserV2Evidence,v2ctx,{filename:'modules/parser-v2/evidence-mod
 vm.runInContext(parserV2Header,v2ctx,{filename:'modules/parser-v2/header-resolver.js'});
 vm.runInContext(parserV2Rows,v2ctx,{filename:'modules/parser-v2/row-accounting.js'});
 vm.runInContext(parserV2Engine,v2ctx,{filename:'modules/parser-v2/engine.js'});
+vm.runInContext(parserV2Verification,v2ctx,{filename:'modules/parser-v2/verification-gate.js'});
 assert(v2ctx.InventoryHubParserV2?.selfTest?.().ok,'Parser V2 self-test failed: '+(v2ctx.InventoryHubParserV2?.selfTest?.().failures||[]).join(', '));
+assert(v2ctx.InventoryHubParserV2VerificationGate?.selfTest?.().ok,'Parser V2 authoritative verification self-test failed: '+(v2ctx.InventoryHubParserV2VerificationGate?.selfTest?.().failures||[]).join(', '));
 const sameCompanyA=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
   {source:'native',text:'AV MEDIA PTE LTD\nTAX INVOICE\nInvoice No.: VIN17-049472\nDATE: 06-04-26\nRef. No.: VSO17-035483'},
   {source:'ocr',text:'AV MEDIA PTE LTD\nInvoice No.: VIN17-049472\nDATE: 06-04-26\nRef. No.: VSO17-035483'}
@@ -305,7 +310,7 @@ const ledgerSummary=v2ctx.InventoryHubParserV2Rows.summarize(ledger);
 assert(ledgerSummary.detectedRows===5&&ledgerSummary.counts.equipment===4&&ledgerSummary.counts.service===1,'Parser V2 row ledger failed to preserve/account for the fuller candidate set');
 const compared=v2ctx.InventoryHubParserV2Rows.compareFinalItems(ledger,[{sku:'AVS-320',item_name:'Projector controller',quantity:2,unit_price:350,amount:700}]);
 assert(compared.missingEquipment.length===3,'Parser V2 must detect equipment missing from a partial winning candidate');
-console.log('parser-v2-shadow: header independence, strict reference, same-layout variation and row completeness PASS');
+console.log('parser-v2-authoritative: strict source verification, Inventory SKU matching, web handoff and Level 3 gating PASS');
 
 const mctx={console,Number,String,Array,Object,Set,Map,RegExp,Math};mctx.globalThis=mctx;mctx.window=mctx;vm.createContext(mctx);vm.runInContext(evidenceEngine,mctx,{filename:'modules/parser-evidence-engine.js'});vm.runInContext(parserModule,mctx,{filename:'modules/parser-table.js'});
 const supplierHeaderCases=[
