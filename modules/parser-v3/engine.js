@@ -166,6 +166,28 @@
     }
     return best&&best.score>=65?best:null;
   }
+  function basicCountercheck(parsed={},evidence={},gate=null){
+    const conflicts=[],warnings=[],sources=evidence.sources||[],doc=parsed.doc||{};
+    const pendingCount=Number(parsed?.v2Verification?.pendingCount||0);
+    for(const row of parsed.items||[]){
+      const blocked=gate?.isDefiniteNonEquipment?.(row,{doc,supplierName:String(doc.supplier_name||'')});
+      if(blocked?.reject){
+        conflicts.push({id:'v3-reject-'+(compact(row.sku||row.model||row.item_name)||'unknown-row'),type:'reject-conflict',v2Row:row,v3Row:null,reason:'v3-countercheck-'+blocked.reason,resolved:false});
+        continue;
+      }
+      const sku=compact(row.sku||row.model||'');
+      if(sku.length>=3){
+        const witnesses=sources.filter(src=>compact(src.text||'').includes(sku)).map(sourceId);
+        if(!witnesses.length)warnings.push({type:'identity-not-found-in-full-document-evidence',sku:clean(row.sku||row.model||''),item_name:clean(row.item_name||row.description||'')});
+      }
+    }
+    const anchors=anchorConsensus(evidence);
+    const strongAnchors=[...anchors.values()].filter(rows=>rows.some(r=>clean(r.model)||EQUIPMENT_RE.test(r.title||r.raw||'')));
+    if(strongAnchors.length>(parsed.items||[]).length+pendingCount){
+      warnings.push({type:'possible-missing-numbered-equipment-rows',detected:strongAnchors.length,accounted:(parsed.items||[]).length+pendingCount});
+    }
+    return {conflicts,warnings};
+  }
   function isValidEquipmentInvoice(parsed={}){
     const type=String(parsed?.invoiceClassification?.type||'').toLowerCase();
     return type==='equipment'||(parsed.items||[]).length>0;
@@ -195,9 +217,13 @@
     const supportSources=supportScheduleSources(evidence);
     const scheduleRows=scheduleConsensus(evidence);
     const report={version:VERSION,modes:['countercheck'],status:'agree',supportScheduleDetected:supportSources.length>0,supportScheduleCorroborated:false,scheduleRowCount:scheduleRows.length,v2VerifiedCount:(parsed.items||[]).length,recovered:[],conflicts:[],countercheckWarnings:[]};
+    const basic=basicCountercheck(parsed,evidence,ctx.verifyGate||null);
+    report.conflicts.push(...basic.conflicts);report.countercheckWarnings.push(...basic.warnings);
     if(!supportSources.length){
-      report.status='agree-no-secondary-schedule';
-      return {parsed:{...parsed,v3Verification:report,parserV3Mode:'countercheck'},report};
+      if(report.conflicts.length)report.modes.push('conflict-review');
+      report.unresolvedConflictCount=report.conflicts.filter(x=>!x.resolved).length;
+      report.status=report.conflicts.length?'conflict-review':report.countercheckWarnings.length?'countercheck-warning':'agree-no-secondary-schedule';
+      return {parsed:{...parsed,v3Verification:report,parserV3Mode:report.modes.join('+')},report};
     }
     const total=corroboratedScheduleTotal(evidence,parsed.doc||{});
     report.supportScheduleCorroborated=total.ok;report.scheduleTotal=total;
@@ -255,7 +281,8 @@
       v2Report.rejected=dedup.rejected;v2Report.rejectedCount=dedup.rejected.length;v2Report.verifiedCount=nextItems.length;
     }
     report.v3FinalVerifiedCount=nextItems.length;
-    report.status=report.conflicts.length?'conflict-review':report.recovered.some(x=>x.status==='auto-filled')?'recovered':report.recovered.some(x=>x.status==='level3')?'recovery-needs-review':'agree';
+    report.unresolvedConflictCount=report.conflicts.filter(x=>!x.resolved).length;
+    report.status=report.conflicts.length?'conflict-review':report.recovered.some(x=>x.status==='auto-filled')?'recovered':report.recovered.some(x=>x.status==='level3')?'recovery-needs-review':report.countercheckWarnings.length?'countercheck-warning':'agree';
     return {parsed:{...parsed,items:nextItems,v2Verification:v2Report,v3Verification:report,parserV3Mode:report.modes.join('+')},report};
   }
   function selfTest(){
@@ -269,6 +296,10 @@
     const total=corroboratedScheduleTotal(fakeEvidence,{subtotal:300});
     if(!total.ok)failures.push('schedule total corroboration');
     if(isValidEquipmentInvoice({invoiceClassification:{type:'service'},items:[]}))failures.push('service invoice must not activate');
+    const basicOk=basicCountercheck({doc:{supplier_name:'Supplier Pte Ltd'},items:[{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804}],v2Verification:{pendingCount:0}},{sources:[{id:'full',text:'TAX INVOICE PT-VW540 Projector 1 804.00 804.00',layout:[]}]},{isDefiniteNonEquipment:()=>({reject:false})});
+    if(basicOk.conflicts.length||basicOk.countercheckWarnings?.length)failures.push('normal invoice countercheck agreement');
+    const basicBad=basicCountercheck({doc:{},items:[{sku:'ADDR1',item_name:'123 Example Road',quantity:1,unit_price:4,amount:4}],v2Verification:{pendingCount:0}},{sources:[{id:'full',text:'123 Example Road',layout:[]}]},{isDefiniteNonEquipment:()=>({reject:true,reason:'address-metadata'})});
+    if(basicBad.conflicts.length!==1||basicBad.conflicts[0].type!=='reject-conflict')failures.push('countercheck must flag metadata leakage');
     if(!isIncomplete({items:[{sku:'A'}],v2Verification:{pendingCount:0}},[{ordinal:1},{ordinal:2}]))failures.push('missing-row recovery trigger');
     const match=existingMatch({sku:'PT-VW540',item_name:'Projector',quantity:1,amount:804},[{sku:'PT-VW540',item_name:'Projector',quantity:1,amount:804}]);
     if(!match?.skuSame)failures.push('countercheck exact agreement');
