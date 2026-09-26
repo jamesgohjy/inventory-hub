@@ -261,7 +261,50 @@ let conceptMutationPass=0;
 const conceptMutationDetails=[];
 for(const m of conceptMutations){
   const r=m.run(),pass=!!m.pass(r);if(pass)conceptMutationPass++;
-  conceptMutationDetails.push({name:m.name,pass,mode:r.mode,verified:r.rows.length,pending:r.pending.length,recovered:r.recovered.length});
+  conceptMutationDetails.push({name:m.name,pass,mode:r.mode,verified:r.rows.length,pending:r.pending.length,recovered:r.recovered.length,structuralCoverage:r.rows.length+r.pending.length});
+}
+
+// Symmetric Concept mutation inputs for the saved V2 baseline.
+// This is a fixture-level mutation comparison starting from the historically observed two verified V2 rows;
+// it is NOT represented as a fresh browser/PDF OCR run.
+const conceptMutationInputs=[
+  {name:'duplicate-support-alias-does-not-inflate-votes',sources:[scheduleA,scheduleA,scheduleB,scheduleC],invoice:conceptInvoice},
+  {name:'single-misread-row4-price-consensus',sources:[scheduleA,scheduleB,scheduleC],invoice:conceptInvoice},
+  {name:'missing-row5-ordinal-bounded-gap',sources:[scheduleA,scheduleB,scheduleC],invoice:conceptInvoice},
+  {name:'one-support-total-missing',sources:[scheduleA.replace('Total Amount = $16,500.00',''),scheduleB,scheduleC],invoice:conceptInvoice},
+  {name:'scope-service-injection-stays-excluded',sources:[scheduleA.replace('9 Scope of Work','8 Fake Delivery Fee 1 $999.00 $999.00\\n9 Scope of Work'),scheduleB,scheduleC],invoice:conceptInvoice},
+  {name:'invoice-address-header-noise',sources:[scheduleA,scheduleB,scheduleC],invoice:'Address: One Example Lane Singapore 575954\\nSupplier Pte Ltd\\n'+conceptInvoice},
+  {name:'one-support-only-fails-closed',sources:[scheduleA],invoice:conceptInvoice},
+  {name:'two-way-price-conflict-fails-closed',sources:[scheduleA,scheduleB],invoice:conceptInvoice},
+  {name:'model-conflict-never-auto-resolves',sources:[scheduleA,scheduleB,scheduleC],invoice:conceptInvoice},
+  {name:'replacement-conflict-never-auto-resolves',sources:[scheduleA,scheduleB,scheduleC],invoice:conceptInvoice}
+];
+const conceptFamilies=[
+  {key:'CQ12T',aliases:['CQ12T']},
+  {key:'1604DSP',aliases:['1604DSP','DUECANALI1604DSP']},
+  {key:'ZX11',aliases:['ZX1190','ZX1180']},
+  {key:'SLXD24/SM58',aliases:['SLXD24SM58']},
+  {key:'MS101-4',aliases:['MS1014']},
+  {key:'XDP-300x',aliases:['XDP3002','XDP3001']},
+  {key:'NEUTRIK',aliases:['NEUTRIK']}
+];
+function conceptFamilyFor(row){
+  const k=compact(row?.sku||row?.model||'');
+  return conceptFamilies.find(f=>f.aliases.some(a=>k===a||k.includes(a)))?.key||'';
+}
+function conceptMetrics(rows=[]){
+  const families=rows.map(conceptFamilyFor).filter(Boolean);
+  const serviceCount=rows.filter(r=>/scope of work|dismantle|training|cabling|system tuning|delivery fee/i.test(String(r.item_name||r.description||''))).length;
+  const falsePositiveCount=rows.filter(r=>!conceptFamilyFor(r)).length;
+  const duplicateCount=families.length-new Set(families).size;
+  return {coverage:new Set(families).size,falsePositiveCount,serviceCount,duplicateCount,rows:sortedRows(rows)};
+}
+const v2ConceptMutationDetails=[];
+for(const m of conceptMutationInputs){
+  const raw=[m.invoice,...m.sources].join('\\n');
+  const parsed=V2.applyParsedFixes({doc:{supplier_name:'Concept Systems Technologies Pte Ltd'},items:historicalV2ConceptRows.map(x=>({...x}))},raw);
+  const metrics=conceptMetrics(parsed.items||[]);
+  v2ConceptMutationDetails.push({name:m.name,...metrics,safe:metrics.falsePositiveCount===0&&metrics.serviceCount===0&&metrics.duplicateCount===0});
 }
 
 // Run the existing V2 historical suite as an independent stability control.
@@ -284,7 +327,10 @@ const summary={
     structuralCoverage:conceptStructural,
     checks:conceptChecks
   },
-  conceptMutations:{passed:conceptMutationPass,total:conceptMutations.length,details:conceptMutationDetails}
+  conceptMutations:{
+    v3:{passed:conceptMutationPass,total:conceptMutations.length,details:conceptMutationDetails},
+    v2:{baselineType:'historical-observed-two-row-baseline-not-fresh-browser-run',details:v2ConceptMutationDetails}
+  }
 };
 console.log('PARSER_V3_COMPARISON_JSON '+JSON.stringify(summary));
 console.log('parser-v3-comparison: PASS');
