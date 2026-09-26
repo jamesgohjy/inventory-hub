@@ -18,11 +18,9 @@
     const p=finite(row.unit_price)?round2(row.unit_price):'';
     const a=finite(row.amount)?round2(row.amount):'';
     const geo=row.sourceRowId||row.rowId||row?.provenance?.rowId||row?.invoice_evidence?.source?.rowId||'';
-    // Semantic/economic identity comes first so the same physical row from native-layout and OCR-layout can reconcile.
-    // Occurrence ordinals in buildLedger still preserve repeated identical rows within one invoice.
+    if(geo)return 'row:'+String(geo);
     if(sku)return 'sku:'+sku+'|q:'+q+'|p:'+p+'|a:'+a;
     if(desc)return 'desc:'+desc.slice(0,90)+'|q:'+q+'|p:'+p+'|a:'+a;
-    if(geo)return 'row:'+String(geo);
     return '';
   }
   function classifyDisposition(row={}){
@@ -32,16 +30,10 @@
     if(!text)return 'unknown';
     if(/\b(?:serial|s n|shipment no|remarks?|notes?)\b/.test(text)&&!finite(row.amount))return 'metadata';
     if(/\b(?:warranty|extended warranty|support coverage|maintenance coverage)\b/.test(text))return 'warranty';
-    const code=norm(row.sku||row.model||'');
-    if(/^\d{4,}\s+(?:installation|labour|labor|service)\b/.test(code))return 'service';
-    const highService=/\b(?:installation\s+(?:work|service)|professional\s+services?|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery(?: fee| service| services)?|return trip|redelivery|courier|freight|service charge|repair service|system tuning|calibration|operational training|knowledge transfer|labelling|tidying|cabling|safety documents?|work at height)\b/.test(text);
-    if(highService)return 'service';
-    const hasPrintedModel=/\bmodel\s*:/i.test([row.item_name,row.description].filter(Boolean).join(' '))||!!clean(row.sku||row.model);
-    const scopeService=/\b(?:supply\s*(?:&|and)?\s*install|racking|mounting kits?|scope of work)\b/.test(text);
-    if(scopeService&&!hasPrintedModel)return 'service';
-    const eq=/\b(?:projector|microphone|speaker|loudspeaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter)\b/.test(text);
-    if(eq&&economics(row).ok)return 'equipment';
+    if(/\b(?:installation|labour|labor|commissioning|testing|programming|dismantle|dismount|transport|delivery fee|service charge|repair service)\b/.test(text))return 'service';
     if(/\b(?:cable|wire|bracket|mount|lamp kit|cart|trolley|generic stand|power adaptor|adapter)\b/.test(text)&&!/\bmicrophone stand\b/.test(text))return 'accessory';
+    const eq=/\b(?:projector|microphone|speaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player)\b/.test(text);
+    if(eq&&economics(row).ok)return 'equipment';
     if(clean(row.sku||row.model)&&economics(row).ok)return 'equipment';
     return 'unknown';
   }
@@ -98,5 +90,5 @@
     const missingEquipment=equipment.filter(x=>!finalKeys.has(x.key));
     return {expectedEquipmentCount:equipment.length,finalEquipmentCount:(finalItems||[]).length,missingEquipment,complete:missingEquipment.length===0&&equipment.length===(finalItems||[]).length};
   }
-  global.InventoryHubParserV2Rows=Object.freeze({version:'2.4-complex-scope-classification',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
+  global.InventoryHubParserV2Rows=Object.freeze({version:'2.0-shadow',economics,baseIdentity,classifyDisposition,rowStrength,buildLedger,summarize,compareFinalItems});
 })(typeof window!=='undefined'?window:globalThis);
