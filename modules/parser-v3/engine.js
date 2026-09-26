@@ -115,7 +115,8 @@
           const vm=modelsByOrdinal.get(ord);if(!vm.has(mk))vm.set(mk,{model:hit.model,count:0,sources:[]});
           const entry=vm.get(mk);entry.count++;entry.sources.push(sourceId(src));
         }
-        const local=clean(lines.slice(Math.max(0,hit.line-2),Math.min(lines.length,hit.line+4)).join(' '));
+        const nextModelLine=dedup[i+1]?.line??Math.min(lines.length,hit.line+4);
+        const local=clean(lines.slice(hit.line,Math.max(hit.line+1,nextModelLine)).join(' '));
         const rm=local.match(/\breplac(?:ed|ement)\s+with\s+([A-Z0-9][A-Z0-9+._\/-]{2,})/i);
         if(rm?.[1]){
           const rk=compact(rm[1]);if(!replacementsByOrdinal.has(ord))replacementsByOrdinal.set(ord,new Map());
