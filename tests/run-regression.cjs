@@ -18,6 +18,7 @@ const parserV2Rows=read('modules/parser-v2/row-accounting.js');
 const parserV2Numbered=read('modules/parser-v2/numbered-schedule.js');
 const parserV2Engine=read('modules/parser-v2/engine.js');
 const parserV2Verification=read('modules/parser-v2/verification-gate.js');
+const parserV3=read('modules/parser-v3/engine.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
 const healthResolutionSql=read('supabase-v7-03-3-14x-data-health-resolution.sql');
@@ -34,7 +35,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(parserV3);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -113,7 +114,9 @@ assert(runtime.includes('applyParserV2AuthoritativeVerification14y')&&runtime.in
 assert(runtime.includes('pendingV2')&&runtime.includes('Resolve every Parser V2 Level 3 candidate'),'Unresolved Level 3 candidates must block Confirm & Save');
 assert(!runtime.includes("reason:'partial-v2-review'")&&!runtime.includes('v2Promotion:promotion')&&!runtime.includes('independent-geometry-complete'),'Retired broad promotion/review mutation paths must remain disabled');
 assert(app.includes('modules/parser-v2/engine.js')&&app.includes('modules/parser-v2/verification-gate.js')&&app.includes('Parser V2 authoritative verification gate failed'),'App bootstrap must load and gate authoritative Parser V2 verification');
-assert(!app.includes('modules/parser-v2/table-detector.js')&&!app.includes('modules/parser-v2/row-builder.js')&&!app.includes('modules/parser-v2/numbered-schedule.js'),'Retired aggressive geometry/schedule recovery modules must not be loaded');
+assert(app.includes('modules/parser-v3/engine.js')&&app.includes('Parser V3 evidence-recovery gate failed'),'App bootstrap must load and self-test Parser V3 after V2');
+assert(app.includes('modules/parser-v2/table-detector.js')&&app.includes('modules/parser-v2/numbered-schedule.js'),'Parser V3 must load the isolated table/schedule evidence readers');
+assert(!app.includes('modules/parser-v2/row-builder.js'),'Retired broad V2 row-builder promotion path must remain unloaded');
 assert(parserV2Engine.includes("version:'2.1-authoritative-verification'")&&parserV2Engine.includes("mode:'authoritative-verification'")&&parserV2Engine.includes('authoritative:true'),'Parser V2 engine must identify as authoritative verification mode');
 assert(parserV2Verification.includes("mode:'authoritative'")&&parserV2Verification.includes('chooseInventoryMatch')&&parserV2Verification.includes('requestWebEvidence'),'Verification gate must implement Level 2A Inventory matching and Level 2B web verification');
 assert(runtime.includes('function v714yLooksLikeInvoiceMetadata')&&runtime.includes('verificationText=[line.sku,itemName,description]'),'Legacy extraction path must reject invoice metadata before line-item acceptance');
@@ -125,6 +128,12 @@ assert(parserV2Verification.includes("if(exact||n>70)return 'confirmed'")&&parse
 const verifyOnePos=parserV2Verification.indexOf('async function verifyOne'),choosePos=parserV2Verification.indexOf('const inv=chooseInventoryMatch',verifyOnePos),webPos=parserV2Verification.indexOf('const web=ctx.webVerifier',verifyOnePos);
 assert(verifyOnePos>=0&&choosePos>verifyOnePos&&webPos>choosePos,'Level 2A Inventory matching must run before Level 2B/Level 3 fallback');
 assert(!parserV2Verification.slice(verifyOnePos,choosePos).includes("if(l1.status==='review')return"),'Level 1 review must not bypass the 60/70 Inventory threshold rules');
+assert(parserV2Verification.includes('v3-independent-recovery-evidence')&&parserV2Verification.includes('supportWitnesses')&&parserV2Verification.includes('invoiceWitness'),'V2 must accept only strongly corroborated V3 recovery evidence');
+assert(parserV3.includes("VERSION='3.0-evidence-recovery'")&&parserV3.includes("mode:'countercheck+recovery+conflict-review'"),'Parser V3 version/mode contract missing');
+assert(runtime.includes('applyParserV3Countercheck14y')&&runtime.includes('Parser V3 — counterchecking V2 result'),'Runtime must run V3 after V2 for valid equipment invoices');
+assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes('Resolve every Parser V3 conflict'),'V3 conflicts must block Save until Level 3 resolution');
+assert(runtime.includes('Keep V2')&&runtime.includes('Use V3')&&runtime.includes('Only this disputed row needs your decision.'),'V3 conflict review must be row-scoped with explicit V2/V3 choices');
+assert(!parserV3.includes('replaceOnce(')&&!parserV3.includes('supplier-specific'),'V3 must remain generic and repository-native');
 
 
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
@@ -286,8 +295,12 @@ vm.runInContext(parserV2Header,v2ctx,{filename:'modules/parser-v2/header-resolve
 vm.runInContext(parserV2Rows,v2ctx,{filename:'modules/parser-v2/row-accounting.js'});
 vm.runInContext(parserV2Engine,v2ctx,{filename:'modules/parser-v2/engine.js'});
 vm.runInContext(parserV2Verification,v2ctx,{filename:'modules/parser-v2/verification-gate.js'});
+vm.runInContext(parserV2Table,v2ctx,{filename:'modules/parser-v2/table-detector.js'});
+vm.runInContext(parserV2Numbered,v2ctx,{filename:'modules/parser-v2/numbered-schedule.js'});
+vm.runInContext(parserV3,v2ctx,{filename:'modules/parser-v3/engine.js'});
 assert(v2ctx.InventoryHubParserV2?.selfTest?.().ok,'Parser V2 self-test failed: '+(v2ctx.InventoryHubParserV2?.selfTest?.().failures||[]).join(', '));
 assert(v2ctx.InventoryHubParserV2VerificationGate?.selfTest?.().ok,'Parser V2 authoritative verification self-test failed: '+(v2ctx.InventoryHubParserV2VerificationGate?.selfTest?.().failures||[]).join(', '));
+assert(v2ctx.InventoryHubParserV3?.selfTest?.().ok,'Parser V3 self-test failed: '+(v2ctx.InventoryHubParserV3?.selfTest?.().failures||[]).join(', '));
 const sameCompanyA=v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
   {source:'native',text:'AV MEDIA PTE LTD\nTAX INVOICE\nInvoice No.: VIN17-049472\nDATE: 06-04-26\nRef. No.: VSO17-035483'},
   {source:'ocr',text:'AV MEDIA PTE LTD\nInvoice No.: VIN17-049472\nDATE: 06-04-26\nRef. No.: VSO17-035483'}
@@ -320,6 +333,7 @@ assert(ledgerSummary.detectedRows===5&&ledgerSummary.counts.equipment===4&&ledge
 const compared=v2ctx.InventoryHubParserV2Rows.compareFinalItems(ledger,[{sku:'AVS-320',item_name:'Projector controller',quantity:2,unit_price:350,amount:700}]);
 assert(compared.missingEquipment.length===3,'Parser V2 must detect equipment missing from a partial winning candidate');
 console.log('parser-v2-authoritative: strict source verification, Inventory SKU matching, web handoff and Level 3 gating PASS');
+console.log('parser-v3: countercheck, conditional recovery and conflict-review self-tests PASS');
 
 const mctx={console,Number,String,Array,Object,Set,Map,RegExp,Math};mctx.globalThis=mctx;mctx.window=mctx;vm.createContext(mctx);vm.runInContext(evidenceEngine,mctx,{filename:'modules/parser-evidence-engine.js'});vm.runInContext(parserModule,mctx,{filename:'modules/parser-table.js'});
 const supplierHeaderCases=[
