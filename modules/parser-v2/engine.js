@@ -1,4 +1,4 @@
-// Inventory Hub Parser V2 — shadow orchestration engine
+// Inventory Hub Parser V2 — evidence analysis for authoritative verification
 (function(global){
   'use strict';
   const E=global.InventoryHubParserV2Evidence,H=global.InventoryHubParserV2Header,R=global.InventoryHubParserV2Rows;
@@ -23,8 +23,9 @@
     if(!headers.invoice_number)issues.push({code:'invoice-number-not-proven'});
     if(!headers.invoice_date)issues.push({code:'invoice-date-not-proven'});
     return Object.freeze({
-      version:'2.0-shadow',
-      mode:'shadow',
+      version:'2.1-authoritative-verification',
+      mode:'authoritative-verification',
+      authoritative:true,
       headers,
       rowLedger:ledger,
       completeness,
@@ -62,5 +63,5 @@
     if(conflict.reference_number!=='')failures.push('reference conflict must stay blank');
     return {ok:failures.length===0,failures};
   }
-  global.InventoryHubParserV2=Object.freeze({version:'2.0-shadow',analyze,selfTest});
+  global.InventoryHubParserV2=Object.freeze({version:'2.1-authoritative-verification',mode:'authoritative-verification',authoritative:true,analyze,selfTest});
 })(typeof window!=='undefined'?window:globalThis);
