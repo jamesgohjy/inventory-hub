@@ -164,6 +164,7 @@ function mutate(test,variant){
     const result=await runV4(test),s=score(test,result);
     baseline.push({id:test.id,supplier:test.supplier,pass:s.pass,failures:s.failures,verified:result.verified.length,pending:result.pending.length,rejected:result.rejected.length,v3Status:result.report?.status||''});
     console.log('V4 HOLDOUT '+test.id+': '+(s.pass?'PASS':'FAIL')+' verified='+result.verified.length+' pending='+result.pending.length+' rejected='+result.rejected.length+(s.failures.length?' :: '+s.failures.join(' | '):''));
+    if(!s.pass)console.log('V4 HOLDOUT ROWS '+test.id+': '+JSON.stringify(result.all.map(r=>({sku:r.sku||r.model||'',name:r.item_name||r.description||'',quantity:r.quantity,unit_price:r.unit_price,amount:r.amount,reason:r.v2VerificationReason||'',rejected:r.v2RejectionReason||''}))));
   }
   const baselinePass=baseline.every(x=>x.pass);
   console.log('V4 HOLDOUT SUMMARY: '+baseline.filter(x=>x.pass).length+'/'+baseline.length+' PASS');
