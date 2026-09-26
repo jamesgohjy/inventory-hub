@@ -948,11 +948,11 @@ function isNonInventoryServiceLine(x={}){
   const physical=/\b(?:projector|microphone|speaker|camera|mixer|display|monitor|trolley|transmitter|receiver|screen|audio\s+tester|amplifier|processor|switcher|rack|stand|control\s+panel|wireless\s+system)\b/i.test(text);
   const deliveryOnly=/^(?:return\s+trip|trip\s+for|signed\s+delivery\s+order|delivery\s+order|delivery\s+fee|delivery\s+charge|collection|courier|freight|transport)\b/i.test(text)||(/\bsigned\s+delivery\s+order\b/i.test(text)&&!physical);
   const serviceSku=/\b(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DISMOUNT(?:ING)?|DISMANTL(?:E|ING)|RE-?INSTAT(?:E|EMENT)|RELOCAT(?:E|ION)|REMOV(?:E|AL)|TEST(?:ING)?|COMMISSION(?:ING)?|DELIVERY|FREIGHT|TRANSPORT|COURIER)\b/i.test(sku);
-  const strongStart=/^(?:sales\s*[-:]\s*)?(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing)|re-?instat(?:e|ement)|relocat(?:e|ion)|remov(?:e|al)|labou?r|installation|installing|services?|professional\s+services?|consultancy|consulting|training|testing|commissioning|setup|configuration|delivery|freight|transport|manpower|on[- ]?site\s+support)\b/i.test(text);
-  const labourPhrase=/\b(?:supply\s+)?labou?r\s+(?:for|to|and|&)\s+(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing)|installation|install|services?|re-?instat(?:e|ement)|relocat(?:e|ion)|remov(?:e|al)|testing|commissioning|replace)\b/i.test(text);
-  const workPhrase=/\b(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing)|re-?instat(?:e|ement)|relocat(?:e|ion)|remov(?:e|al)|installation|testing|commissioning)\s*(?:work|works|service|services|job|labou?r)\b/i.test(text);
-  const actionChain=/\b(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing)|remove|relocate|reinstate)\b[\s\S]{0,180}\b(?:install(?:ation|ing)?|test(?:ing)?|commission(?:ing)?)\b/i.test(text);
-  const installBundle=/\b(?:installation|testing|commissioning)\s*(?:and|&|\/|,)+\s*(?:services?|testing|commissioning)\b/i.test(text);
+  const strongStart=/^(?:sales\s*[-:]\s*)?(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing|ed)|re-?instat(?:e|ement|ing)|relocat(?:e|ion|ing)|remov(?:e|al)|labou?r|installation|installing|installed|services?|professional\s+services?|consultancy|consulting|training|testing|commissioning|programming|setup|configuration|delivery|freight|transport|manpower|on[- ]?site\s+support)\b/i.test(text);
+  const labourPhrase=/\b(?:supply\s+)?labou?r\s+(?:for|to|and|&)\s+(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing|ed)|installation|install|services?|re-?instat(?:e|ement|ing)|relocat(?:e|ion|ing)|remov(?:e|al)|testing|commissioning|replace)\b/i.test(text);
+  const workPhrase=/\b(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing|ed)|re-?instat(?:e|ement|ing)|relocat(?:e|ion|ing)|remov(?:e|al)|installation|testing|commissioning|programming)\s*(?:work|works|service|services|job|labou?r)\b/i.test(text);
+  const actionChain=/\b(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing|ed)|remove|relocate|reinstate|install(?:ation|ing|ed)?|test(?:ing|ed)?|commission(?:ing|ed)?|programming|setup|configuration)\b/i.test(text);
+  const installBundle=/\b(?:installation|testing|commissioning|programming)\s*(?:and|&|\/|,)+\s*(?:services?|testing|commissioning|programming)\b/i.test(text);
   return deliveryOnly||serviceSku||strongStart||labourPhrase||workPhrase||actionChain||installBundle;
 }
 
@@ -1739,12 +1739,23 @@ function cleanInventoryDescription(value=''){
          .replace(/\s+/g,' ').trim();
   return out.slice(0,180).trim();
 }
+function v714yLooksLikeInvoiceMetadata(value=''){
+  const s=String(value||'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
+  if(!s)return true;
+  const header=/\b(?:invoice\s*(?:no|number|date)?|tax\s+invoice|reference\s*(?:no|number)?|ref\.?\s*(?:no|number)?|p\/?o\s*(?:no|number)?|purchase\s+order|delivery\s+order|quotation|customer(?:\s+code|\s+copy)?|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|terms|salesman|gst\s*(?:reg|registration)|uen|company\s*(?:reg|registration)|co\.?\s*reg|telephone|tel\.?|fax\.?|e-?mail|email|website|www\.|postal(?:\s+code)?|page\s+\d+|sub\s*total|subtotal|amount\s+due|grand\s+total|total\s+amount)\b/i;
+  const company=/\b(?:pte\.?\s*ltd\.?|private\s+limited|limited|ltd\.?|llp|llc|inc\.?|corporation|corp\.?)\b/i;
+  const address=/(?:\b(?:blk|block)\s*\d+[a-z]?\b|#\s*\d{1,3}\s*[-/]\s*\d{1,5}\b|\bsingapore\s*\d{5,6}\b|\b\d{1,4}\s*[a-z][a-z0-9 .'-]{1,55}\s*(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|lane|crescent|close|way|walk|place|plaza|boulevard|terrace|industrial\s+park)\b)/i;
+  const dateLabel=/\b(?:invoice\s+date|document\s+date|delivery\s+date|date)\s*[:#.-]/i;
+  const dateValue=/^(?:\d{1,2}[\/.-]\d{1,2}[\/.-](?:\d{2}|\d{4})|\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}|\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})$/i;
+  const service=/^(?:installation|installing|installed|labou?r|services?|professional\s+services?|repair(?:ing|ed)?|delivery|freight|transport|courier|commissioning|testing|programming|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|setup|configuration)\b/i;
+  const serviceAction=/\b(?:install(?:ation|ing|ed)?|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|repair(?:ing|ed)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|test(?:ing|ed)?|commission(?:ing|ed)?|programming)\b/i;
+  return header.test(s)||company.test(s)||address.test(s)||dateLabel.test(s)||dateValue.test(s)||service.test(s)||serviceAction.test(s);
+}
 function v667PlausibleItemName(value=''){
   const s=String(value||'').replace(/\s+/g,' ').trim();
   if(s.length<3||s.length>160)return false;
-  // Never allow invoice-header/contact/address fragments to become inventory items.
-  if(/\b(?:sub\s*total|subtotal|amount\s+due|gst\s*\d*\s*%?|currency|unit\s+price|invoice\s*(?:no|number)|customer\s+code|customer\s+copy|shipment\s+no|company\s+reg|gst\s+reg|sold\s+to|delivered\s+to|salesman|terms|ref\.?\s*no|p\/?o\s*no|page\s+\d|e-?mail|tel\.?|telephone|fax\.?|postal|singapore\s+\d{5,6})\b/i.test(s))return false;
-  if(/^(?:installation|labou?r|delivery|return\s+trip|signed\s+delivery\s+order|freight|courier|transport)\b/i.test(s))return false;
+  // Fail closed on invoice metadata, addresses, dates and service/action descriptions.
+  if(v714yLooksLikeInvoiceMetadata(s))return false;
   const words=s.split(/\s+/).filter(Boolean),single=words.filter(w=>/^[A-Za-z0-9]$/.test(w)).length;
   if(single>=3&&single/Math.max(1,words.length)>=0.30)return false;
   if(/(?:\b[A-Za-z]\s+){3,}[A-Za-z]\b/.test(s)||/(?:\b\d\s+){3,}\d\b/.test(s))return false;
@@ -2299,7 +2310,8 @@ function v676ValidateAndRectifyItems(items=[],sourceText=''){
     if(isNonInventoryServiceLine(line)||isExcludedInventoryAccessoryLine(line)||v676IsSupportCoverageLine(line))continue;
     const description=cleanInventoryDescription(line.description||line.item_name||'');
     const itemName=v676CanonicalItemName({...line,description});
-    if(!v667PlausibleItemName(itemName))continue;
+    const verificationText=[line.sku,itemName,description].filter(Boolean).join(' ');
+    if(v714yLooksLikeInvoiceMetadata(verificationText)||!v667PlausibleItemName(itemName))continue;
     let sku=v676IsForbiddenAutoSku(line.sku)?'':cleanVerifiedSku(line.sku||'',sourceText);
     if(!sku){const matched=v679MatchExistingSku({...line,item_name:itemName,description},sourceText);if(matched.sku){sku=matched.sku;line.skuMatchMethod=matched.method;}}
     if(!sku)sku=v676EmbeddedVerifiedSku({...line,item_name:itemName,description},sourceText);
