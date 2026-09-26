@@ -130,10 +130,11 @@ assert(verifyOnePos>=0&&choosePos>verifyOnePos&&webPos>choosePos,'Level 2A Inven
 assert(!parserV2Verification.slice(verifyOnePos,choosePos).includes("if(l1.status==='review')return"),'Level 1 review must not bypass the 60/70 Inventory threshold rules');
 assert(parserV2Verification.includes('v3-independent-recovery-evidence')&&parserV2Verification.includes('supportWitnesses')&&parserV2Verification.includes('invoiceWitness'),'V2 must accept only strongly corroborated V3 recovery evidence');
 assert(parserV3.includes("VERSION='3.0-evidence-recovery'")&&parserV3.includes("mode:'countercheck+recovery+conflict-review'"),'Parser V3 version/mode contract missing');
+assert(parserV3.includes('function basicCountercheck')&&parserV3.includes('countercheck must flag metadata leakage'),'V3 must actively countercheck normal equipment invoices even without a support schedule');
 assert(parserV3.includes('replacement evidence leaked into unrelated ordinal')&&parserV3.includes('replacement conflict not isolated to affected ordinal'),'Parser V3 must regression-test row-scoped replacement evidence');
 assert(runtime.includes('applyParserV3Countercheck14y')&&runtime.includes('Parser V3 — counterchecking V2 result'),'Runtime must run V3 after V2 for valid equipment invoices');
 assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes('Resolve every Parser V3 conflict'),'V3 conflicts must block Save until Level 3 resolution');
-assert(runtime.includes('Keep V2')&&runtime.includes('Use V3')&&runtime.includes('Only this disputed row needs your decision.'),'V3 conflict review must be row-scoped with explicit V2/V3 choices');
+assert(runtime.includes('Keep V2')&&runtime.includes('Use V3')&&runtime.includes('Reject row')&&runtime.includes('Only this disputed row needs your decision.'),'V3 conflict review must be row-scoped with explicit keep/use/reject choices');
 assert(!parserV3.includes('replaceOnce(')&&!parserV3.includes('supplier-specific'),'V3 must remain generic and repository-native');
 
 
@@ -266,7 +267,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r17'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r18'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
