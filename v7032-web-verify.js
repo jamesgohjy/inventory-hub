@@ -47,24 +47,34 @@
       sources:scored.slice(0,3),distinctTrustedDomains:domains
     };
   }
-  function brandFromInvoiceEvidence(row={},raw=''){
-    const model=clean(row.sku||'');if(!model)return '';
+  function modelFromDescription(row={}){
+    const text=clean([row.sku,row.model,row.item_name,row.description].filter(Boolean).join(' '));
+    const tokens=[...text.matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(m=>m[0]).filter(t=>/[A-Za-z]/.test(t)&&/\d/.test(t)&&!/^\d+(?:\.\d+)?$/.test(t));
+    tokens.sort((a,b)=>{const sa=(/[-/]/.test(a)?4:0)+(a.length>=5?2:0),sb=(/[-/]/.test(b)?4:0)+(b.length>=5?2:0);return sb-sa||b.length-a.length;});
+    return clean(row.sku||row.model||tokens[0]||'');
+  }
+  function brandFromInvoiceEvidence(row={},raw='',modelOverride=''){
+    const model=clean(modelOverride||row.sku||row.model||'');if(!model)return '';
     const lines=String(raw||'').replace(/\r/g,'').split('\n').map(clean);
     const mc=compact(model);
     for(const line of lines){
-      const c=compact(line),idx=c.indexOf(mc);if(idx<0)continue;
+      if(!compact(line).includes(mc))continue;
       const originalIdx=line.toUpperCase().indexOf(model.toUpperCase());
       if(originalIdx>0){
         const before=clean(line.slice(0,originalIdx)).split(/\s+/).filter(Boolean);
         const b=before.slice(-2).join(' ').replace(/[^A-Za-z0-9&.' -]/g,'').trim();
-        if(b&&!/\d/.test(b)&&b.length<=30)return b;
+        if(b&&!/\d/.test(b)&&b.length<=30&&!/^(?:model|sku|item|product)$/i.test(b))return b;
       }
     }
+    const desc=clean([row.item_name,row.description].filter(Boolean).join(' '));
+    const idx=desc.toUpperCase().indexOf(model.toUpperCase());
+    if(idx>0){const b=clean(desc.slice(0,idx)).split(/\s+/).filter(Boolean).slice(-2).join(' ');if(b&&!/\d/.test(b)&&b.length<=30)return b;}
     return '';
   }
   function candidateForRow(row={},raw=''){
-    const model=clean(row.sku||'');if(!model||!/\d/.test(model))return null;
-    return {brand:brandFromInvoiceEvidence(row,raw),model,description:clean(row.item_name||row.description||'').slice(0,140)};
+    const model=modelFromDescription(row),description=clean(row.item_name||row.description||'').slice(0,180);
+    if(!model&&!description)return null;
+    return {brand:brandFromInvoiceEvidence(row,raw,model),model,description};
   }
   function endpointConfig(){
     const c=(typeof window!=='undefined'&&window.INVENTORY_CONFIG)||{};
