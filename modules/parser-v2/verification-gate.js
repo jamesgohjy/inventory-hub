@@ -8,12 +8,15 @@
   const compact=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const round=n=>Math.round(Number(n)*100)/100;
   const EQUIPMENT_RE=/\b(?:projector|microphone|speaker|loudspeaker|controller|control panel|keypad|camera|mixer|display|monitor|transmitter|receiver|screen|wireless system|amplifier|processor|switcher|visualizer|document camera|console|player|receptacle|audio tester|signal tester|tester|analyzer|analyser|meter|dsp|video processor|matrix|scaler)\b/i;
-  const SERVICE_RE=/\b(?:installation|installing|labou?r|professional services?|commissioning|testing|programming|dismantle|dismount|transport|delivery(?: fee| charge| service)?|return trip|redelivery|courier|freight|service charge|repair(?: service| work)?|system tuning|calibration|training|consultancy|consulting|manpower|on[- ]?site support)\b/i;
+  const SERVICE_RE=/\b(?:install(?:ation|ing|ed)?|labou?r|professional services?|commission(?:ing|ed)?|test(?:ing|ed)?|programming|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|transport|delivery(?: fee| charge| service)?|return trip|redelivery|courier|freight|service charge|repair(?:ing|ed| service| work)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|system tuning|calibration|training|consultancy|consulting|manpower|on[- ]?site support|setup|configuration)\b/i;
+  const SERVICE_ACTION_RE=/\b(?:install(?:ation|ing|ed)?|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|repair(?:ing|ed)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|test(?:ing|ed)?|commission(?:ing|ed)?|programming|setup|configuration)\b/i;
   const ACCESSORY_RE=/\b(?:security lock|kensington lock|safety (?:wire|cable)|cables?|wires?|cords?|patch leads?|brackets?|mounts?|lamp kits?|lampkits?|replacement projector lamp|projector lamp|carts?|trolleys?|power adapt(?:er|or)s?|ac adapt(?:er|or)s?)\b/i;
   const WARRANTY_RE=/\b(?:warranty|extended warranty|support coverage|maintenance coverage|service contract)\b/i;
-  const HEADER_META_RE=/\b(?:invoice\s*(?:no|number|date)?|tax invoice|customer(?: code)?|sold to|bill to|ship to|delivered to|attention|attn\.?|terms|salesman|reference|ref\.?\s*no|p\/?o\s*no|purchase order|gst\s*(?:reg|registration)|uen|company\s*(?:reg|registration)|co\.?\s*reg|telephone|tel\.?|fax\.?|e-?mail|email|website|www\.|postal(?: code)?|amount due|sub\s*total|subtotal|grand total|total amount)\b/i;
+  const HEADER_META_RE=/\b(?:invoice\s*(?:no|number|date)?|tax invoice|customer(?: code|copy)?|sold to|bill to|ship to|delivered to|attention|attn\.?|terms|salesman|reference\s*(?:no|number)?|ref\.?\s*(?:no|number)?|p\/?o\s*(?:no|number)?|purchase order|delivery order|quotation|gst\s*(?:reg|registration)|uen|company\s*(?:reg|registration)|co\.?\s*reg|telephone|tel\.?|fax\.?|e-?mail|email|website|www\.|postal(?: code)?|amount due|sub\s*total|subtotal|grand total|total amount|page\s+\d+)\b/i;
   const COMPANY_RE=/\b(?:pte\.?\s*ltd\.?|private limited|limited|ltd\.?|llp|llc|inc\.?|corporation|corp\.?)\b/i;
-  const ADDRESS_RE=/(?:\b(?:blk|block)\s*\d+\b|#\d{1,2}-\d{1,4}\b|\bsingapore\s+\d{5,6}\b|\b\d{1,4}\s+[a-z][a-z .'-]{2,40}\s+(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|lane|crescent|close|way)\b)/i;
+  const ADDRESS_RE=/(?:\b(?:blk|block)\s*\d+[a-z]?\b|#\s*\d{1,3}\s*[-/]\s*\d{1,5}\b|\bsingapore\s*\d{5,6}\b|\b\d{1,4}\s*[a-z][a-z0-9 .'-]{1,55}\s*(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|lane|crescent|close|way|walk|place|plaza|boulevard|terrace|industrial\s+park)\b)/i;
+  const DATE_LABEL_RE=/\b(?:invoice\s+date|date\s+of\s+invoice|document\s+date|delivery\s+date|date)\s*[:#.-]/i;
+  const DATE_VALUE_RE=/^(?:\d{1,2}[\/.-]\d{1,2}[\/.-](?:\d{2}|\d{4})|\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}|\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})$/i;
   const MODEL_RE=/^[A-Z0-9][A-Z0-9+._\/-]{2,31}$/i;
   const STOP=new Set(['the','and','with','for','from','into','supply','including','include','set','pcs','piece','unit','units','each']);
 
@@ -24,17 +27,38 @@
     return {complete:true,ok:delta<=tol,delta:round(delta)};
   }
   function textFor(row={}){return clean([row.sku,row.model,row.item_name,row.description].filter(Boolean).join(' '));}
-  function isDefiniteNonEquipment(row={}){
-    const text=textFor(row);
+  function compactMetadata(v=''){return clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');}
+  function matchesDocumentMetadata(row={},ctx={}){
+    const fields=[row.sku,row.model,row.item_name,row.description].map(clean).filter(Boolean),joined=clean(fields.join(' ')),joinedCompact=compactMetadata(joined);
+    const doc=ctx.doc||{};
+    const checks=[
+      ['supplier',ctx.supplierName||doc.supplier_name],
+      ['invoice-number',doc.invoice_number],
+      ['reference-number',doc.reference_number],
+      ['delivery-order-number',doc.delivery_order_number],
+      ['invoice-date',doc.invoice_date]
+    ];
+    for(const [kind,value0] of checks){
+      const value=clean(value0);if(!value)continue;
+      const vc=compactMetadata(value);if(vc.length<4)continue;
+      if(fields.some(f=>compactMetadata(f)===vc))return {match:true,reason:'document-'+kind};
+      if((kind==='supplier'||kind==='invoice-number'||kind==='reference-number'||kind==='delivery-order-number')&&joinedCompact===vc)return {match:true,reason:'document-'+kind};
+      if(kind==='supplier'&&vc.length>=8&&joinedCompact.includes(vc)&&!EQUIPMENT_RE.test(joined))return {match:true,reason:'document-supplier'};
+    }
+    return {match:false,reason:''};
+  }
+  function isDefiniteNonEquipment(row={},ctx={}){
+    const text=textFor(row),primary=clean(row.item_name||row.description||''),sku=clean(row.sku||row.model||'');
     if(!text)return {reject:true,reason:'empty-row'};
+    const docMeta=matchesDocumentMetadata(row,ctx);if(docMeta.match)return {reject:true,reason:docMeta.reason};
     if(HEADER_META_RE.test(text))return {reject:true,reason:'header-or-contact-metadata'};
     if(COMPANY_RE.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'company-header'};
-    if(ADDRESS_RE.test(text))return {reject:true,reason:'address-metadata'};
+    if(ADDRESS_RE.test(text)||ADDRESS_RE.test(primary)||ADDRESS_RE.test(sku+' '+primary))return {reject:true,reason:'address-metadata'};
+    if(DATE_LABEL_RE.test(text)||DATE_VALUE_RE.test(primary)||DATE_VALUE_RE.test(sku))return {reject:true,reason:'date-metadata'};
     if(WARRANTY_RE.test(text))return {reject:true,reason:'warranty-or-support'};
-    const sku=clean(row.sku||row.model||'');
-    const serviceSku=/^(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DELIVERY|FREIGHT|TRANSPORT|COURIER|DISMOUNT|DISMANTLE)/i.test(sku);
-    const strongServiceStart=/^(?:installation|installing|labou?r|professional services?|service|repair|delivery|freight|transport|courier|commissioning|testing|programming|dismantle|dismount)\b/i.test(clean(row.item_name||row.description||''));
-    if(serviceSku||strongServiceStart||(SERVICE_RE.test(text)&&!EQUIPMENT_RE.test(text)))return {reject:true,reason:'service-or-labour'};
+    const serviceSku=/^(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DELIVERY|FREIGHT|TRANSPORT|COURIER|DISMOUNT|DISMANTL|REMOV|RELOCAT|REINSTAT|TEST|COMMISSION|PROGRAM)/i.test(sku);
+    const strongServiceStart=/^(?:installation|installing|installed|labou?r|professional services?|services?|repair|delivery|freight|transport|courier|commissioning|testing|programming|dismantle|dismantling|dismount|dismounting|remove|removal|relocate|relocation|reinstate|reinstatement|setup|configuration)\b/i.test(primary);
+    if(serviceSku||strongServiceStart||SERVICE_ACTION_RE.test(primary)||(SERVICE_RE.test(text)&&!EQUIPMENT_RE.test(text)))return {reject:true,reason:'service-or-labour'};
     if(ACCESSORY_RE.test(text)&&!/\b(?:microphone|mic)\s+stands?\b/i.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'excluded-accessory'};
     return {reject:false,reason:''};
   }
@@ -60,7 +84,7 @@
     return {ok:false,method:'no-priced-source-row'};
   }
   function level1(row={},ctx={}){
-    const blocked=isDefiniteNonEquipment(row);if(blocked.reject)return {status:'reject',reason:blocked.reason};
+    const blocked=isDefiniteNonEquipment(row,ctx);if(blocked.reject)return {status:'reject',reason:blocked.reason};
     const text=textFor(row),econ=economics(row),proof=sourceProof(row,ctx.raw||'');
     const model=clean(row.sku||row.model||''),modelLike=MODEL_RE.test(model)&&/\d/.test(model),equipmentWord=EQUIPMENT_RE.test(text);
     if(!proof.ok){
@@ -132,7 +156,7 @@
   }
   async function verifyParsed(parsed={},ctx={}){
     const verified=[],pending=[],rejected=[],decisions=[],items=parsed.items||[];
-    const results=await mapLimit(items,3,async(original,i)=>({original:{...(original||{})},result:await verifyOne({...original},{...ctx,supplierName:ctx.supplierName||parsed?.doc?.supplier_name||''}),i}));
+    const results=await mapLimit(items,3,async(original,i)=>({original:{...(original||{})},result:await verifyOne({...original},{...ctx,doc:parsed?.doc||{},supplierName:ctx.supplierName||parsed?.doc?.supplier_name||''}),i}));
     for(const entry of results){
       const original=entry.original,result=entry.result,i=entry.i,id=String(original.rowId||original.v7RowId||'candidate-'+(i+1));
       const decision={id,index:i+1,bucket:result.bucket,reason:result.reason,level1:result.level1,inventory:result.inventory?{status:result.inventory.status,score:result.inventory.score,secondScore:result.inventory.secondScore,margin:result.inventory.margin,matchedSku:clean(result.inventory.item?.sku||'')}:null,web:result.web?{status:result.web.status,confidence:result.web.confidence??null,reason:result.web.reason||'',sources:(result.web.sources||[]).slice(0,3)}:null};
@@ -145,9 +169,19 @@
     return {parsed:{...parsed,items:verified,v2Verification:report,parserV2Mode:'authoritative'},report};
   }
   function selfTest(){
-    const failures=[],addr={item_name:'123 Example Road Singapore 123456',description:'123 Example Road Singapore 123456',quantity:1,unit_price:100,amount:100};
-    if(level1(addr,{raw:'123 Example Road Singapore 123456 1 100.00 100.00'}).status!=='reject')failures.push('address metadata rejection');
-    const svc={sku:'INSTALL',item_name:'Installation labour',quantity:1,unit_price:100,amount:100};if(level1(svc,{raw:'INSTALL Installation labour 1 100.00 100.00'}).status!=='reject')failures.push('service rejection');
+    const failures=[],addr={sku:'1RafflesInstitution',item_name:'Lane',description:'Lane',quantity:1,unit_price:4,amount:4};
+    if(level1(addr,{raw:'1RafflesInstitution Lane 1 4.00 4.00'}).status!=='reject')failures.push('collapsed address metadata rejection');
+    const addr2={item_name:'123 Example Road Singapore 123456',description:'123 Example Road Singapore 123456',quantity:1,unit_price:100,amount:100};
+    if(level1(addr2,{raw:'123 Example Road Singapore 123456 1 100.00 100.00'}).status!=='reject')failures.push('address metadata rejection');
+    const supplier={item_name:'Example AV Pte Ltd',description:'Example AV Pte Ltd',quantity:1,unit_price:20,amount:20};
+    if(level1(supplier,{raw:'Example AV Pte Ltd 1 20.00 20.00',supplierName:'Example AV Pte Ltd',doc:{supplier_name:'Example AV Pte Ltd'}}).status!=='reject')failures.push('supplier metadata rejection');
+    const invNo={sku:'INV-12345',item_name:'INV-12345',quantity:1,unit_price:1,amount:1};
+    if(level1(invNo,{raw:'INV-12345 1 1.00 1.00',doc:{invoice_number:'INV-12345'}}).status!=='reject')failures.push('invoice number metadata rejection');
+    const refNo={sku:'VSO17-035483',item_name:'VSO17-035483',quantity:1,unit_price:1,amount:1};
+    if(level1(refNo,{raw:'VSO17-035483 1 1.00 1.00',doc:{reference_number:'VSO17-035483'}}).status!=='reject')failures.push('reference number metadata rejection');
+    const dateRow={item_name:'15/12/2023',description:'15/12/2023',quantity:1,unit_price:1,amount:1};
+    if(level1(dateRow,{raw:'15/12/2023 1 1.00 1.00',doc:{invoice_date:'2023-12-15'}}).status!=='reject')failures.push('date metadata rejection');
+    const svc={sku:'',item_name:'Dismantle existing projector and install replacement projector',quantity:1,unit_price:100,amount:100};if(level1(svc,{raw:'Dismantle existing projector and install replacement projector 1 100.00 100.00'}).status!=='reject')failures.push('service action rejection');
     const eq={sku:'CQ12T',item_name:'Digital mixer console',quantity:1,unit_price:1400,amount:1400},l1=level1(eq,{raw:'CQ12T Digital mixer console 1 1400.00 1400.00'});if(!['verified','candidate'].includes(l1.status))failures.push('valid equipment level1');
     const inv=chooseInventoryMatch({sku:'SLXD24-SM5B',item_name:'Digital wireless microphone system'},[{id:1,sku:'SLXD24/SM58',item_name:'Digital wireless microphone system'}],'');if(inv.status!=='confirmed'||inv.score<95)failures.push('ocr-aware inventory sku match');
     const bad=chooseInventoryMatch({sku:'ZX11-90',item_name:'Passive loudspeaker'},[{id:1,sku:'ZX11-80',item_name:'Passive loudspeaker'}],'');if(bad.status==='confirmed')failures.push('real model digit difference must not auto-match');
