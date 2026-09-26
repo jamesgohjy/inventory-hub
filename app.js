@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v2-initial-shadow-20260926-16-wrap-fix';
+  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v2-authoritative-20260926-17';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -25,7 +25,10 @@
       await loadScript('modules/parser-v2/row-accounting.js?v='+key,'InventoryHubParserV2Rows');
       const parserV2=await loadScript('modules/parser-v2/engine.js?v='+key,'InventoryHubParserV2');
       const parserV2Gate=parserV2.selfTest?.();
-      if(!parserV2Gate?.ok)throw new Error('Parser V2 shadow gate failed: '+(parserV2Gate?.failures||['self-test unavailable']).join(', '));
+      if(!parserV2Gate?.ok)throw new Error('Parser V2 analysis gate failed: '+(parserV2Gate?.failures||['self-test unavailable']).join(', '));
+      const parserV2Verification=await loadScript('modules/parser-v2/verification-gate.js?v='+key,'InventoryHubParserV2VerificationGate');
+      const parserV2VerificationGate=parserV2Verification.selfTest?.();
+      if(!parserV2VerificationGate?.ok)throw new Error('Parser V2 authoritative verification gate failed: '+(parserV2VerificationGate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
@@ -34,8 +37,8 @@
       await window.__AV_DIRECT_RUNTIME_READY__;
       if(window.__AV_DIRECT_RUNTIME_LOADED__!==VERSION)throw new Error('Direct runtime did not initialise as '+VERSION+'.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
-      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='initial Parser V2 shadow baseline + current UI v7.03.3.14y';
-      console.info('AV Inventory Hub '+VERSION+' loaded with evidence-ranked parsing.',Object.fromEntries(gates));
+      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='Parser V2 authoritative verification + current UI v7.03.3.14y';
+      console.info('AV Inventory Hub '+VERSION+' loaded with authoritative Parser V2 verification.',Object.fromEntries(gates));
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
