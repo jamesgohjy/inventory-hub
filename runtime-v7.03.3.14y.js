@@ -2342,10 +2342,27 @@ function sanitizeParsedInventoryItems(items=[],sourceText=''){
   // then the user-approved deterministic 13-character item-name fallback only when collision-free.
   return v676ValidateAndRectifyItems(items,sourceText);
 }
+function v714yNormalizedSkuKey(row={}){
+  const value=String(row?.sku||row?.model||'').trim().toUpperCase().replace(/[^A-Z0-9]+/g,'');
+  return value.length>=3?value:'';
+}
+function v714yDuplicateSkuKeys(items=[]){
+  const seen=new Map(),dupes=[];
+  for(const row of items||[]){
+    const key=v714yNormalizedSkuKey(row);if(!key)continue;
+    const display=String(row?.sku||row?.model||'').trim()||key;
+    if(seen.has(key)){if(!dupes.some(x=>x.key===key))dupes.push({key,display:firstDisplay(seen.get(key),display)});}
+    else seen.set(key,display);
+  }
+  return dupes;
+}
+function firstDisplay(a='',b=''){return String(a||b||'').trim();}
 function prepareInventoryLinesForSave(items=[]){
   const canonical=state.parsed;
   const prepared=window.InventoryHubCanonicalParser.prepareSave(canonical,{humanReviewed:!!state.importHumanReviewApproved});
   if(!prepared.ok)throw new Error(prepared.status==='review'?'Canonical parser review must be resolved before saving.':(prepared.errors?.[0]?.message||'Canonical parser validation prevents saving.'));
+  const duplicates=v714yDuplicateSkuKeys(prepared.rows);
+  if(duplicates.length)throw new Error('Duplicate SKU/model in this invoice: '+duplicates.map(x=>x.display).join(', ')+'. Keep only one line per SKU/model.');
   return prepared.rows.map(line=>({...line}));
 }
 function recoverSupplierFromEvidence14x(doc={},sources=[]){
@@ -2925,8 +2942,11 @@ function renderParserV2Verification14y(){
     const id=String(row.v2CandidateId||'candidate-'+(i+1)),name=esc(row.item_name||row.description||'Unidentified candidate'),sku=esc(row.sku||row.model||'—'),im=row.v2InventoryMatch||{},wm=row.v2WebMatch||{};
     const inv=im.matchedSku?('Closest Inventory SKU: <b>'+esc(im.matchedSku)+'</b> ('+Number(im.score||0).toFixed(1)+'%)'):'No safe Inventory SKU match';
     const web=wm.status?('Web verification: '+esc(wm.status)+(wm.confidence!=null?' ('+Math.round(Number(wm.confidence)*100)+'%)':'')):'Web verification: no confirmed model';
+    const dedup=row.parserV2Dedup||{},duplicateConflict=dedup.status==='conflict';
+    const variants=duplicateConflict?(dedup.variants||[]).map(v=>'Qty '+esc(String(v.quantity??'—'))+' · Unit '+esc(String(v.unit_price??'—'))+' · Amount '+esc(String(v.amount??'—'))).join(' | '):'';
+    const duplicateNote=duplicateConflict?('<br><b>Duplicate SKU conflict:</b> this SKU appeared more than once with different values. Only one line will be retained.<br>Observed: '+variants):'';
     return '<div style="margin-top:10px;padding:10px;border:1px solid #f6d88a;border-radius:8px;background:#fff8df;color:#694c00">'+
-      '<b>Level 3 — Candidate '+(i+1)+'</b><br>'+name+'<br><small>SKU / Model: '+sku+'<br>'+inv+'<br>'+web+'<br>Double-check that this is physical equipment and that SKU/Model and Standard Item Name refer to the same item.</small>'+
+      '<b>Level 3 — Candidate '+(i+1)+'</b><br>'+name+'<br><small>SKU / Model: '+sku+'<br>'+inv+'<br>'+web+duplicateNote+'<br>Double-check that this is physical equipment and that SKU/Model and Standard Item Name refer to the same item.</small>'+
       '<div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="secondary small-btn" data-v2-confirm="'+esc(id)+'">Confirm equipment</button><button type="button" class="secondary small-btn" data-v2-reject="'+esc(id)+'">Reject</button></div></div>';
   }).join('');
   box.innerHTML=status+cards;
