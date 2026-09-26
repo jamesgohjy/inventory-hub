@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v4-mandatory-web-20260926-27';
+  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v4-mandatory-web-20260926-28-final';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
