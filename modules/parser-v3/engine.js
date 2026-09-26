@@ -271,6 +271,14 @@
     if(!isIncomplete({items:[{sku:'A'}],v2Verification:{pendingCount:0}},[{ordinal:1},{ordinal:2}]))failures.push('missing-row recovery trigger');
     const match=existingMatch({sku:'PT-VW540',item_name:'Projector',quantity:1,amount:804},[{sku:'PT-VW540',item_name:'Projector',quantity:1,amount:804}]);
     if(!match?.skuSame)failures.push('countercheck exact agreement');
+    const replacementEvidence={sources:[
+      {id:'inv-a',text:'TAX INVOICE\nMixer\nModel: CQ12T\nPlayer\nModel: XDP-3002\nNote: replaced with XDP-3001\nSCOPE OF WORK',layout:[]},
+      {id:'inv-b',text:'TAX INVOICE\nMixer\nModel: CQ12T\nPlayer\nModel: XDP-3002\nNote: replaced with XDP-3001\nSCOPE OF WORK',layout:[]}
+    ]};
+    const me=completeInvoiceModelVotes(replacementEvidence,[1,2]),emptyAnchors=new Map();
+    const first=modelDecision(1,emptyAnchors,me),second=modelDecision(2,emptyAnchors,me);
+    if(first.model!=='CQ12T'||first.replacement)failures.push('replacement evidence leaked into unrelated ordinal');
+    if(second.model!==''||!second.variants.includes('XDP-3002')||!second.variants.includes('XDP-3001'))failures.push('replacement conflict not isolated to affected ordinal');
     return {ok:failures.length===0,failures};
   }
   global.InventoryHubParserV3=Object.freeze({VERSION,mode:'countercheck+recovery+conflict-review',evaluate,selfTest,scheduleConsensus,corroboratedScheduleTotal,isIncomplete});
