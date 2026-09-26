@@ -2928,9 +2928,16 @@ function resolveParserV2Candidate14y(id,accept){
   applyParsedReviewToForm();renderParserV2Verification14y();if(typeof v703RenderVerificationNotice==='function')v703RenderVerificationNotice();renderImportEligibility();
 }
 function renderParserV2Verification14y(){
-  const host=$('reviewArea')||$('parsedItems')?.parentNode;if(!host)return;
+  const anchor=$('parsedItems'),host=anchor?.parentNode||$('reviewArea');if(!host)return;
   let box=$('parserV2VerificationPanel');
-  if(!box){box=document.createElement('div');box.id='parserV2VerificationPanel';box.style.cssText='margin:0 0 12px;padding:12px 14px;border-radius:10px;border:1px solid #b9d9ff;background:#eff7ff;color:#174f8a;font-size:12px;line-height:1.45';const anchor=$('parsedItems');host.insertBefore(box,anchor||host.firstChild);}
+  if(!box){
+    box=document.createElement('div');box.id='parserV2VerificationPanel';box.style.cssText='margin:0 0 12px;padding:12px 14px;border-radius:10px;border:1px solid #b9d9ff;background:#eff7ff;color:#174f8a;font-size:12px;line-height:1.45';
+    const before=anchor&&anchor.parentNode===host?anchor:host.firstChild;
+    host.insertBefore(box,before||null);
+  }else if(box.parentNode!==host){
+    const before=anchor&&anchor.parentNode===host?anchor:host.firstChild;
+    host.insertBefore(box,before||null);
+  }
   const report=state?.parsed?.v2Verification;
   if(!report){box.classList.add('hidden');box.innerHTML='';return;}
   box.classList.remove('hidden');
