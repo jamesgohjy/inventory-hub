@@ -19,6 +19,7 @@ const parserV2Numbered=read('modules/parser-v2/numbered-schedule.js');
 const parserV2Engine=read('modules/parser-v2/engine.js');
 const parserV2Verification=read('modules/parser-v2/verification-gate.js');
 const parserV3=read('modules/parser-v3/engine.js');
+const webVerify=read('v7032-web-verify.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
 const healthResolutionSql=read('supabase-v7-03-3-14x-data-health-resolution.sql');
@@ -35,7 +36,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(parserV3);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(parserV3);new Function(webVerify);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -138,6 +139,25 @@ assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes('Res
 assert(runtime.includes('function renderParserV3Verification14y')&&!runtime.includes('<b>Level 3 — V2 / V3 conflict</b>'),'Normal Review must not expose V3 level/conflict diagnostic cards');
 assert(runtime.includes("host.querySelectorAll('.v703312q-level3-badge,.v703313-level3-badge,.v703313-field-warning').forEach(x=>x.remove())")&&!runtime.includes("badge.textContent='Level 3 — verify highlighted field'"),'Line-item Level verification badges/warnings must remain hidden');
 assert(!parserV3.includes('replaceOnce(')&&!parserV3.includes('supplier-specific'),'V3 must remain generic and repository-native');
+
+assert(runtime.includes("One or more invoice items still need confirmation before saving.")&&!runtime.includes("Level 3 review is still unresolved."),'Normal Review messages must not expose verification level wording');
+
+// Shure PGA58-LC mandatory web verification regression.
+const webCtx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,URL};
+webCtx.globalThis=webCtx;webCtx.window=webCtx;vm.createContext(webCtx);vm.runInContext(webVerify,webCtx,{filename:'v7032-web-verify.js'});
+const webApi=webCtx.V7032WebVerify;
+assert(webApi,'Web verifier did not initialise');
+const shureRaw='SHURE PGA58-LC Cardioid Dynamic Vocal Microphone\n10.00 64.69 646.90';
+const shureRow={sku:'',item_name:'SHURE PGA58-LC Cardioid Dynamic Vocal Microphone',description:'SHURE PGA58-LC Cardioid Dynamic Vocal Microphone',quantity:10,unit_price:64.69,amount:646.90};
+const shureCandidate=webApi.candidateForRow(shureRow,shureRaw);
+assert(shureCandidate?.model==='PGA58-LC','Shure model token PGA58-LC must be extracted for mandatory web verification');
+assert(/SHURE/i.test(shureCandidate?.brand||''),'Shure brand must be extracted from invoice evidence');
+const shureWeb=webApi.aggregateWebEvidence([
+  {title:'PGA58 Cardioid Dynamic Vocal Microphone - Shure',snippet:'PGA58-LC Cardioid Dynamic Vocal Microphone',url:'https://www.shure.com/en-US/products/microphones/pga58'},
+  {title:'Shure PGA58-LC Vocal Microphone',snippet:'PGA58-LC dynamic microphone',url:'https://service.shure.com/example'}
+],shureCandidate);
+assert(shureWeb.status==='confirmed','Official Shure evidence must confirm PGA58-LC');
+console.log('Shure PGA58-LC mandatory web verification regression: PASS');
 
 
 assert(app.includes('modules/canonical-parser.js'),'Canonical parser module is not loaded');
