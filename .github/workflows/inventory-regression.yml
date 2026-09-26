@@ -65,6 +65,7 @@ jobs:
           node --check modules/parser-v2/row-accounting.js
           node --check modules/parser-v2/numbered-schedule.js
           node --check modules/parser-v2/engine.js
+          node --check modules/parser-v2/verification-gate.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
           node --check modules/backup-verification-ui.js
