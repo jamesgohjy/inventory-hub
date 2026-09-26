@@ -110,7 +110,7 @@ for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubuser
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
 }
 assert(runtime.includes('InventoryHubParserEvidenceEngine'),'Direct runtime does not use parser evidence engine');
-assert(runtime.includes('applyParserV2AuthoritativeVerification14y')&&runtime.includes('Parser V2 — Authoritative verification'),'Production runtime must apply Parser V2 verification before Review renders');
+assert(runtime.includes('applyParserV2AuthoritativeVerification14y'),'Production runtime must apply Parser V2 verification before Review renders');
 assert(runtime.includes('pendingV2')&&runtime.includes('Resolve every Parser V2 Level 3 candidate'),'Unresolved Level 3 candidates must block Confirm & Save');
 assert(!runtime.includes("reason:'partial-v2-review'")&&!runtime.includes('v2Promotion:promotion')&&!runtime.includes('independent-geometry-complete'),'Retired broad promotion/review mutation paths must remain disabled');
 assert(app.includes('modules/parser-v2/engine.js')&&app.includes('modules/parser-v2/verification-gate.js')&&app.includes('Parser V2 authoritative verification gate failed'),'App bootstrap must load and gate authoritative Parser V2 verification');
@@ -123,10 +123,11 @@ assert(runtime.includes('function v714yLooksLikeInvoiceMetadata')&&runtime.inclu
 assert(parserV2Verification.includes('collapsed address metadata rejection')&&parserV2Verification.includes('supplier metadata rejection')&&parserV2Verification.includes('invoice number metadata rejection')&&parserV2Verification.includes('reference number metadata rejection')&&parserV2Verification.includes('date metadata rejection')&&parserV2Verification.includes('service action rejection'),'Parser V2 verification self-test must cover all prohibited metadata/service classes');
 assert(parserV2Verification.includes('same sku exact duplicate collapse')&&parserV2Verification.includes('same sku conflicting economics level3')&&parserV2Verification.includes('consolidateUniqueSku'),'Parser V2 must enforce one normalized SKU per invoice');
 assert(runtime.includes('function v714yDuplicateSkuKeys')&&runtime.includes('Duplicate SKU/model in this invoice:'),'Save boundary must reject duplicate SKU/model rows created by manual edits');
-assert(runtime.includes("const anchor=$('parsedItems'),host=anchor?.parentNode||$('reviewArea')")&&runtime.includes('anchor&&anchor.parentNode===host?anchor:host.firstChild'),'Parser V2 verification panel must insert relative to the actual parsedItems parent');
-assert(parserV2Verification.includes("if(exact||n>70)return 'confirmed'")&&parserV2Verification.includes("if(n<60)return 'rejected'")&&parserV2Verification.includes("inventory-match-below-60"),'Inventory Level 2A thresholds must auto-confirm >70%, auto-reject <60%, and leave 60-70 unresolved');
+assert(runtime.includes("function renderParserV2Verification14y(){\n  const box=$('parserV2VerificationPanel');if(box){box.classList.add('hidden');box.innerHTML='';}")&&runtime.includes("function renderParserV3Verification14y(){\n  const box=$('parserV3VerificationPanel');if(box){box.classList.add('hidden');box.innerHTML='';}"),'Parser V2/V3 diagnostic panels must stay hidden in normal Review');
+assert(parserV2Verification.includes("if(exact||n>70)return 'confirmed'")&&parserV2Verification.includes("if(n<60)return 'rejected'")&&!parserV2Verification.includes("inv.status==='rejected')return {bucket:'rejected'"),'Inventory similarity may classify a local match but must not reject equipment before mandatory web verification');
 const verifyOnePos=parserV2Verification.indexOf('async function verifyOne'),choosePos=parserV2Verification.indexOf('const inv=chooseInventoryMatch',verifyOnePos),webPos=parserV2Verification.indexOf('const web=ctx.webVerifier',verifyOnePos);
-assert(verifyOnePos>=0&&choosePos>verifyOnePos&&webPos>choosePos,'Level 2A Inventory matching must run before Level 2B/Level 3 fallback');
+assert(verifyOnePos>=0&&choosePos>verifyOnePos&&webPos>choosePos,'Inventory evidence must be gathered before mandatory web verification');
+assert(parserV2Verification.includes("method:'mandatory-public-web'")&&parserV2Verification.includes("mandatory-web-unavailable")&&parserV2Verification.includes("mandatory-web-unconfirmed"),'V4 must require public web verification before automatic equipment confirmation');
 assert(!parserV2Verification.slice(verifyOnePos,choosePos).includes("if(l1.status==='review')return"),'Level 1 review must not bypass the 60/70 Inventory threshold rules');
 assert(parserV2Verification.includes('v3-independent-recovery-evidence')&&parserV2Verification.includes('supportWitnesses')&&parserV2Verification.includes('invoiceWitness'),'V2 must accept only strongly corroborated V3 recovery evidence');
 assert(parserV3.includes("VERSION='3.0-evidence-recovery'")&&parserV3.includes("mode:'countercheck+recovery+conflict-review'"),'Parser V3 version/mode contract missing');
@@ -134,7 +135,8 @@ assert(parserV3.includes('function basicCountercheck')&&parserV3.includes('count
 assert(parserV3.includes('replacement evidence leaked into unrelated ordinal')&&parserV3.includes('replacement conflict not isolated to affected ordinal'),'Parser V3 must regression-test row-scoped replacement evidence');
 assert(runtime.includes('applyParserV3Countercheck14y')&&runtime.includes('Parser V3 — counterchecking V2 result'),'Runtime must run V3 after V2 for valid equipment invoices');
 assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes('Resolve every Parser V3 conflict'),'V3 conflicts must block Save until Level 3 resolution');
-assert(runtime.includes('Keep V2')&&runtime.includes('Use V3')&&runtime.includes('Reject row')&&runtime.includes('Only this disputed row needs your decision.'),'V3 conflict review must be row-scoped with explicit keep/use/reject choices');
+assert(runtime.includes('function renderParserV3Verification14y')&&!runtime.includes('<b>Level 3 — V2 / V3 conflict</b>'),'Normal Review must not expose V3 level/conflict diagnostic cards');
+assert(runtime.includes("host.querySelectorAll('.v703312q-level3-badge,.v703313-level3-badge,.v703313-field-warning').forEach(x=>x.remove())")&&!runtime.includes("badge.textContent='Level 3 — verify highlighted field'"),'Line-item Level verification badges/warnings must remain hidden');
 assert(!parserV3.includes('replaceOnce(')&&!parserV3.includes('supplier-specific'),'V3 must remain generic and repository-native');
 
 
