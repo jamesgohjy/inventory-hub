@@ -75,3 +75,4 @@ jobs:
         run: |
           node tests/run-regression.cjs
           node tests/parser-v4-unseen-holdout.cjs
+          node tests/parser-v4-concept-sanitized.cjs
