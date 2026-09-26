@@ -64,6 +64,7 @@
   }
   function rowTokens(row={}){return norm([row.item_name,row.description].filter(Boolean).join(' ')).split(' ').filter(t=>t.length>=3&&!STOP.has(t));}
   function sourceProof(row={},raw=''){
+    if(row.v3RecoveryEvidenceVerified===true&&Number(row?.v3Provenance?.supportWitnesses||0)>=2&&row?.v3Provenance?.invoiceWitness===true)return {ok:true,method:'v3-independent-recovery-evidence',supportWitnesses:Number(row.v3Provenance.supportWitnesses)};
     if(row.layoutEvidenceVerified===true||row.economicEvidenceVerified===true||row.v690NumberedEvidence===true)return {ok:true,method:'structured-evidence'};
     const lines=String(raw||'').replace(/\r/g,'').split('\n').map(clean).filter(Boolean);
     if(!lines.length)return {ok:false,method:'no-source-text'};
@@ -222,6 +223,10 @@
     return {parsed:{...parsed,items:unique.verified,v2Verification:report,parserV2Mode:'authoritative'},report};
   }
   function selfTest(){
+    const v3Proof=sourceProof({v3RecoveryEvidenceVerified:true,v3Provenance:{supportWitnesses:2,invoiceWitness:true}},'');
+    if(!v3Proof.ok||v3Proof.method!=='v3-independent-recovery-evidence')failures.push('v3 strong recovery proof handoff');
+    const v3Weak=sourceProof({v3RecoveryEvidenceVerified:true,v3Provenance:{supportWitnesses:1,invoiceWitness:true}},'');
+    if(v3Weak.ok)failures.push('v3 weak recovery proof must fail closed');
     const failures=[],addr={sku:'1RafflesInstitution',item_name:'Lane',description:'Lane',quantity:1,unit_price:4,amount:4};
     if(level1(addr,{raw:'1RafflesInstitution Lane 1 4.00 4.00'}).status!=='reject')failures.push('collapsed address metadata rejection');
     const addr2={item_name:'123 Example Road Singapore 123456',description:'123 Example Road Singapore 123456',quantity:1,unit_price:100,amount:100};
