@@ -11,6 +11,15 @@
   const EQUIPMENT_RE=/\b(?:projectors?|microphones?|mics?|speakers?|loudspeakers?|controllers?|control panels?|keypads?|cameras?|mixers?|displays?|monitors?|transmitters?|receivers?|screens?|wireless systems?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visualizers?|document cameras?|consoles?|players?|receptacles?|audio testers?|signal testers?|testers?|analyzers?|analysers?|meters?|dsp|video processors?|matrix|scalers?|nvr|dvr|network video recorders?|digital video recorders?)\b/i;
   const SERVICE_RE=/\b(?:scope of work|installation|installing|labou?r|commissioning|testing|programming|dismantle|dismount|delivery|freight|repair|relocate|reinstatement|training|warranty|service contract)\b/i;
   const MODEL_RE=/\bmodel\s*:\s*(?:[A-Za-z][A-Za-z &.]*?\s+)?([A-Z0-9][A-Z0-9+._\/-]*\d[A-Z0-9+._\/-]*|[A-Za-z][A-Za-z0-9+._\/-]{3,})\b/i;
+  function modelFromInvoiceLine(line=''){
+    const m=clean(line).match(/\bmodel\s*:\s*(.+)$/i);if(!m)return '';
+    const tail=clean(m[1]).replace(/[|;,]+$/,'');
+    const tokens=[...tail.matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(x=>clean(x[0])).filter(Boolean);
+    const withDigit=tokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+    if(withDigit.length)return withDigit.at(-1);
+    const words=tokens.filter(x=>/^[A-Za-z][A-Za-z0-9+._\/-]{3,}$/.test(x));
+    return words.at(-1)||'';
+  }
   const money=v=>{let s=String(v??'').replace(/[$\s}\])]/g,'');if(/,\d{2}$/.test(s)&&!s.includes('.'))s=s.replace(',','.');else s=s.replace(/,/g,'');const n=Number(s);return Number.isFinite(n)?n:null;};
   const hashText=v=>norm(String(v||'')).slice(0,9000);
   const sourceId=s=>String(s?.id||s?.source||'source');
@@ -113,7 +122,7 @@
       if(!key||seen.has(key))continue;seen.add(key);
       const lines=beforeScope.split(/\r?\n/),hits=[];
       for(let li=0;li<lines.length;li++){
-        const m=clean(lines[li]).match(MODEL_RE);if(m?.[1])hits.push({model:clean(m[1]),line:li});
+        const model=modelFromInvoiceLine(lines[li]);if(model)hits.push({model,line:li});
       }
       const dedup=hits.filter((h,i)=>i===0||compact(h.model)!==compact(hits[i-1].model));
       if(dedup.length!==count)continue;
@@ -137,24 +146,29 @@
     return {modelsByOrdinal,replacementsByOrdinal};
   }
   function modelDecision(ordinal,anchors,modelEvidence,scheduleRow={}){
-    const direct=(anchors.get(ordinal)||[]).map(a=>clean(a.model)).filter(Boolean),variants=new Map();
-    for(const m of direct){const k=compact(m);if(!variants.has(k))variants.set(k,{model:m,count:0,sources:[]});variants.get(k).count+=2;}
-    for(const e of modelEvidence.modelsByOrdinal.get(ordinal)?.values?.()||[]){
-      const k=compact(e.model);if(!variants.has(k))variants.set(k,{model:e.model,count:0,sources:[]});
-      const v=variants.get(k);v.count+=e.count;v.sources.push(...e.sources);
-    }
-    const scheduleModel=clean(scheduleRow.scheduleModel||'');
-    if(scheduleModel){const k=compact(scheduleModel);if(!variants.has(k))variants.set(k,{model:scheduleModel,count:0,sources:[]});variants.get(k).count+=Math.max(2,Number(scheduleRow.supportWitnesses||0));}
-    const ranked=[...variants.values()].sort((a,b)=>b.count-a.count);
-    let model=ranked[0]?.count>=2&&ranked[0].count>Number(ranked[1]?.count||0)?ranked[0].model:'';
+    const invoiceVariants=new Map();
+    const addInvoice=(model,count=1,sources=[])=>{const k=compact(model);if(!k)return;if(!invoiceVariants.has(k))invoiceVariants.set(k,{model:clean(model),count:0,sources:[]});const x=invoiceVariants.get(k);x.count+=count;x.sources.push(...sources);};
+    for(const m of (anchors.get(ordinal)||[]).map(a=>clean(a.model)).filter(Boolean))addInvoice(m,2,[]);
+    for(const e of modelEvidence.modelsByOrdinal.get(ordinal)?.values?.()||[])addInvoice(e.model,e.count,e.sources||[]);
+    const invoiceRanked=[...invoiceVariants.values()].sort((a,b)=>b.count-a.count);
+    const top=invoiceRanked[0],second=invoiceRanked[1];
+    const invoiceModel=top?.count>=2&&top.count>Number(second?.count||0)?top.model:'';
+    const scheduleModel=clean(scheduleRow.scheduleModel||''),scheduleStrong=!!scheduleModel&&Number(scheduleRow.supportWitnesses||0)>=2;
     const replacements=[...(modelEvidence.replacementsByOrdinal.get(ordinal)?.values?.()||[])].sort((a,b)=>b.count-a.count);
     const replacement=replacements[0]?.count>=2&&replacements[0].count>Number(replacements[1]?.count||0)?replacements[0].model:'';
     const conflict=[];
-    if(ranked.length>1&&ranked[0].count===ranked[1].count)conflict.push(...ranked.slice(0,3).map(x=>x.model));
-    if(replacement&&model&&compact(replacement)!==compact(model))conflict.push(model,replacement);
+    if(invoiceRanked.length>1&&top?.count===second?.count)conflict.push(...invoiceRanked.slice(0,3).map(x=>x.model));
+    if(invoiceModel&&scheduleStrong&&compact(invoiceModel)!==compact(scheduleModel))conflict.push(invoiceModel,scheduleModel);
+    let model=invoiceModel||(!invoiceRanked.length&&scheduleStrong?scheduleModel:'');
+    if(replacement){
+      const base=model||invoiceModel||scheduleModel;
+      if(base&&compact(replacement)!==compact(base))conflict.push(base,replacement);
+    }
     if(conflict.length)model='';
-    return {model,variants:[...new Set((conflict.length?conflict:ranked.map(x=>x.model)).filter(Boolean))],replacement:replacement||''};
+    const variants=[...new Set((conflict.length?conflict:[...invoiceRanked.map(x=>x.model),scheduleModel,replacement]).filter(Boolean))];
+    return {model,variants,replacement:replacement||'',invoiceModel:invoiceModel||'',scheduleModel:scheduleModel||''};
   }
+
   function titleFor(ordinal,anchors,scheduleRow){
     const rows=anchors.get(ordinal)||[];
     const titles=rows.map(x=>clean(x.title)).filter(x=>x&&!SERVICE_RE.test(x));
@@ -252,19 +266,21 @@
     const candidates=scheduleRows.map(row=>makeCandidate(row,modelDecision(row.ordinal,anchors,modelEvidence,row),anchors));
     let nextItems=[...(parsed.items||[])],pending=[...(parsed?.v2Verification?.pending||[])],rejected=[...(parsed?.v2Verification?.rejected||[])];
     for(const candidate of candidates){
-      const match=existingMatch(candidate,nextItems);
-      if(match){
-        const csku=compact(candidate.sku||candidate.model||''),vsku=compact(match.row.sku||match.row.model||'');
-        const modelAmbiguous=!csku&&Array.isArray(candidate?.v3Provenance?.modelVariants)&&candidate.v3Provenance.modelVariants.length>1;
-        if((csku&&vsku&&csku!==vsku)||modelAmbiguous){
-          let checked={bucket:'pending',row:candidate,reason:'v3-conflict-needs-level3'};
-          if(ctx.verifyGate?.verifyOne){
-            checked=await ctx.verifyGate.verifyOne(candidate,{raw:(evidence.sources||[]).map(s=>String(s.text||'')).join('\n'),inventoryItems:ctx.inventoryItems||[],supplierName:String(parsed?.doc?.supplier_name||''),doc:parsed?.doc||{},webVerifier:ctx.webVerifier||null});
-          }
-          report.conflicts.push({id:'v3-conflict-'+candidate.v3Provenance.ordinal,type:'identity-conflict',ordinal:candidate.v3Provenance.ordinal,v2Row:match.row,v3Row:checked?.row||candidate,v3VerificationStatus:checked?.bucket||'pending',v3VerificationReason:checked?.reason||'v3-conflict-needs-level3',reason:modelAmbiguous?'v3-secondary-evidence-ambiguous':'v2-v3-identity-disagreement',resolved:false});
+      const accountedRows=[...nextItems,...pending],match=existingMatch(candidate,accountedRows);
+      const csku=compact(candidate.sku||candidate.model||''),vsku=compact(match?.row?.sku||match?.row?.model||'');
+      const intrinsicConflict=Array.isArray(candidate?.v3Provenance?.modelVariants)&&candidate.v3Provenance.modelVariants.length>1&&!csku;
+      const identityConflict=!!(match&&csku&&vsku&&csku!==vsku);
+      if(intrinsicConflict||identityConflict){
+        let checked={bucket:'pending',row:candidate,reason:'v3-conflict-needs-user'};
+        if(ctx.verifyGate?.verifyOne){
+          checked=await ctx.verifyGate.verifyOne(candidate,{raw:(evidence.sources||[]).map(s=>String(s.text||'')).join('\n'),inventoryItems:ctx.inventoryItems||[],supplierName:String(parsed?.doc?.supplier_name||''),doc:parsed?.doc||{},webVerifier:ctx.webVerifier||null});
         }
+        const conflictRow={...(checked?.row||candidate),v2CandidateId:'v3-conflict-'+candidate.v3Provenance.ordinal,v3RecoveredCandidate:true,v2VerificationReason:checked?.reason||'v3-conflict-needs-user'};
+        if(!match)pending.push(conflictRow);
+        report.conflicts.push({id:'v3-conflict-'+candidate.v3Provenance.ordinal,type:'identity-conflict',ordinal:candidate.v3Provenance.ordinal,v2Row:match?.row||null,v3Row:conflictRow,v3VerificationStatus:checked?.bucket||'pending',v3VerificationReason:checked?.reason||'v3-conflict-needs-user',reason:intrinsicConflict?'v3-secondary-evidence-ambiguous':'v2-v3-identity-disagreement',resolved:false});
         continue;
       }
+      if(match)continue;
       if(!isIncomplete(parsed,scheduleRows))continue;
       const gate=ctx.verifyGate;
       let result=null;
@@ -278,8 +294,8 @@
         rejected.push({...candidate,v2RejectionReason:result.reason||'v3-recovery-rejected'});
         report.recovered.push({ordinal:candidate.v3Provenance.ordinal,status:'rejected',reason:result.reason||'verification-rejected'});
       }else{
-        const row={...(result?.row||candidate),v2CandidateId:'v3-recovery-'+candidate.v3Provenance.ordinal,v3RecoveredCandidate:true,v2VerificationReason:result?.reason||'v3-recovery-needs-level3'};
-        pending.push(row);report.recovered.push({ordinal:candidate.v3Provenance.ordinal,status:'level3',row});
+        const row={...(result?.row||candidate),v2CandidateId:'v3-recovery-'+candidate.v3Provenance.ordinal,v3RecoveredCandidate:true,v2VerificationReason:result?.reason||'v3-recovery-needs-user'};
+        pending.push(row);report.recovered.push({ordinal:candidate.v3Provenance.ordinal,status:'review',row});
       }
     }
     if(report.recovered.length)report.modes.push('recovery');
@@ -293,7 +309,7 @@
     }
     report.v3FinalVerifiedCount=nextItems.length;
     report.unresolvedConflictCount=report.conflicts.filter(x=>!x.resolved).length;
-    report.status=report.conflicts.length?'conflict-review':report.recovered.some(x=>x.status==='auto-filled')?'recovered':report.recovered.some(x=>x.status==='level3')?'recovery-needs-review':report.countercheckWarnings.length?'countercheck-warning':'agree';
+    report.status=report.conflicts.length?'conflict-review':report.recovered.some(x=>x.status==='auto-filled')?'recovered':report.recovered.some(x=>x.status==='review')?'recovery-needs-review':report.countercheckWarnings.length?'countercheck-warning':'agree';
     return {parsed:{...parsed,items:nextItems,v2Verification:v2Report,v3Verification:report,parserV3Mode:report.modes.join('+')},report};
   }
   function selfTest(){
