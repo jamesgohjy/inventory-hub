@@ -160,17 +160,15 @@ assert(!serials.includes('SHOULD-NOT-BIND-999'),'Packing-slip serial crossed doc
 // Critic/root-cause note: audit each source document independently. Mixing unrelated
 // documents in one evidence context makes the row-local integrity checker correctly
 // refuse otherwise valid identifiers because it cannot prove which document owns them.
-// Global fallback is allowed only inside the single authoritative document being audited;
-// dedicated V4.1 cross-row/cross-source regressions still enforce contamination isolation.
+// V4.1 must prove each value from the row's retained V4 evidence region.
+// No document-wide/global fallback is enabled, preserving cross-row contamination isolation.
 const conceptAudit=V41.auditRows(conceptRows,{
   raw:conceptInvoice,
-  sources:conceptEvidence,
-  allowGlobalFallback:true
+  sources:conceptEvidence
 });
 const hawkoAudit=V41.auditRows(hawkoRows,{
   raw:hawko,
-  sources:[{source:'hawko',kind:'ocr',text:hawko}],
-  allowGlobalFallback:true
+  sources:[{source:'hawko',kind:'ocr',text:hawko}]
 });
 const auditHard=conceptAudit.randomCharacterFailureCount+hawkoAudit.randomCharacterFailureCount;
 assert(conceptAudit.randomCharacterFailureCount===0,'Concept V4.1 contamination audit hard failures: '+JSON.stringify(conceptAudit.hardFailures));
