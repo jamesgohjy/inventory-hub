@@ -57,7 +57,7 @@ for(const [name,result] of Object.entries(suites)){
   assert(result.ok,name+' regression suite failed: '+(result.failures||[]).join(', '));
 }
 const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Object.values(suites).reduce((n,r)=>n+r.cases.filter(x=>x.pass).length,0);
-assert(total===80&&passed===80,'Expected 80/80 core regression checks, got '+passed+'/'+total);
+assert(total===83&&passed===83,'Expected 83/83 core regression checks, got '+passed+'/'+total);
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
 const avMediaDedupe=api.consolidateFragmentedParsedLineItems([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
@@ -289,6 +289,23 @@ assert(runtime.includes("if(!adminDiagnosticsVisible()){if(existing)existing.rem
 assert(runtime.includes("if(role!=='admin'){")&&runtime.includes("parserDiag?.remove()")&&runtime.includes("diagApi.stage='hidden-for-role'"),'applyRoleUI must purge Parser diagnostics immediately for editor/viewer roles');
 assert(runtime.includes("if(adminDiagnosticsVisible()){diagnostics.behavioral=api.runRegressionChecks();diagnostics.historical=api.runHistoricalRegressionChecks();diagnostics.stage='ready';}")&&!runtime.includes("const startupBehavioral=api.runRegressionChecks(),startupHistorical=api.runHistoricalRegressionChecks()"),'Non-admin roles must not eagerly execute Parser diagnostics self-tests');
 console.log('admin-only-parser-diagnostics: editor/viewer purge + lazy admin initialisation PASS');
+
+assert(typeof api.masterItemDuplicatePolicy==='function','Standard Item Name duplicate policy helper missing');
+const duplicatePolicyAuto=api.masterItemDuplicatePolicy([
+  {id:'old',sku:'PGA58-LC',item_name:'Dynamic Vocal Microphone',created_at:'2025-01-01T00:00:00Z'},
+  {id:'new',sku:'PGA58LC',item_name:'dynamic vocal microphone',created_at:'2026-01-01T00:00:00Z'}
+]);
+assert(duplicatePolicyAuto.autoMergeGroups.length===1&&duplicatePolicyAuto.reviewGroups.length===0&&duplicatePolicyAuto.autoMergeGroups[0].canonical.id==='old','Same Standard Item Name + same SKU/model must auto-merge to the deterministic canonical record');
+const duplicatePolicyReview=api.masterItemDuplicatePolicy([
+  {id:'one',sku:'SLXD2-SM58',item_name:'Wireless Handheld Microphone'},
+  {id:'two',sku:'PGA58-LC',item_name:'Wireless Handheld Microphone'}
+]);
+assert(duplicatePolicyReview.autoMergeGroups.length===0&&duplicatePolicyReview.reviewGroups.length===1,'Same Standard Item Name + different SKU/model must remain separate for review');
+assert(runtime.includes('v703314zAutoMergeExactMasterDuplicates')&&runtime.includes('await v703314dMergeMasterItems(source,target,v703314zMergePayload(target,source))'),'Live runtime must auto-merge exact Standard Item Name + SKU/model duplicates through the transactional Master Item merge');
+assert(runtime.includes('renderInventoryDuplicateNameWarning();')&&runtime.includes('same Standard Item Name is used by different SKU / Model codes'),'Live Inventory must render a review warning for same-name/different-model records');
+assert(index.includes('id="inventoryDuplicateNameWarning"')&&index.includes('warning-box inventory-duplicate-name-warning hidden'),'Inventory duplicate-name yellow warning host missing');
+assert(index.includes('styles.css?v=7.03.3.14y-r3'),'Styles cache-bust revision missing');
+console.log('standard-item-duplicate-policy: exact identity auto-merge + different-model yellow warning PASS');
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
 assert(runtime.includes('pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized'),'Materialized V2 pending rows must remain reviewable instead of disabling the Review workflow');
@@ -303,7 +320,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r23'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r24'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');

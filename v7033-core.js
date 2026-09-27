@@ -885,6 +885,47 @@
       .replace(/\b\d+(?:\.\d+)?\s*(?:mm|cm|inch|inches|lumens?|ansi|hz|khz|mhz|ghz|w|kw)\b/g,' ')
       .replace(/\s+/g,' ').trim();
   }
+  function standardItemNameKey(v=''){
+    return clean(v).normalize('NFKC').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function masterItemDuplicatePolicy(items=[]){
+    const byName=new Map(),autoMergeGroups=[],reviewGroups=[];
+    for(const item of items||[]){
+      const nameKey=standardItemNameKey(item?.item_name||'');
+      if(!nameKey)continue;
+      if(!byName.has(nameKey))byName.set(nameKey,[]);
+      byName.get(nameKey).push(item);
+    }
+    for(const [nameKey,rows] of byName){
+      if(rows.length<2)continue;
+      const bySku=new Map();
+      for(const row of rows){
+        const skuKey=compact(row?.sku||row?.model||'');
+        if(!skuKey)continue;
+        if(!bySku.has(skuKey))bySku.set(skuKey,[]);
+        bySku.get(skuKey).push(row);
+      }
+      for(const [skuKey,sameSkuRows] of bySku){
+        if(sameSkuRows.length<2)continue;
+        const ordered=sameSkuRows.slice().sort((a,b)=>{
+          const ad=String(a?.created_at||''),bd=String(b?.created_at||'');
+          return ad.localeCompare(bd)||String(a?.id||'').localeCompare(String(b?.id||''));
+        });
+        autoMergeGroups.push({nameKey,skuKey,standardItemName:clean(ordered[0]?.item_name||''),canonical:ordered[0],duplicates:ordered.slice(1),rows:ordered});
+      }
+      const skuKeys=[...bySku.keys()];
+      if(skuKeys.length>1){
+        reviewGroups.push({
+          nameKey,
+          standardItemName:clean(rows[0]?.item_name||''),
+          skuKeys,
+          rows:rows.slice(),
+          reason:'same-standard-name-different-sku'
+        });
+      }
+    }
+    return {autoMergeGroups,reviewGroups};
+  }
   function resolveInventoryMatch(line={},items=[]){
     const incoming={...line};const sku=clean(incoming.sku||'');
     if(credibleSku(sku)){
@@ -975,6 +1016,21 @@
     check('dedupe removes exact duplicate only',d.length,2);
     const match=resolveInventoryMatch({sku:'AVS320',item_name:'AVS-320 projector controller'},[{id:'1',sku:'AVS-320',item_name:'AVS-320 projector controller',category:'AV Control'}]);
     check('format-equivalent SKU reuses existing item',!!match.matched&&match.line?.sku==='AVS-320',true);
+    const sameNameSameSkuPolicy=masterItemDuplicatePolicy([
+      {id:'a',sku:'PGA58-LC',item_name:'Dynamic Vocal Microphone',created_at:'2026-01-01T00:00:00Z'},
+      {id:'b',sku:'PGA58LC',item_name:'dynamic vocal microphone',created_at:'2026-02-01T00:00:00Z'}
+    ]);
+    check('same Standard Item Name plus same normalized SKU is auto-merge eligible',sameNameSameSkuPolicy.autoMergeGroups.length===1&&sameNameSameSkuPolicy.reviewGroups.length===0&&sameNameSameSkuPolicy.autoMergeGroups[0].canonical.id==='a',true);
+    const sameNameDifferentSkuPolicy=masterItemDuplicatePolicy([
+      {id:'a',sku:'SLXD2-SM58',item_name:'Wireless Handheld Microphone'},
+      {id:'b',sku:'PGA58-LC',item_name:'Wireless Handheld Microphone'}
+    ]);
+    check('same Standard Item Name plus different SKU is review-only',sameNameDifferentSkuPolicy.autoMergeGroups.length===0&&sameNameDifferentSkuPolicy.reviewGroups.length===1,true);
+    const differentNamesPolicy=masterItemDuplicatePolicy([
+      {id:'a',sku:'MODEL-A',item_name:'Wireless Handheld Microphone'},
+      {id:'b',sku:'MODEL-B',item_name:'Wireless Lavalier Microphone'}
+    ]);
+    check('different Standard Item Names do not trigger duplicate-name policy',differentNamesPolicy.autoMergeGroups.length===0&&differentNamesPolicy.reviewGroups.length===0,true);
     const noSkuMerge=analyzeDuplicatePair({sku:'',item_name:'PT-VMW51 Projector',category:'Projection'},{sku:'PT-VMW51',item_name:'Projector',category:'Projection'},[]);
     check('no-SKU duplicate can use embedded surviving model as explicit-review evidence',noSkuMerge.candidate&&noSkuMerge.mergeEligible&&noSkuMerge.reason==='embedded-sku-alias',true);
     const unsafeNoSku=analyzeDuplicatePair({sku:'',item_name:'Generic Projector',category:'Projection'},{sku:'PT-VMW51',item_name:'Projector',category:'Projection'},[]);
@@ -1342,5 +1398,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
