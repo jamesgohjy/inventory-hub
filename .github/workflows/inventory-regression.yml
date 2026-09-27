@@ -80,4 +80,4 @@ jobs:
           node tests/parser-v4-unseen-holdout.cjs
           node tests/parser-v4-concept-sanitized.cjs
           node tests/parser-v4-serial-evidence.cjs
-          node tests/merge-dialog-close-regression.cjs
+          node tests/merge-dialog-close-regression.cjs\n          node tests/recent-inventory-futuristic-artwork.cjs
