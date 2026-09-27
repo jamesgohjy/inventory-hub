@@ -860,6 +860,13 @@
       if(row.v703314zPrintedModel&&row.sku){
         const currentSku=compact(existing.sku||''),incomingSku=compact(row.sku||'');
         const existingPrinted=clean(existing.v703314zPrintedModel||'');
+        // Evidence must follow any explicit printed-model value through dedupe/merge.
+        // Keep row-local source regions from both matching candidates; never retain a
+        // promoted SKU/model while dropping the invoice line that proved it.
+        existing.v703312kSourceLine=uniq(
+          [existing.v703312kSourceLine,row.v703312kSourceLine].map(clean).filter(Boolean),
+          clean
+        ).join(' | ');
         if(!currentSku||!existingPrinted){
           existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
         }else if(currentSku!==incomingSku){
