@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v4-mandatory-web-20260926-28-final';
+  const VERSION='7.03.3.14y',ASSET_REV='v703314y-parser-v4-live-review-parity-20260927-r22';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -36,6 +36,9 @@
       const parserV3=await loadScript('modules/parser-v3/engine.js?v='+key,'InventoryHubParserV3');
       const parserV3Gate=parserV3.selfTest?.();
       if(!parserV3Gate?.ok)throw new Error('Parser V3 evidence-recovery gate failed: '+(parserV3Gate?.failures||['self-test unavailable']).join(', '));
+      const parserV4Review=await loadScript('modules/parser-v4-review-bridge.js?v='+key,'InventoryHubParserV4ReviewBridge');
+      const parserV4ReviewGate=parserV4Review.selfTest?.();
+      if(!parserV4ReviewGate?.ok)throw new Error('Parser V4 live-review parity gate failed: '+(parserV4ReviewGate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
