@@ -249,18 +249,6 @@ async function v703314zAutoMergeExactMasterDuplicates(){
   state.masterDuplicateAutoMergeError=failures.length?failures:null;
   return {merged,groups:policy.autoMergeGroups.length,failures};
 }
-function renderInventoryDuplicateNameWarning(){
-  const box=$('inventoryDuplicateNameWarning');if(!box)return;
-  const policy=v703314zMasterDuplicatePolicy(),groups=policy.reviewGroups||[];
-  if(!groups.length&&!state.masterDuplicateAutoMergeError){box.classList.add('hidden');box.innerHTML='';return;}
-  const warnings=groups.map(group=>{
-    const models=[...new Set((group.rows||[]).map(x=>String(x.sku||x.model||'').trim()).filter(Boolean))];
-    return '<div class="inventory-duplicate-name-warning-row"><strong>'+esc(group.standardItemName||'Duplicate Standard Item Name')+'</strong><span>SKU / Model: '+esc(models.join(' · ')||'Missing model')+'</span></div>';
-  }).join('');
-  const mergeError=state.masterDuplicateAutoMergeError?'<p><strong>Automatic duplicate merge needs attention.</strong> One or more exact duplicate identities could not be merged safely. No partial unsafe merge was forced.</p>':'';
-  box.innerHTML='<div class="inventory-duplicate-name-warning-head"><i data-lucide="triangle-alert"></i><div><strong>Double-check duplicate Standard Item Name</strong><p>The same Standard Item Name is used by different SKU / Model codes. These records were kept separate. Confirm that the names are correct before merging or editing them.</p></div></div>'+warnings+mergeError;
-  box.classList.remove('hidden');window.lucide?.createIcons();
-}
 async function reload(){
   if(CFG.mode==='supabase')setHealth('reconnecting','Reconnecting');
   try{
@@ -406,7 +394,6 @@ function renderCategories(){
   $('categoryFilter').value=cats.some(c=>c.toLowerCase()===cur.toLowerCase())?cats.find(c=>c.toLowerCase()===cur.toLowerCase()):'';
 }
 function renderInventory(){
-  renderInventoryDuplicateNameWarning();
   const q=norm($('inventorySearch').value),cat=v703311CanonicalCategory($('categoryFilter').value),editable=canEdit(),group=$('inventoryGroup')?.value||'none';
   const filtered=state.data.items.filter(i=>{
     const canonicalCategory=v703311CanonicalCategory(i.category);
@@ -1670,6 +1657,28 @@ function parseLoud(text){const products=[
 function parseAvMedia(text){let code=first(/(?:PRODUCT\s*NO\.?\s*)?\n?\s*(REMACO\s+MAS[- ]?2121)/i,text)||first(/\b(REMACO\s+MAS[- ]?\d+)\b/i,text);if(!code&&/MAS.?2121/i.test(text))code='REMACO MAS-2121';const qty=num(first(/(?:MAS[- ]?2121[^\n]*\n(?:[^\n]*\n){0,3}?)(\d+(?:\.\d+)?)\s*\n/i,text))||1;const unit=num(first(/\b290\.00\b/,text,0))||290;return /REMACO|MAS.?2121/i.test(text)?[{sku:(code||'REMACO MAS-2121').replace(/\s+/g,' ').replace('MAS 2121','MAS-2121'),item_name:'Manual Projection Screen',description:'Supply and install Remaco MAS2121 84" x 84" manual projection screen',category:'AV / Display',unit:'pcs',quantity:qty,unit_price:unit,amount:290,warranty:'',serials:''}]:[];}
 
 function confidenceBadge(value,kind){let score=String(value??'').trim()?85:35;if(kind==='sku'&&String(value||'').length<3)score=45;if(kind==='qty'&&(!Number(value)||Number(value)<=0))score=30;const level=score>=80?'high':score>=55?'medium':'low';return `<span class="confidence ${level}" title="Parsing confidence">${score}%</span>`;}
+function v703314zReviewDuplicateStandardNameGroups(items=[]){
+  const bridge=globalThis.InventoryHubParserV4ReviewBridge;
+  return bridge?.duplicateStandardItemNameGroups?bridge.duplicateStandardItemNameGroups(items||[]):[];
+}
+function refreshParsedDuplicateStandardNameWarnings14z(){
+  const rows=state.parsed?.items||[],groups=v703314zReviewDuplicateStandardNameGroups(rows),affected=new Map();
+  for(const group of groups){
+    for(const index of group.indexes||[])affected.set(Number(index),group);
+  }
+  document.querySelectorAll('#parsedItems .parsed-row[data-pi]').forEach(row=>{
+    const index=Number(row.dataset.pi),group=affected.get(index);
+    row.classList.toggle('duplicate-standard-name-review',!!group);
+    row.querySelectorAll('.duplicate-standard-name-alert').forEach(x=>x.remove());
+    if(!group)return;
+    const alert=document.createElement('div');alert.className='duplicate-standard-name-alert';alert.setAttribute('role','alert');
+    const models=(group.skus||[]).join(' · ')||'different SKU / Model values';
+    alert.innerHTML='<i data-lucide="triangle-alert" aria-hidden="true"></i><div><strong>Double-check duplicate Standard Item Name</strong><span>This Standard Item Name appears on another line with a different SKU / Model: '+esc(models)+'. Confirm both lines refer to the correct equipment before saving.</span></div>';
+    const grid=row.querySelector('.parsed-grid');if(grid)grid.insertAdjacentElement('afterend',alert);else row.prepend(alert);
+  });
+  window.lucide?.createIcons();
+  return groups;
+}
 function renderParsedItems(){const wrap=$('parsedItems');wrap.innerHTML=state.parsed.items.map((x,i)=>{const match=findBestItemMatch(x),matchHtml=match&&match.score<0.999?`<div class="sku-match-suggestion"><i data-lucide="wand-sparkles"></i><div><strong>Possible existing SKU · ${Math.round(match.score*100)}% match</strong><span>${esc(match.item.sku)} · ${esc(match.item.item_name)}</span></div><button type="button" class="secondary small-btn" data-use-match="${i}" data-match-id="${match.item.id}">Use existing</button></div>`:'';return `<div class="parsed-row ${!x.item_name||!Number(x.quantity)?'needs-review':''}" data-pi="${i}"><div class="parsed-grid"><label>SKU / model <span class="muted">(optional)</span> ${x.sku?confidenceBadge(x.sku,'sku'):''}<input data-f="sku" value="${esc(x.sku)}"></label><label>Standard item name<input data-f="item_name" value="${esc(x.item_name)}"></label><label>Qty ${confidenceBadge(x.quantity,'qty')}<input type="number" min="0.01" step="0.01" data-f="quantity" value="${x.quantity??1}"></label><label>Unit price<input type="number" step="0.01" data-f="unit_price" value="${x.unit_price??''}"></label><label>Amount<input type="number" step="0.01" data-f="amount" value="${x.amount??''}"></label><label>Description<textarea data-f="description" rows="2">${esc(x.description)}</textarea></label></div><div class="parsed-meta"><label>Category <span class="muted">(optional)</span><input data-f="category" value="${esc(x.category||'')}"></label><label>Warranty <span class="muted">(optional)</span><input data-f="warranty" value="${esc(x.warranty||'')}"></label><label>Serial numbers <span class="muted">(optional)</span><input data-f="serials" value="${esc(x.serials||'')}"></label></div>${matchHtml}<div class="actions" style="margin-top:8px"><button type="button" data-remove-line="${i}">Remove line</button></div></div>`}).join('');window.lucide?.createIcons();}
 
 const renderParsedItemsBase=renderParsedItems;
@@ -1691,6 +1700,7 @@ renderParsedItems=function(){
     note.textContent='One or more serial-number characters could not be read confidently. Please verify against the PDF.';
     input.closest('label')?.appendChild(note);
   });
+  refreshParsedDuplicateStandardNameWarnings14z();
   const trace=state.parsed?.parseEvidence?.liveParserTrace||state.lastParserTrace;
   const shouldShowTrace=trace&&((state.parsed?.items||[]).length<=3||trace?.numbered_schedule?.ok!==true||trace?.promotion?.applied!==true);
   if(shouldShowTrace){
@@ -3444,7 +3454,7 @@ $('addParsedItemBtn').onclick=()=>{collectParsed();state.parsed.items.push({sku:
 $('parsedItems').addEventListener('input',e=>{
   const edited=e.target.closest?.('[data-f]');if(edited){
     state.importHumanReviewApproved=false;
-    try{collectParsed();renderImportEligibility();}catch(err){console.warn('Manual line eligibility refresh skipped',err);}
+    try{collectParsed();refreshParsedDuplicateStandardNameWarnings14z();renderImportEligibility();}catch(err){console.warn('Manual line eligibility refresh skipped',err);}
   }
   const changed=e.target.closest?.('[data-f="quantity"],[data-f="unit_price"]');if(!changed)return;
   const row=changed.closest('.parsed-row'),qty=row?.querySelector('[data-f="quantity"]'),price=row?.querySelector('[data-f="unit_price"]'),amount=row?.querySelector('[data-f="amount"]');
