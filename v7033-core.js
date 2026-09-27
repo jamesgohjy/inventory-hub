@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.14y reference, duplicate-row and review arithmetic patch
+/* AV Inventory Hub v7.03.3.14z reference, duplicate-row and review arithmetic patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -125,20 +125,22 @@
     if(paymentTerms)structureScore+=1;
     if(currency)structureScore+=1;
 
+    // Document authority is resolved before equipment extraction. A page explicitly headed as
+    // Purchase Order / Quotation / Delivery Order / other non-invoice is never an extraction
+    // source merely because it repeats invoice fields, models or equipment descriptions.
+    if(nonInvoiceTitles.length&&!strongTax&&!strongInvoice){
+      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
+    }
+    // If OCR genuinely exposes both authoritative title classes on one physical page, do not guess.
+    // Keep the page out of automatic extraction and require document-type review.
+    if(nonInvoiceTitles.length&&(strongTax||strongInvoice)){
+      return {allowed:false,disposition:'review',type:'document_title_conflict',reason:'Conflicting Invoice and non-invoice page titles; page is not an automatic extraction source.',reviewRequired:true,score:structureScore,evidence};
+    }
     if(strongTax){
-      return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:nonInvoiceTitles.length>0,score:12+structureScore,evidence};
+      return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:false,score:12+structureScore,evidence};
     }
     if(strongInvoice&&(invoiceNo||invoiceDate||itemTable||totals||billTo)){
-      return {allowed:true,disposition:'accept',type:'invoice',reason:'Invoice heading phrase with supporting invoice structure.',reviewRequired:nonInvoiceTitles.length>0,score:10+structureScore,evidence};
-    }
-
-    // A real non-invoice heading is a strong reject signal unless equally strong invoice evidence
-    // conflicts with it; conflicts are routed to Review, not guessed.
-    if(nonInvoiceTitles.length){
-      if((fuzzyHead||invoiceNo)&&structureScore>=8){
-        return {allowed:true,disposition:'review',type:'invoice_review',reason:'Conflicting document-title evidence; invoice structure is strong enough for Level 3 review.',reviewRequired:true,score:structureScore,evidence};
-      }
-      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title.',reviewRequired:false,score:structureScore,evidence};
+      return {allowed:true,disposition:'accept',type:'invoice',reason:'Invoice heading phrase with supporting invoice structure.',reviewRequired:false,score:10+structureScore,evidence};
     }
 
     if(fuzzyHead&&structureScore>=4){
@@ -181,6 +183,11 @@
         accepted.push(text);
         if(pageLayouts?.[i])layouts.push(pageLayouts[i]);
         invoiceContext=true;
+        if(verdict.reviewRequired||verdict.disposition==='review')reviewRequired=true;
+      }else{
+        // Crossing an explicit non-invoice boundary ends invoice-continuation authority.
+        // A later PO/DO/quotation page can never inherit eligibility from an earlier invoice.
+        if(verdict.type==='non-invoice'||verdict.type==='document_title_conflict')invoiceContext=false;
         if(verdict.reviewRequired||verdict.disposition==='review')reviewRequired=true;
       }
     }
@@ -1037,6 +1044,16 @@
     check('no-SKU duplicate without embedded model stays blocked',unsafeNoSku.candidate,false);
     const invoice='TAX INVOICE\nInvoice Number INV-1001\nInvoice Date 24 Sep 2026\nDelivery Order Number D100\nDescription Quantity Unit Price Amount\nPT-TW381R Projector 1 1000.00 1000.00\nSubtotal 1000.00\nGST 90.00\nTotal 1090.00';
     check('invoice remains valid with delivery-order reference',classifyInvoicePage(invoice).allowed,true);
+    const repeatedEquipment='Description Quantity Unit Price Amount\\nDigital Mixer console Model: Allen & Heath CQ12T 1 1000.00 1000.00';
+    const po='PURCHASE ORDER\\nPO Number PO-1001\\n'+repeatedEquipment+'\\nInvoice No: INV-1001';
+    const quotation='QUOTATION\\nQuote No Q-1001\\n'+repeatedEquipment;
+    const delivery='DELIVERY ORDER\\nDO No D-1001\\n'+repeatedEquipment;
+    check('purchase order with invoice-like equipment is rejected before extraction',classifyInvoicePage(po).allowed,false);
+    check('quotation with modelled equipment is rejected before extraction',classifyInvoicePage(quotation).allowed,false);
+    check('delivery order with modelled equipment is rejected before extraction',classifyInvoicePage(delivery).allowed,false);
+    const mixed=filterInvoicePages([invoice,po,quotation,delivery],[{page:1},{page:2},{page:3},{page:4}]);
+    check('mixed PDF exposes only Invoice/Tax Invoice page text',mixed.texts.length===1&&mixed.texts[0]===invoice,true);
+    check('mixed PDF rejects PO quotation and delivery pages',mixed.decisions.slice(1).every(x=>x.allowed===false),true);
     check('current and upcoming versions differ',RELEASE_UPCOMING_VERSION!==VERSION,true);
     return {ok:cases.every(x=>x.pass),version:VERSION,upcoming:RELEASE_UPCOMING_VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
@@ -1359,7 +1376,7 @@
     'Fixed Confirm & Save database deployment and Master Item merge review.',
     'Added a persistent Resolve option for valid Data Health exceptions.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.14z';
+  const RELEASE_UPCOMING_VERSION='7.03.3.15';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
