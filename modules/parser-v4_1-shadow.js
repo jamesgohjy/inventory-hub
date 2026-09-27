@@ -37,15 +37,27 @@
   function significantTokens(v=''){
     return norm(v).split(/\s+/).filter(t=>t&&t.length>=2&&!STOP.has(t));
   }
-  function explicitEvidence(row={},field=''){
-    const common=!!(
-      row.itemEvidenceVerified||row.webEvidenceVerified||row.externalEvidenceVerified||
-      row.v2WebMatch||row.v2InventoryMatch||row.evidenceVerified
-    );
-    if(field==='sku'||field==='model')return common||!!(row.skuVerified||row.modelVerified||row.modelEvidenceVerified);
-    if(field==='serial_number'||field==='serials')return !!(row.serialEvidenceVerified||row.serialSourceVerified);
-    if(field==='item_name'||field==='description')return common||!!(row.standardNameVerified||row.descriptionEvidenceVerified);
-    return common;
+  function explicitEvidence(row={},field='',value=''){
+    const target=clean(value);
+    if(!target)return false;
+    const values=[];
+    const add=v=>{if(v!==undefined&&v!==null&&clean(v))values.push(clean(v));};
+    const cap=field.replace(/(^|_)([a-z])/g,(_,a,b)=>b.toUpperCase());
+    add(row[field+'EvidenceValue']);
+    add(row['verified'+cap]);
+    add(row?.v41Evidence?.[field]);
+    add(row?.fieldEvidence?.[field]?.value);
+    if(field==='sku'||field==='model'){
+      add(row.verifiedSku);add(row.verifiedModel);add(row.modelEvidenceValue);add(row.skuEvidenceValue);
+    }
+    if(field==='item_name'||field==='description'){
+      add(row.verifiedItemName);add(row.verifiedDescription);add(row.standardNameEvidenceValue);
+    }
+    if(field==='serial_number'||field==='serials'){
+      add(row.verifiedSerial);add(row.serialEvidenceValue);
+    }
+    const key=(field==='sku'||field==='model'||field==='serial_number'||field==='serials')?compact(target):norm(target);
+    return values.some(v=>((field==='sku'||field==='model'||field==='serial_number'||field==='serials')?compact(v):norm(v))===key);
   }
   function sourceSupport(value,field,texts=[]){
     const v=clean(value);
