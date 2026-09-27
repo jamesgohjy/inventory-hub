@@ -118,7 +118,7 @@ input,select,textarea{width:100%;padding:10px 11px;border:1px solid #ccd6e2;bord
 @media(max-width:720px){#documentsView .toolbar{flex-direction:column;align-items:stretch}#documentsView .toolbar .input-icon{width:100%;max-width:none;min-width:0;flex:1 1 auto}}
 
 /* V6.5: realistic 3D recent inventory thumbnails */
-.asset-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:1;display:block}
+.asset-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;padding:3px;box-sizing:border-box;z-index:1;display:block}
 .asset-thumb:has(img):after{display:none}
 
 /* V6.14 */
