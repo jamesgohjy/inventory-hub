@@ -9,12 +9,14 @@ for(const [path,name] of [
   ['modules/parser-v2/table-detector.js','table'],
   ['modules/parser-v2/numbered-schedule.js','schedule'],
   ['modules/parser-v2/verification-gate.js','v2'],
-  ['modules/parser-v3/engine.js','v3']
+  ['modules/parser-v3/engine.js','v3'],
+  ['modules/parser-v4-review-bridge.js','v4-review']
 ]) vm.runInContext(read(path),ctx,{filename:path});
 
-const V2=ctx.InventoryHubParserV2VerificationGate,V3=ctx.InventoryHubParserV3;
+const V2=ctx.InventoryHubParserV2VerificationGate,V3=ctx.InventoryHubParserV3,V4Review=ctx.InventoryHubParserV4ReviewBridge;
 assert(V2?.selfTest?.().ok,'V2 self-test failed');
 assert(V3?.selfTest?.().ok,'V3 self-test failed');
+assert(V4Review?.selfTest?.().ok,'V4 live-review self-test failed');
 
 const cases=[
 {
@@ -123,8 +125,11 @@ async function runV4(test,raw=test.raw){
   const parsed={doc:{supplier_name:test.supplier,invoice_number:test.invoice},items:rows,invoiceClassification:{type:'equipment'},raw};
   const v2=await V2.verifyParsed(parsed,{raw,inventoryItems:[],supplierName:test.supplier,doc:parsed.doc,webVerifier:null});
   const v3=await V3.evaluate(v2.parsed,{fullEvidence:[{source:'holdout-native',kind:'native',text:raw,layout:[]}],inventoryItems:[],verifyGate:V2,webVerifier:null});
-  const pending=v3.parsed?.v2Verification?.pending||[];
-  return {parsed:v3.parsed,verified:v3.parsed.items||[],pending,rejected:v3.parsed?.v2Verification?.rejected||[],all:[...(v3.parsed.items||[]),...pending],report:v3.report};
+  const pending=v3.parsed?.v2Verification?.pending||[],verified=v3.parsed.items||[];
+  const review=V4Review.materialize(v3.parsed,rows);
+  const accounted=[...verified,...pending];
+  const parityOk=rows.length===review.v4CandidateTrace?.inputCount&&(!accounted.length||review.items.length>0)&&review.items.length<=accounted.length;
+  return {parsed:review,verified,pending,rejected:v3.parsed?.v2Verification?.rejected||[],all:review.items||[],report:v3.report,trace:review.v4CandidateTrace,sourceCandidateCount:rows.length,parityOk};
 }
 function findExpected(rows,ex){
   const needle=key(ex.contains);
@@ -132,6 +137,8 @@ function findExpected(rows,ex){
 }
 function score(test,result){
   const failures=[];
+  if(!result.parityOk)failures.push('live Review parity failed: source candidates='+result.sourceCandidateCount+' trace input='+String(result.trace?.inputCount)+' review='+result.all.length);
+  if(result.sourceCandidateCount>0&&result.trace?.inputCount===0)failures.push('diagnostics/live trace falsely reports Input 0');
   for(const ex of test.expected){
     const row=findExpected(result.all,ex);
     if(!row){failures.push('missing '+ex.contains);continue;}
@@ -162,8 +169,8 @@ function mutate(test,variant){
   const baseline=[];
   for(const test of cases){
     const result=await runV4(test),s=score(test,result);
-    baseline.push({id:test.id,supplier:test.supplier,pass:s.pass,failures:s.failures,verified:result.verified.length,pending:result.pending.length,rejected:result.rejected.length,v3Status:result.report?.status||''});
-    console.log('V4 HOLDOUT '+test.id+': '+(s.pass?'PASS':'FAIL')+' verified='+result.verified.length+' pending='+result.pending.length+' rejected='+result.rejected.length+(s.failures.length?' :: '+s.failures.join(' | '):''));
+    baseline.push({id:test.id,supplier:test.supplier,pass:s.pass,failures:s.failures,input:result.trace?.inputCount||0,review:result.all.length,verified:result.verified.length,pending:result.pending.length,rejected:result.rejected.length,v3Status:result.report?.status||''});
+    console.log('V4 HOLDOUT '+test.id+': '+(s.pass?'PASS':'FAIL')+' input='+String(result.trace?.inputCount||0)+' review='+result.all.length+' verified='+result.verified.length+' pending='+result.pending.length+' rejected='+result.rejected.length+(s.failures.length?' :: '+s.failures.join(' | '):''));
     if(!s.pass)console.log('V4 HOLDOUT ROWS '+test.id+': '+JSON.stringify(result.all.map(r=>({sku:r.sku||r.model||'',name:r.item_name||r.description||'',quantity:r.quantity,unit_price:r.unit_price,amount:r.amount,reason:r.v2VerificationReason||'',rejected:r.v2RejectionReason||''}))));
   }
   const baselinePass=baseline.every(x=>x.pass);
