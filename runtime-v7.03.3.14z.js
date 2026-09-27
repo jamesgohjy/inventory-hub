@@ -277,14 +277,14 @@ const DASH_ASSETS={projector:'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
 function v672SketchKind(item){
   const c=norm([item?.sku,item?.item_name,item?.description,item?.category].join(' '));
   if(/\b(?:rolling stand|mobile stand|floor stand|trolley|cart|tripod stand|display stand)\b/.test(c))return'stand';
-  if(/\b(?:projector|projection)\b/.test(c))return'projector';
-  if(/\b(?:active speaker|speaker|loudspeaker|soundbar)\b/.test(c))return'speaker';
-  if(/\b(?:control panel|controller|switcher|matrix|processor|av control)\b/.test(c))return'control';
+  if(/\b(?:control panel|controller|switcher|matrix|processor|av control|mixer|mixing console|audio console|amplifier|power amp|media player|cd player|mp3 player|receptacle)\b/.test(c))return'control';
+  if(/\b(?:active speaker|monitor speaker|speaker|loudspeaker|soundbar)\b/.test(c))return'speaker';
   if(/\b(?:microphone|wireless handheld|transmitter|receiver|bodypack)\b/.test(c))return'microphone';
   if(/\b(?:visualizer|document camera)\b/.test(c))return'visualizer';
   if(/\b(?:camera|camcorder|ptz)\b/.test(c))return'camera';
   if(/\b(?:hdmi|usb|cat6|cable|adapter|dongle|ideashare key)\b/.test(c))return'cable';
   if(/\b(?:display|monitor|screen|ideahub|television|tv)\b/.test(c))return'display';
+  if(/\b(?:projector|projection)\b/.test(c))return'projector';
   return'generic';
 }
 function v672SketchSvg(item){
