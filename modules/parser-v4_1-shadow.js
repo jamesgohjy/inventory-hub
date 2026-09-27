@@ -94,8 +94,31 @@
     }
     return {random:reasons.length>0,reasons};
   }
+  function unsupportedRandomFragments(value='',field='',texts=[]){
+    if(field!=='item_name'&&field!=='description')return [];
+    const wins=(texts||[]).flatMap(lineWindows).map(compact);
+    const rawTokens=clean(value).split(/\s+/).filter(Boolean);
+    const bad=[];
+    for(const token of rawTokens){
+      const key=compact(token);
+      if(key.length<6)continue;
+      const suspicious=(
+        /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9._+\/-]{6,}$/.test(token)||
+        (/^[A-Za-z]{7,}$/.test(token)&&!/[AEIOUYaeiouy]/.test(token))
+      );
+      if(!suspicious)continue;
+      if(!wins.some(w=>w.includes(key)))bad.push(token);
+    }
+    return bad;
+  }
   function inspectField(row,field,value,texts){
     const support=sourceSupport(value,field,texts);
+    const fragments=unsupportedRandomFragments(value,field,texts);
+    if(fragments.length&&!explicitEvidence(row,field))return {
+      field,value:clean(value),status:'fail',severity:'hard',
+      code:'random-fragment-contamination',support,
+      reasons:fragments.map(x=>'unsupported-random-fragment:'+x)
+    };
     if(support.supported)return {field,value:clean(value),status:'pass',support};
     if(explicitEvidence(row,field))return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
     const sig=randomSignature(value,field);
@@ -166,6 +189,6 @@
   }
   global.InventoryHubParserV41Shadow=Object.freeze({
     VERSION,evidenceTexts,lineWindows,significantTokens,sourceSupport,randomSignature,
-    inspectField,auditRow,auditRows,selfTest
+    unsupportedRandomFragments,inspectField,auditRow,auditRows,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
