@@ -136,12 +136,12 @@ assert(parserV3.includes("VERSION='3.0-evidence-recovery'")&&parserV3.includes("
 assert(parserV3.includes('function basicCountercheck')&&parserV3.includes('countercheck must flag metadata leakage'),'V3 must actively countercheck normal equipment invoices even without a support schedule');
 assert(parserV3.includes('replacement evidence leaked into unrelated ordinal')&&parserV3.includes('replacement conflict not isolated to affected ordinal'),'Parser V3 must regression-test row-scoped replacement evidence');
 assert(runtime.includes('applyParserV3Countercheck14y')&&runtime.includes('Parser V3 — counterchecking V2 result'),'Runtime must run V3 after V2 for valid equipment invoices');
-assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes("pendingV3=parserV3UnresolvedConflicts14y().length>0")&&runtime.includes("const blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2||pendingV3"),'Unresolved V3 conflicts must block Confirm & Save without exposing verification-level wording');
+assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes("pendingV3=parserV3UnresolvedConflicts14y().length>0")&&runtime.includes("blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2Blocking||pendingV3"),'Unresolved V3 conflicts must remain a hard Confirm & Save block while materialized V2 pending rows stay reviewable');
 assert(runtime.includes('function renderParserV3Verification14y')&&!runtime.includes('<b>Level 3 — V2 / V3 conflict</b>'),'Normal Review must not expose V3 level/conflict diagnostic cards');
 assert(runtime.includes("host.querySelectorAll('.v703312q-level3-badge,.v703313-level3-badge,.v703313-field-warning').forEach(x=>x.remove())")&&!runtime.includes("badge.textContent='Level 3 — verify highlighted field'"),'Line-item Level verification badges/warnings must remain hidden');
 assert(!parserV3.includes('replaceOnce(')&&!parserV3.includes('supplier-specific'),'V3 must remain generic and repository-native');
 
-assert(runtime.includes("One or more invoice items still need confirmation before saving.")&&!runtime.includes("Level 3 review is still unresolved."),'Normal Review messages must not expose verification level wording');
+assert(runtime.includes("One or more parser conflicts still need confirmation before saving.")&&!runtime.includes("Level 3 review is still unresolved.")&&!runtime.includes("Level 3 — Please verify this item."),'Normal Review messages must not expose verification level wording');
 
 // Shure PGA58-LC mandatory web verification regression.
 const webCtx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,URL};
