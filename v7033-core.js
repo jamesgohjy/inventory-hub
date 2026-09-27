@@ -859,7 +859,8 @@
       if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
       if(row.v703314zPrintedModel&&row.sku){
         const currentSku=compact(existing.sku||''),incomingSku=compact(row.sku||'');
-        if(!currentSku){
+        const existingPrinted=clean(existing.v703314zPrintedModel||'');
+        if(!currentSku||!existingPrinted){
           existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
         }else if(currentSku!==incomingSku){
           existing.skuReviewRequired=true;existing.humanReviewRequired=true;existing.needsReview=true;existing.v703312kIndependentConflict=true;
