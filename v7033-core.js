@@ -1471,6 +1471,7 @@
         amount:economic?a:null,
         v703312kSource:source,
         v703312kOcrEvidence:true,
+        v703312kSourceLine:block.join(' | '),
         v703314zPrintedModel:modelText,
         v703314zInvoiceWrappedRow:true,
         v703314zOrdinal:start.ordinal,
