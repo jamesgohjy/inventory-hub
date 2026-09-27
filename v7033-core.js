@@ -561,7 +561,7 @@
     const t=norm(text);
     if(/controller|control panel|keypad|button keypad|processor|switcher/.test(t))return 'AV Control';
     if(/projector|visualizer|document camera|display|monitor|camera|nvr|dvr|network video recorder|digital video recorder/.test(t))return 'Projection / Video';
-    if(/microphone|\bmic\b|speaker|amplifier|mixer|receiver|transmitter|media player|cd mp3 player/.test(t))return 'Audio / Equipment';
+    if(/microphone|\bmic\b|speaker|loudspeaker|amplifier|mixer|console|receiver|transmitter|media player|cd mp3 player|\bplayer\b|receptacle/.test(t))return 'Audio / Equipment';
     return '';
   }
 
@@ -749,7 +749,12 @@
       const existingComplete=Number.isFinite(Number(existing.unit_price))&&Number.isFinite(Number(existing.amount));
       const rowComplete=Number.isFinite(Number(row.unit_price))&&Number.isFinite(Number(row.amount));
       if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
-      if(!existing.sku&&row.sku)existing.sku=row.sku;
+      if(row.v703314zPrintedModel&&row.sku){
+        existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
+      }else if(!existing.sku&&row.sku)existing.sku=row.sku;
+      if(row.v703314zReplacementModel){
+        existing.v703314zReplacementModel=row.v703314zReplacementModel;existing.skuReviewRequired=true;existing.humanReviewRequired=true;existing.needsReview=true;
+      }
       if(!existing.category&&row.category)existing.category=row.category;
       if(Number(existing.quantity)!==Number(row.quantity)||((existingComplete&&rowComplete)&&(Number(existing.unit_price)!==Number(row.unit_price)||Number(existing.amount)!==Number(row.amount)))){existing.v703312kIndependentConflict=true;existing.humanReviewRequired=true;}
     }
