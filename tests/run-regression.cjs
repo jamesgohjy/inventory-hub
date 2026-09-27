@@ -19,6 +19,7 @@ const parserV2Numbered=read('modules/parser-v2/numbered-schedule.js');
 const parserV2Engine=read('modules/parser-v2/engine.js');
 const parserV2Verification=read('modules/parser-v2/verification-gate.js');
 const parserV3=read('modules/parser-v3/engine.js');
+const parserV4Review=read('modules/parser-v4-review-bridge.js');
 const webVerify=read('v7032-web-verify.js');
 const canonicalSaveSql=read('supabase-v7-03-3-14v-canonical-save.sql');
 const masterMergeSql=read('supabase-v7-03-3-14d-master-item-merge.sql');
@@ -36,7 +37,7 @@ const setupDoc=read('BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md');
 const accuracyFixtures=JSON.parse(read('tests/parser-accuracy-fixtures-v7.03.3.14u.json'));
 const anonymizedCorpus=JSON.parse(read('tests/fixtures/anonymized-invoice-corpus-v7.03.3.14v.json'));
 
-new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(parserV3);new Function(webVerify);new Function(groupModule);new Function(backupUiModule);new Function(parser);
+new Function(core);new Function(app);new Function(runtime);new Function(evidenceEngine);new Function(parserModule);new Function(canonicalParser);new Function(parserV2Evidence);new Function(parserV2Header);new Function(parserV2Table);new Function(parserV2Builder);new Function(parserV2Rows);new Function(parserV2Numbered);new Function(parserV2Engine);new Function(parserV2Verification);new Function(parserV3);new Function(parserV4Review);new Function(webVerify);new Function(groupModule);new Function(backupUiModule);new Function(parser);
 
 const ctx={console,setTimeout,clearTimeout,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);vm.runInContext(core,ctx,{filename:'v7033-core.js'});
@@ -280,7 +281,12 @@ assert(runtime.includes("invoice_anchors")&&runtime.includes("schedule_rows")&&r
 assert(runtime.includes("state.lastParserTrace"),'Live Parser Trace fallback state missing');
 console.log('live-parser-trace: Review evidence diagnostics PASS');
 
-assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
+assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
+assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
+assert(runtime.includes('pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized'),'Materialized V2 pending rows must remain reviewable instead of disabling the Review workflow');
+assert(runtime.includes('bridge?.confirmHumanReview'),'Human review must resolve materialized pending rows before save');
+const v4ReviewCtx={console,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp};v4ReviewCtx.globalThis=v4ReviewCtx;v4ReviewCtx.window=v4ReviewCtx;vm.createContext(v4ReviewCtx);vm.runInContext(parserV4Review,v4ReviewCtx,{filename:'modules/parser-v4-review-bridge.js'});assert(v4ReviewCtx.InventoryHubParserV4ReviewBridge?.selfTest?.().ok,'Parser V4 live-review parity self-test failed');
+console.log('parser-v4-live-review-parity: pending candidates remain visible and Input count is preserved PASS');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
 assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
@@ -289,7 +295,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r21'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r22'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
