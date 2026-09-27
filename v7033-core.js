@@ -1480,6 +1480,9 @@
       for(let j=i+1;j<Math.min(lines.length,i+10);j++){
         if(/^(?:SUB\s*TOTAL|SUBTOTAL|GST\b|VAT\b|TOTAL\b|AMOUNT\s+DUE)/i.test(lines[j]))break;
         if(v703314aaOrdinalStart(lines[j]))break;
+        const nextNormalized=lines[j].replace(/[|$€£¥]/g,' ').replace(/\s+/g,' ').trim();
+        const nextDirect=nextNormalized.match(/^([A-Z0-9][A-Z0-9+._\/-]{2,27})\s+(.+?)\s+(\d{1,3}(?:[.]\d+)?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2})\s+((?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2})$/i);
+        if(nextDirect)break;
         tail.push(lines[j]);
       }
       const itemName=clean(m[2]),description=clean([itemName,...tail].join(' '));
