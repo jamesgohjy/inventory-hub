@@ -322,10 +322,10 @@ for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
 assert(/ASSET_REV='v703314[a-z]+-[^']+'/.test(app),'Active cache-busting asset revision marker missing');
-assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
-assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
+assert(runtime.includes("'Parser V4 is now the production import engine after the full promotion regression gate passed.'")&&runtime.includes("'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'"),'Direct runtime Patch Notes are not the current v14z user-facing version');
+assert(index.includes('Parser V4 is now the production import engine after the full promotion regression gate passed.')&&index.includes('Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'),'Static Patch Notes fallback is not current');
 assert(/app\.js\?v=7\.03\.3\.14[a-z]+-r\d+/.test(index),'Index app.js cache-bust revision missing');
-assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
+assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14z bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
 assert(/id="documentGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Documents Group by Company option must remain available');
