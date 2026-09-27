@@ -3366,6 +3366,14 @@ $('sidebarImportBtn').onclick=openImport;
 // Global top search was removed in V6; no listener is required.
 $('dashboardInventory').onclick=e=>{const card=e.target.closest('[data-detail]');if(card)openDetail(card.dataset.detail);};
 function v703314dSkuKey(v=''){try{return globalThis.V7033Patch?.compact?.(v)||String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');}catch(_e){return String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');}}
+function v703314dDismissMergeDialog(d){
+  if(!d)return;
+  // Native close first so the dialog's normal close lifecycle runs. Always detach the
+  // transient merge dialog afterwards so stale top-layer state cannot leave it visible.
+  try{if(d.open&&typeof d.close==='function')d.close();}catch(err){console.warn('Merge dialog native close failed; removing transient dialog.',err);}
+  try{if(d.isConnected)d.remove();}catch(_e){}
+}
+
 function v703314dFindMergeTarget(sourceId,proposedSku){
   const source=(state.data?.items||[]).find(i=>String(i.id)===String(sourceId));
   if(!source)return {source:null,target:null,ambiguous:false,matches:[]};
@@ -3390,7 +3398,7 @@ function v703314dMergeDialog(source,target,payload){
       '<div class="detail-cards" style="margin-top:14px"><div class="detail-card"><span>Combined purchased</span><strong>'+purchased+'</strong></div><div class="detail-card"><span>Combined adjustments</span><strong>-'+adjusted+'</strong></div><div class="detail-card"><span>Expected current</span><strong>'+current+'</strong></div></div>'+
       '<p class="muted" style="margin-top:14px">Nothing is changed unless you confirm. The database merge is all-or-nothing.</p></div>'+
       '<div class="actions" style="justify-content:flex-end"><button type="button" id="mergeMasterCancel">Cancel</button><button type="button" class="primary" id="mergeMasterConfirm">Merge items</button></div></div>';
-    let done=false;const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}resolve(v);};
+    const returnFocus=document.activeElement;let done=false;const finish=v=>{if(done)return;done=true;v703314dDismissMergeDialog(d);if(v===false)queueMicrotask(()=>{try{returnFocus?.focus?.();}catch(_e){}});resolve(v);};
     d.querySelector('#mergeMasterClose').onclick=()=>finish(false);d.querySelector('#mergeMasterCancel').onclick=()=>finish(false);d.querySelector('#mergeMasterConfirm').onclick=()=>finish(true);d.oncancel=e=>{e.preventDefault();finish(false);};d.showModal();
   });
 }
@@ -3793,9 +3801,9 @@ $('saveImportBtn')?.addEventListener('click',async e=>{
         '</div>'+
         '<div class="actions" style="justify-content:flex-end"><button type="button" id="mergeMasterCancel">Cancel</button><button type="button" class="primary" id="mergeMasterConfirm" disabled>Merge Items</button></div>'+
       '</div>';
-      let done=false;
+      const returnFocus=document.activeElement;let done=false;
       const confirm=d.querySelector('#mergeMasterConfirm'),ack=d.querySelector('#mergeMasterAcknowledgement');
-      const finish=v=>{if(done)return;done=true;try{d.close();}catch(_e){}if(v===false){const parent=document.getElementById('v703314gDuplicateReviewDialog');try{if(parent?.open)parent.close();}catch(_e){}queueMicrotask(()=>{if(!d.open)d.innerHTML='';if(parent&&!parent.open)parent.innerHTML='';});}resolve(v);};
+      const finish=v=>{if(done)return;done=true;v703314dDismissMergeDialog(d);if(v===false){const parent=document.getElementById('v703314gDuplicateReviewDialog');try{if(parent?.open)parent.close();}catch(_e){}queueMicrotask(()=>{if(parent&&!parent.open)parent.innerHTML='';try{returnFocus?.focus?.();}catch(_e){}});}resolve(v);};
       d.querySelector('#mergeMasterClose').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       d.querySelector('#mergeMasterCancel').onclick=e=>{e.preventDefault();e.stopPropagation();finish(false);};
       ack.onchange=()=>{confirm.disabled=blockers.length>0||!ack.checked;};
