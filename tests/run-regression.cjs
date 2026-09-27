@@ -281,6 +281,14 @@ assert(runtime.includes("invoice_anchors")&&runtime.includes("schedule_rows")&&r
 assert(runtime.includes("state.lastParserTrace"),'Live Parser Trace fallback state missing');
 console.log('live-parser-trace: Review evidence diagnostics PASS');
 
+
+// Parser diagnostics are strictly Admin-only. Editors/viewers must not render, retain,
+// or eagerly initialise diagnostic self-tests.
+assert(runtime.includes("const adminDiagnosticsVisible=()=>typeof currentRole==='function'&&currentRole()==='admin'"),'Parser diagnostics renderer lacks an explicit admin-role gate');
+assert(runtime.includes("if(!adminDiagnosticsVisible()){if(existing)existing.remove()"),'Non-admin diagnostic render path must immediately remove any existing Parser diagnostics panel');
+assert(runtime.includes("if(role!=='admin'){")&&runtime.includes("parserDiag?.remove()")&&runtime.includes("diagApi.stage='hidden-for-role'"),'applyRoleUI must purge Parser diagnostics immediately for editor/viewer roles');
+assert(runtime.includes("if(adminDiagnosticsVisible()){diagnostics.behavioral=api.runRegressionChecks();diagnostics.historical=api.runHistoricalRegressionChecks();diagnostics.stage='ready';}")&&!runtime.includes("const startupBehavioral=api.runRegressionChecks(),startupHistorical=api.runHistoricalRegressionChecks()"),'Non-admin roles must not eagerly execute Parser diagnostics self-tests');
+console.log('admin-only-parser-diagnostics: editor/viewer purge + lazy admin initialisation PASS');
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
 assert(runtime.includes('pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized'),'Materialized V2 pending rows must remain reviewable instead of disabling the Review workflow');
@@ -295,7 +303,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314y-[^']+'/.test(app),'v14y cache-busting asset revision marker missing');
 assert(runtime.includes("'Improved line-item price recovery using independent table geometry with fail-closed verification.'")&&runtime.includes("'Service, accessory and warranty rows remain excluded from Inventory promotion.'"),'Direct runtime Patch Notes are not the current v14y user-facing version');
 assert(index.includes('Improved line-item price recovery using independent table geometry with fail-closed verification.')&&index.includes('Service, accessory and warranty rows remain excluded from Inventory promotion.'),'Static Patch Notes fallback is not current');
-assert(index.includes('app.js?v=7.03.3.14y-r22'),'Index app.js cache-bust revision missing');
+assert(index.includes('app.js?v=7.03.3.14y-r23'),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14y bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
