@@ -100,7 +100,7 @@ function score(rows,expected,label){
  return failures;
 }
 
-const hawkoRows=V.v703314pRecoverEquipmentRows(hawko,'phase2-actual-ocr-deidentified');
+const hawkoRows=V.v703312jRecoverNumberedEquipmentRows(hawko,[{source:'phase2-actual-ocr-deidentified',kind:'ocr',text:hawko,layout:[]}]);
 const hFail=score(hawkoRows,[{id:'786HKOAVPB97E',q:2,p:550,a:1100}],'PHASE2 OCR HAWKO');
 
 const evidence=[
