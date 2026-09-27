@@ -4,8 +4,9 @@ const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 const read=p=>fs.readFileSync(p,'utf8');
 const ctx={console,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp,Intl,setTimeout,clearTimeout};
 ctx.globalThis=ctx;ctx.window=ctx;vm.createContext(ctx);
-for(const path of ['modules/parser-v2/evidence-model.js','modules/parser-v2/table-detector.js','modules/parser-v2/numbered-schedule.js','modules/parser-v2/verification-gate.js','modules/parser-v3/engine.js'])vm.runInContext(read(path),ctx,{filename:path});
-const V2=ctx.InventoryHubParserV2VerificationGate,V3=ctx.InventoryHubParserV3;
+for(const path of ['modules/parser-v2/evidence-model.js','modules/parser-v2/table-detector.js','modules/parser-v2/numbered-schedule.js','modules/parser-v2/verification-gate.js','modules/parser-v3/engine.js','modules/parser-v4-review-bridge.js'])vm.runInContext(read(path),ctx,{filename:path});
+const V2=ctx.InventoryHubParserV2VerificationGate,V3=ctx.InventoryHubParserV3,V4Review=ctx.InventoryHubParserV4ReviewBridge;
+assert(V4Review?.selfTest?.().ok,'V4 live-review self-test failed');
 
 const invoice=`TAX INVOICE
 Supplier: CONCEPT SYSTEMS TECHNOLOGIES Pte Ltd.
@@ -89,12 +90,13 @@ async function main(){
   ];
   const v4=await V3.evaluate(v2.parsed,{fullEvidence,inventoryItems:[],verifyGate:V2,webVerifier:null});
   const verified=v4.parsed.items||[],pending=v4.parsed.v2Verification?.pending||[],conflicts=v4.report.conflicts||[],recovered=v4.report.recovered||[];
-  console.log('V4 CONCEPT V3/V4 STATUS: '+JSON.stringify({status:v4.report.status,modes:v4.report.modes,verified:verified.length,pending:pending.length,conflicts:conflicts.length,recovered}));
+  const review=V4Review.materialize(v4.parsed,primary);
+  console.log('V4 CONCEPT V3/V4 STATUS: '+JSON.stringify({status:v4.report.status,modes:v4.report.modes,input:review.v4CandidateTrace?.inputCount,review:review.items.length,verified:verified.length,pending:pending.length,conflicts:conflicts.length,recovered}));
   console.log('V4 CONCEPT VERIFIED: '+JSON.stringify(verified.map(r=>({sku:r.sku||r.model||'',name:r.item_name||r.description||'',quantity:r.quantity,unit_price:r.unit_price,amount:r.amount,v3Recovered:!!r.v3Recovered}))));
   console.log('V4 CONCEPT PENDING: '+JSON.stringify(pending.map(r=>({sku:r.sku||r.model||'',name:r.item_name||r.description||'',quantity:r.quantity,unit_price:r.unit_price,amount:r.amount,reason:r.v2VerificationReason||'',variants:r.v3Provenance?.modelVariants||[]}))));
   console.log('V4 CONCEPT CONFLICTS: '+JSON.stringify(conflicts.map(x=>({ordinal:x.ordinal,type:x.type,reason:x.reason,v2:x.v2Row?.sku||x.v2Row?.model||'',v3:x.v3Row?.sku||x.v3Row?.model||'',variants:x.v3Row?.v3Provenance?.modelVariants||[]}))));
 
-  const accounted=[...verified,...pending];
+  const accounted=review.items||[];
   const norm=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const expected=[
     {ids:['CQ12T'],q:1,p:1400,a:1400},
@@ -106,6 +108,8 @@ async function main(){
     {ids:['NEUTRIK'],q:1,p:450,a:450}
   ];
   const failures=[];
+  if(primary.length>0&&review.v4CandidateTrace?.inputCount===0)failures.push('live diagnostics falsely reports Input 0');
+  if(([...verified,...pending].length)>0&&review.items.length===0)failures.push('live Review lost all V2/V3 candidates');
   for(const ex of expected){
     const row=accounted.find(r=>ex.ids.some(id=>norm([r.sku,r.model,r.item_name,r.description].filter(Boolean).join(' ')).includes(id)));
     if(!row){failures.push('missing '+ex.ids.join('/'));continue;}

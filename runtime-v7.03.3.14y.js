@@ -2620,7 +2620,7 @@ function renderImportEligibility(){
     else if((detected==='uncertain'||incompleteEquipment||state.importClassificationChoice==='equipment')&&effective==='equipment'){note.classList.add('hidden');note.innerHTML='';}
     else{note.classList.add('hidden');note.innerHTML='';}
   }
-  if(saveBtn){const blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2||pendingV3;saveBtn.disabled=blocked||!!state.importSaving;saveBtn.title=pendingV3?'One or more parser conflicts still need confirmation before saving.':pendingV2?'One or more invoice items still need confirmation before saving.':effective==='service'?'Service-only invoices cannot be imported.':effective==='noninventory'?'This invoice contains no tracked equipment.':effective==='uncertain'?'Confirm the invoice type before saving.':(!isVault&&!hasItems)?'No verified physical inventory line item is available to save.':'';saveBtn.setAttribute('aria-disabled',blocked?'true':'false');}
+  if(saveBtn){const pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized,blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2Blocking||pendingV3;saveBtn.disabled=blocked||!!state.importSaving;saveBtn.title=pendingV3?'One or more parser conflicts still need confirmation before saving.':pendingV2Blocking?'One or more invoice items could not be materialized for review.':effective==='service'?'Service-only invoices cannot be imported.':effective==='noninventory'?'This invoice contains no tracked equipment.':effective==='uncertain'?'Confirm the invoice type before saving.':(!isVault&&!hasItems)?'No physical inventory line item is available to review and save.':'';saveBtn.setAttribute('aria-disabled',blocked?'true':'false');}
   const eq=$('chooseEquipmentInvoiceBtn'),svc=$('chooseServiceInvoiceBtn'),chg=$('changeInvoiceTypeBtn');
   if(eq)eq.onclick=async()=>{eq.disabled=true;await reprocessConfirmedEquipmentInvoice();};
   if(svc)svc.onclick=()=>{state.importClassificationChoice='service';renderImportEligibility();const box=$('v703VerificationNotice');if(box){box.classList.add('hidden');box.textContent='';}toast('Marked as service invoice. Saving to inventory is disabled.');};
@@ -2856,6 +2856,7 @@ function setPdfZoom(value){
 async function applyParserV2AuthoritativeVerification14y(parsed,raw=''){
   const gate=window.InventoryHubParserV2VerificationGate;
   if(!gate?.verifyParsed)return parsed;
+  const incomingCandidates=(parsed?.items||[]).map(row=>({...row}));
   try{
     setProgress(94,'Parser V2 — verifying equipment identity…');
     const result=await gate.verifyParsed(parsed,{
@@ -2866,10 +2867,12 @@ async function applyParserV2AuthoritativeVerification14y(parsed,raw=''){
     });
     const next=result?.parsed||parsed;
     next.parserV2Mode='authoritative';
+    next.v4PreVerificationCandidates=incomingCandidates;
+    next.v4CandidateTrace={version:'4.1-live-review',inputCount:incomingCandidates.length,verifiedCount:Number(next?.v2Verification?.verifiedCount||0),pendingCount:Number(next?.v2Verification?.pendingCount||0),rejectedCount:Number(next?.v2Verification?.rejectedCount||0)};
     return next;
   }catch(err){
     console.error('Parser V2 authoritative verification failed.',err);
-    return {...parsed,parserV2Mode:'authoritative-error',v2Verification:{version:gate.VERSION||'2.1',mode:'authoritative',verifiedCount:0,pendingCount:(parsed?.items||[]).length,rejectedCount:0,pending:(parsed?.items||[]).map((row,i)=>({...row,v2CandidateId:String(row?.rowId||row?.v7RowId||'candidate-'+(i+1)),v2VerificationReason:'verification-engine-error'})),rejected:[],decisions:[],error:String(err?.message||err)}};
+    return {...parsed,v4PreVerificationCandidates:incomingCandidates,v4CandidateTrace:{version:'4.1-live-review',inputCount:incomingCandidates.length,verifiedCount:0,pendingCount:incomingCandidates.length,rejectedCount:0},parserV2Mode:'authoritative-error',v2Verification:{version:gate.VERSION||'2.1',mode:'authoritative',verifiedCount:0,pendingCount:incomingCandidates.length,rejectedCount:0,pending:incomingCandidates.map((row,i)=>({...row,v2CandidateId:String(row?.rowId||row?.v7RowId||'candidate-'+(i+1)),v2VerificationReason:'verification-engine-error'})),rejected:[],decisions:[],error:String(err?.message||err)}};
   }
 }
 async function applyParserV3Countercheck14y(parsed,raw=''){
@@ -2887,10 +2890,14 @@ async function applyParserV3Countercheck14y(parsed,raw=''){
     });
     const next=result?.parsed||parsed,rawText=String(raw||next?.raw||next?.rawText||'');
     const canonical=window.InventoryHubCanonicalParser.fromPipeline(next,{raw:rawText});
-    return {...canonical,v2Verification:next.v2Verification||parsed.v2Verification,v3Verification:next.v3Verification||result?.report||null,parserV2Mode:next.parserV2Mode||parsed.parserV2Mode||'authoritative',parserV3Mode:next.parserV3Mode||'countercheck'};
+    const combined={...canonical,v2Verification:next.v2Verification||parsed.v2Verification,v3Verification:next.v3Verification||result?.report||null,parserV2Mode:next.parserV2Mode||parsed.parserV2Mode||'authoritative',parserV3Mode:next.parserV3Mode||'countercheck'};
+    const bridge=window.InventoryHubParserV4ReviewBridge,incoming=combined.v4PreVerificationCandidates||parsed.v4PreVerificationCandidates||[];
+    return bridge?.materializeAndDiagnose?bridge.materializeAndDiagnose(combined,rawText,incoming,window.V7033Patch||null):combined;
   }catch(err){
     console.error('Parser V3 countercheck failed; V2 result preserved.',err);
-    return {...parsed,v3Verification:{version:v3.VERSION||'3.0',modes:['countercheck'],status:'error-v2-preserved',reason:String(err?.message||err),recovered:[],conflicts:[]},parserV3Mode:'error-v2-preserved'};
+    const fallback={...parsed,v3Verification:{version:v3.VERSION||'3.0',modes:['countercheck'],status:'error-v2-preserved',reason:String(err?.message||err),recovered:[],conflicts:[]},parserV3Mode:'error-v2-preserved'};
+    const bridge=window.InventoryHubParserV4ReviewBridge,incoming=fallback.v4PreVerificationCandidates||[];
+    return bridge?.materializeAndDiagnose?bridge.materializeAndDiagnose(fallback,String(raw||fallback.raw||fallback.rawText||''),incoming,window.V7033Patch||null):fallback;
   }
 }
 function parserV3UnresolvedConflicts14y(){
@@ -2930,21 +2937,11 @@ function renderParserV3Verification14y(){
 function parserV2Pending14y(){return Array.isArray(state?.parsed?.v2Verification?.pending)?state.parsed.v2Verification.pending:[];}
 function resolveParserV2Candidate14y(id,accept){
   const parsed=state.parsed;if(!parsed?.v2Verification)return;
-  const report={...parsed.v2Verification,pending:[...(parsed.v2Verification.pending||[])],rejected:[...(parsed.v2Verification.rejected||[])]};
-  const idx=report.pending.findIndex(x=>String(x.v2CandidateId||'')===String(id));if(idx<0)return;
-  const candidate=report.pending[idx];report.pending.splice(idx,1);report.pendingCount=report.pending.length;
-  if(accept){
-    const explicit=!!(candidate.quantityReviewRequired||candidate.priceReviewRequired||candidate.unit_priceReviewRequired||candidate.amountReviewRequired||candidate.serialConflict||candidate.serialConflictReviewRequired||candidate.serialCountReview||candidate.skuReviewRequired);
-    const approved={...candidate,v2Level3Confirmed:true,v2VerificationReason:'user-confirmed-equipment',humanReviewRequired:explicit,needsReview:explicit,parserReviewRequired:explicit};
-    delete approved.v2InventoryMatch;delete approved.v2WebMatch;
-    const base={...parsed,items:[...(parsed.items||[]),approved],v2Verification:report,parserV2Mode:'authoritative'};
-    const raw=parsed.raw||parsed.rawText||'';
-    const canonical=window.InventoryHubCanonicalParser.fromPipeline(base,{raw});
-    state.parsed={...canonical,v2Verification:report,parserV2Mode:'authoritative'};
-  }else{
-    report.rejected.push({...candidate,v2RejectionReason:'user-rejected-level3'});report.rejectedCount=report.rejected.length;
-    state.parsed={...parsed,v2Verification:report,parserV2Mode:'authoritative'};
-  }
+  const bridge=window.InventoryHubParserV4ReviewBridge;
+  const resolved=bridge?.resolveCandidate?bridge.resolveCandidate(parsed,id,accept):parsed;
+  const raw=parsed.raw||parsed.rawText||'';
+  const canonical=window.InventoryHubCanonicalParser.fromPipeline(resolved,{raw});
+  state.parsed={...canonical,v2Verification:resolved.v2Verification||parsed.v2Verification,v3Verification:parsed.v3Verification,parserV2Mode:'authoritative',parserV3Mode:parsed.parserV3Mode};
   applyParsedReviewToForm();renderParserV2Verification14y();renderParserV3Verification14y();if(typeof v703RenderVerificationNotice==='function')v703RenderVerificationNotice();renderImportEligibility();
 }
 function renderParserV2Verification14y(){
@@ -3413,9 +3410,11 @@ $('saveImportBtn').addEventListener('click',e=>{
     let prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:false});
     if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'Canonical parser validation prevents saving.');return;}
     if(prep.status==='review'){
-      const accepted=window.confirm('Level 3 — Please verify this item.\n\nThe canonical parser requires human review. Compare the highlighted values with the original invoice evidence, including quantity, unit price, amount and serial number(s).\n\nSelect OK only after checking the source invoice.');
-      if(!accepted){e.preventDefault();e.stopImmediatePropagation();toast('Save paused for human review.');v703RenderVerificationNotice();return;}
-      state.importHumanReviewApproved=true;state.parsed=window.InventoryHubCanonicalParser.markHumanReviewed(state.parsed);prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:true});
+      const accepted=window.confirm('Please verify the invoice items before saving.\n\nCompare the displayed item names, quantity, unit price, amount and any serial numbers with the original invoice.\n\nSelect OK only after checking the source invoice.');
+      if(!accepted){e.preventDefault();e.stopImmediatePropagation();toast('Save paused for review.');v703RenderVerificationNotice();return;}
+      state.importHumanReviewApproved=true;
+      const bridge=window.InventoryHubParserV4ReviewBridge;if(bridge?.confirmHumanReview)state.parsed=bridge.confirmHumanReview(state.parsed);
+      state.parsed=window.InventoryHubCanonicalParser.markHumanReviewed(state.parsed);prep=window.InventoryHubCanonicalParser.prepareSave(state.parsed,{humanReviewed:true});
       if(prep.status==='block'){e.preventDefault();e.stopImmediatePropagation();toast(prep.errors[0]?.message||'Canonical parser validation prevents saving.');return;}
     }
   }catch(canonicalSaveErr){console.warn('Canonical save validation error',canonicalSaveErr);e.preventDefault();e.stopImmediatePropagation();toast('Canonical parser validation could not complete. Save has been stopped for safety.');return;}
