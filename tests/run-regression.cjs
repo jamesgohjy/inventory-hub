@@ -308,7 +308,7 @@ assert(runtime.includes('v703314zAutoMergeExactMasterDuplicates')&&runtime.inclu
 assert(!runtime.includes('renderInventoryDuplicateNameWarning')&&!index.includes('inventoryDuplicateNameWarning'),'Duplicate Standard Item Name warning must not render on the Inventory page');
 assert(runtime.includes('refreshParsedDuplicateStandardNameWarnings14z')&&runtime.includes('duplicate-standard-name-review')&&runtime.includes('Double-check duplicate Standard Item Name'),'Post-import Line Items Review must highlight same-name/different-SKU rows');
 assert(parserV4Review.includes('duplicateStandardItemNameGroups'),'Parser V4 Review bridge duplicate Standard Item Name helper missing');
-assert(index.includes('styles.css?v=7.03.3.14z-r27'),'Styles cache-bust revision missing');
+assert(index.includes('styles.css?v=7.03.3.14z-r28'),'Styles cache-bust revision missing');
 console.log('standard-item-duplicate-policy: exact identity auto-merge + line-item Review yellow warning PASS');
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes(activeRuntimePath),'Active bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
