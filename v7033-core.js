@@ -858,7 +858,13 @@
       const rowComplete=hasCompleteEconomics(row);
       if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
       if(row.v703314zPrintedModel&&row.sku){
-        existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
+        const currentSku=compact(existing.sku||''),incomingSku=compact(row.sku||'');
+        if(!currentSku){
+          existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
+        }else if(currentSku!==incomingSku){
+          existing.skuReviewRequired=true;existing.humanReviewRequired=true;existing.needsReview=true;existing.v703312kIndependentConflict=true;
+          existing.v703312kConflictingSkus=uniq([...(existing.v703312kConflictingSkus||[]),existing.sku,row.sku].filter(Boolean),compact);
+        }
       }else if(!existing.sku&&row.sku)existing.sku=row.sku;
       if(row.v703314zReplacementModel){
         existing.v703314zReplacementModel=row.v703314zReplacementModel;existing.skuReviewRequired=true;existing.humanReviewRequired=true;existing.needsReview=true;
@@ -1423,8 +1429,8 @@
     const prefix=money?s.slice(0,money.index):s;
     const ints=[...prefix.matchAll(/\b\d{1,3}\b/g)];
     if(!ints.length)return {quantity:null,description:clean(prefix)};
-    const last=ints[ints.length-1],q=Number(last[0]);
-    const description=clean(prefix.slice(0,last.index)).replace(/\b(?:vol|qty|quantity)\s*$/i,'').trim();
+    const first=ints[0],q=Number(first[0]);
+    const description=clean(prefix.slice(0,first.index)).replace(/\b(?:vol|qty|quantity)\s*$/i,'').trim();
     return {quantity:Number.isInteger(q)&&q>0&&q<=999?q:null,description};
   }
   function v703314aaRecoverModelEquipmentBlocks(text='',source=''){
@@ -1437,7 +1443,9 @@
       if(modelIndex<0)continue;
       const modelLine=clean(block[modelIndex]).replace(/^[|]+\s*/,'');
       const modelText=clean(modelLine.replace(/^MODEL\s*:?[ ]*/i,''));
-      const tokens=modelTokens(modelLine),sku=tokens[0]||'';
+      const rawModelTokens=modelText.match(/\b[A-Za-z0-9][A-Za-z0-9+._\/-]{2,}\b/g)||[];
+      const alphaNumeric=rawModelTokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+      const sku=(alphaNumeric.at(-1)||modelTokens(modelLine)[0]||'').replace(/[,:;]+$/,'');
       const base=v703314aaQtyAndDescription(start.body);
       const beforeModel=block.slice(0,modelIndex).map((x,j)=>j===0?base.description:clean(x.replace(/^[|]+\s*/,''))).filter(Boolean);
       let description=beforeModel.slice().reverse().find(x=>equipmentType(x))||base.description||modelText;
