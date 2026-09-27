@@ -269,8 +269,8 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
 // when a corroborating numbered price schedule is attached.
 assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
-assert(runtime.includes('const nativeSchedule=')&&runtime.includes('nativeSchedule||ocrSchedule'),'High-resolution schedule discovery lacks native-text fallback');
-assert(runtime.includes('const nativeInvoiceModels=')&&runtime.includes('nativeInvoiceModels||ocrInvoiceModels'),'High-resolution invoice-model discovery lacks native-text fallback');
+assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
+assert(runtime.includes("((pages[i]||'').match(/\\bMODEL\\s*:/gi)||[]).length>=2||modes.some")&&runtime.includes("filterInvoicePages([hiText],[])"),'High-resolution invoice-model recovery must use native/OCR evidence and re-apply the invoice-page gate');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
 const richMixedText=['TAX INVOICE','No. Description Qty Unit Price Amount','1 Mixer 1 100.00 100.00','SCHEDULES OF PRICES AND TECHNICAL DATA','1 Mixer ABC-1 UK 1 $100.00 $100.00'].join(String.fromCharCode(10));
 const oldStrongNativeGate=5000<80||(1===0&&60<20);
