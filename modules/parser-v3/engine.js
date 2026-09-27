@@ -336,7 +336,7 @@
     const rows=scheduleConsensus(fakeEvidence);
     if(rows.length!==2||rows[0].amount!==100||rows[1].amount!==200)failures.push('schedule consensus');
     const total=corroboratedScheduleTotal(fakeEvidence,{subtotal:300});
-    if(!total.ok)failures.push('schedule total corroboration');
+    if(total.ok)failures.push('standalone schedule must not corroborate invoice rows');
     if(isValidEquipmentInvoice({invoiceClassification:{type:'service'},items:[]}))failures.push('service invoice must not activate');
     const basicOk=basicCountercheck({doc:{supplier_name:'Supplier Pte Ltd'},items:[{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804}],v2Verification:{pendingCount:0}},{sources:[{id:'full',text:'TAX INVOICE PT-VW540 Projector 1 804.00 804.00',layout:[]}]},{isDefiniteNonEquipment:()=>({reject:false})});
     if(basicOk.conflicts.length||basicOk.countercheckWarnings?.length)failures.push('normal invoice countercheck agreement');
