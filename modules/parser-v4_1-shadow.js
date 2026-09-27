@@ -125,7 +125,10 @@
     scored.sort((a,b)=>b.score-a.score||a.span-b.span);
     if(!scored.length)return null;
     const top=scored[0],runner=scored.find(x=>x.text!==top.text||x.source!==top.source);
-    if(runner&&Math.abs(top.score-runner.score)<0.35&&top.text!==runner.text)return null;
+    if(runner&&Math.abs(top.score-runner.score)<0.35&&top.text!==runner.text){
+      const overlap=top.source===runner.source&&top.start<runner.start+runner.span&&runner.start<top.start+top.span;
+      if(!overlap)return null;
+    }
     return top;
   }
   function scopedEvidenceTexts(row={},field='',context={}){
