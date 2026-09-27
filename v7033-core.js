@@ -693,7 +693,7 @@
         if(j===i+1&&next.length<=24&&next.split(/\s+/).length<=4)itemName=clean(itemName+' '+next);
       }
       const description=clean(descParts.join(' '));
-      const candidate={sku,item_name:itemName,description,category:v703312jCategory(description)||'AV Accessories',unit:'pcs',quantity,unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:lines[i],v703314aStructuredPricedAsset:true};
+      const candidate={sku,item_name:itemName,description,category:v703312jCategory(description)||'AV Accessories',unit:'pcs',quantity,unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:clean(descParts.join(' | ')),v703314aStructuredPricedAsset:true};
       if(v703312jIsServiceRow(candidate)||!isStructuredPhysicalAssetRow(candidate))continue;
       out.push(candidate);
     }
