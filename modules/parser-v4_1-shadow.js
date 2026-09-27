@@ -26,6 +26,22 @@
   function significantTokens(v=''){
     return norm(v).split(/\s+/).filter(t=>t&&t.length>=2&&!STOP.has(t));
   }
+  function equipmentClass(v=''){
+    const s=clean(v);
+    if(/\b(?:microphone|mic|handheld|gooseneck|transmitter|receiver|bodypack)\b/i.test(s))return'microphone';
+    if(/\b(?:amplifier|power amp|pre\s*amplifier|dsp)\b/i.test(s))return'amplifier';
+    if(/\b(?:speaker|loudspeaker|speeker|soundbar)\b/i.test(s))return'speaker';
+    if(/\b(?:projector|projection)\b/i.test(s))return'projector';
+    if(/\b(?:visualizer|document camera)\b/i.test(s))return'visualizer';
+    if(/\b(?:controller|control panel|switcher|matrix)\b/i.test(s))return'controller';
+    if(/\b(?:cd|mp3|media player|player)\b/i.test(s))return'player';
+    if(/\b(?:trolley|cart)\b/i.test(s))return'trolley';
+    if(/\b(?:screen|display|monitor)\b/i.test(s))return'display';
+    return'';
+  }
+  function numericFragmentCount(v=''){
+    return (clean(v).match(/\b\d+(?:[.,]\d+)?\b/g)||[]).length;
+  }
   function keyFor(field,value=''){
     return (field==='sku'||field==='model'||field==='serial_number'||field==='serials')?compact(value):norm(value);
   }
@@ -207,6 +223,24 @@
     if(fragments.length&&!explicitEvidence(row,field,value))return {field,value:clean(value),status:'fail',severity:'hard',code:'random-fragment-contamination',support,reasons:fragments.map(x=>'unsupported-random-fragment:'+x)};
     if(support.supported)return {field,value:clean(value),status:'pass',support};
     if(explicitEvidence(row,field,value))return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
+
+    // Field-content integrity: catch legitimate-looking text pulled from a different row/column.
+    // This intentionally runs only after the field fails its own row-source support.
+    if(field==='description'){
+      const itemClass=equipmentClass(row?.item_name),descClass=equipmentClass(value),sourceClass=equipmentClass((texts||[]).join(' '));
+      const classConflict=!!(itemClass&&descClass&&itemClass!==descClass&&(!sourceClass||sourceClass===itemClass));
+      const numericPollution=significantTokens(value).length>=3&&support.coverage<0.5&&numericFragmentCount(value)>=3;
+      if(classConflict||numericPollution)return {
+        field,value:clean(value),status:'fail',severity:'hard',
+        code:classConflict?'cross-row-equipment-class-contamination':'source-region-content-contamination',
+        support,
+        reasons:[
+          ...(classConflict?['item-class:'+itemClass,'description-class:'+descClass,...(sourceClass?['source-class:'+sourceClass]:[])]:[]),
+          ...(numericPollution?['low-source-coverage-with-excess-numeric-fragments']:[])
+        ]
+      };
+    }
+
     const sig=randomSignature(value,field);
     if(sig.random)return {field,value:clean(value),status:'fail',severity:'hard',code:'random-or-untraceable-field',support,reasons:sig.reasons};
     return {field,value:clean(value),status:'review',severity:'review',code:'untraceable-field',support,reasons:['not-proven-in-single-source-region']};
@@ -301,6 +335,10 @@
     if(field==='item_name'||field==='description'){
       const twin=field==='item_name'?row.description:row.item_name;
       if(clean(twin)&&sourceSupport(twin,field,texts).supported)return {value:clean(twin),lane:'twin-field',source:'row'};
+      if(field==='description'&&clean(twin)){
+        const twinClass=equipmentClass(twin),sourceClass=equipmentClass(texts.join(' '));
+        if(twinClass&&sourceClass&&twinClass===sourceClass)return {value:clean(twin),lane:'twin-field-class-supported',source:'row'};
+      }
     }
     return null;
   }
@@ -314,6 +352,10 @@
     if(field==='item_name'||field==='description'){
       const twin=field==='item_name'?row.description:row.item_name;
       if(clean(twin)&&sourceSupport(twin,field,[region.text]).supported)return {value:clean(twin),lane:'raw-region-twin',source:region.source};
+      if(field==='description'&&clean(twin)){
+        const twinClass=equipmentClass(twin),sourceClass=equipmentClass(region.text);
+        if(twinClass&&sourceClass&&twinClass===sourceClass)return {value:clean(twin),lane:'raw-region-twin-class-supported',source:region.source};
+      }
     }
     return null;
   }
@@ -330,12 +372,12 @@
       const g=groups.get(k);g.candidates.push(c);g.lanes.add(c.lane);g.sources.add(c.source||c.lane);
     }
     const ranked=[...groups.values()].sort((a,b)=>{
-      const directA=a.lanes.has('layout-cell')||a.lanes.has('twin-field')||a.lanes.has('printed-model')||a.lanes.has('provenance-region');
-      const directB=b.lanes.has('layout-cell')||b.lanes.has('twin-field')||b.lanes.has('printed-model')||b.lanes.has('provenance-region');
+      const directA=a.lanes.has('layout-cell')||a.lanes.has('twin-field')||a.lanes.has('twin-field-class-supported')||a.lanes.has('raw-region-twin-class-supported')||a.lanes.has('printed-model')||a.lanes.has('provenance-region');
+      const directB=b.lanes.has('layout-cell')||b.lanes.has('twin-field')||b.lanes.has('twin-field-class-supported')||b.lanes.has('raw-region-twin-class-supported')||b.lanes.has('printed-model')||b.lanes.has('provenance-region');
       return Number(directB)-Number(directA)||b.sources.size-a.sources.size||b.candidates.length-a.candidates.length;
     });
     if(!ranked.length)return {recovered:false,field,reason:'no-targeted-candidate',candidates:[]};
-    const top=ranked[0],direct=top.lanes.has('layout-cell')||top.lanes.has('twin-field')||top.lanes.has('printed-model')||top.lanes.has('provenance-region');
+    const top=ranked[0],direct=top.lanes.has('layout-cell')||top.lanes.has('twin-field')||top.lanes.has('twin-field-class-supported')||top.lanes.has('raw-region-twin-class-supported')||top.lanes.has('printed-model')||top.lanes.has('provenance-region');
     const consensus=top.sources.size>=2;
     if(!direct&&!consensus)return {recovered:false,field,reason:'insufficient-independent-support',candidates};
     if(ranked[1]&&keyFor(field,ranked[1].value)!==keyFor(field,top.value)&&ranked[1].sources.size>=top.sources.size&&!direct)
@@ -391,12 +433,16 @@
     if(contaminatedElsewhere.ok)failures.push('global-page token incorrectly satisfied row-local evidence');
     const recovered=recoverRows([{sku:'Q7XZ9K2P',model:'AVS-320',item_name:'Projector controller',description:'Projector controller',quantity:2,unit_price:350,amount:700,provenance:{rawText:'AVS-320 Projector controller 2 350.00 700.00'}}],{raw});
     if(!recovered.ok||recovered.outputRows[0].sku!=='AVS-320')failures.push('targeted twin/source recovery failed');
+    const crossRow=recoverRows([{sku:'SLXD24/SM58',item_name:'Single Channel Digital Wireless Handheld Mic',description:'Digital Power Amplifier with DSP',quantity:1,unit_price:480,amount:480,provenance:{rawText:'Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule 1 480.00 480.00'}}],{raw:'Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule 1 480.00 480.00'});
+    if(!crossRow.ok||crossRow.outputRows[0].description==='Digital Power Amplifier with DSP')failures.push('cross-row equipment-class contamination was not removed');
+    const numericPollution=recoverRows([{sku:'HZMZ-84X84',item_name:'Motorized Screen',description:'(Synchronous) 84 motorised 1 230.00 230.00 plifier 5 29.50 147.50',quantity:2,unit_price:430,amount:860,provenance:{rawText:'HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch'}}],{raw:'HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch'});
+    if(!numericPollution.ok||numericPollution.outputRows[0].description.includes('230.00'))failures.push('numeric cross-row contamination was not removed');
     return {ok:failures.length===0,version:VERSION,failures};
   }
 
   global.InventoryHubParserV41Shadow=Object.freeze({
     VERSION,evidenceTexts,lineWindows,significantTokens,layoutPages,matchingLayoutRows,rowProvenanceTexts,
-    bestRawRegion,targetedEvidenceTexts,scopedEvidenceTexts,sourceSupport,randomSignature,unsupportedRandomFragments,inspectField,
+    bestRawRegion,targetedEvidenceTexts,scopedEvidenceTexts,sourceSupport,randomSignature,unsupportedRandomFragments,equipmentClass,numericFragmentCount,inspectField,
     auditRow,auditRows,headerColumns,cellText,uniqueModelToken,layoutCandidate,targetedEvidenceCandidates,
     provenanceCandidate,rawRegionCandidate,targetedRecoverField,recoverRow,recoverRows,recoveryRequest,selfTest
   });
