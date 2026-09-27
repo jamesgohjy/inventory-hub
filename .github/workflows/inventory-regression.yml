@@ -56,7 +56,9 @@ jobs:
       - name: Syntax-check direct runtime and backup verifier
         run: |
           node --check app.js
-          node --check runtime-v7.03.3.14y.js
+          ACTIVE_RUNTIME="$(node -e "const fs=require('fs');const s=fs.readFileSync('app.js','utf8');const m=s.match(/loadScript\\('(runtime-v7\\.03\\.3\\.14[a-z]+\\.js)\\?v='/);if(!m)process.exit(2);process.stdout.write(m[1]);")"
+          echo "Syntax-checking active runtime: $ACTIVE_RUNTIME"
+          node --check "$ACTIVE_RUNTIME"
           node --check modules/parser-evidence-engine.js
           node --check modules/parser-v2/evidence-model.js
           node --check modules/parser-v2/header-resolver.js
