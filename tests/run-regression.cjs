@@ -105,10 +105,10 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14y','Core version must be 7.03.3.14y');
+assert(cv==='7.03.3.14z','Core version must be 7.03.3.14z');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.14z','Upcoming version must be 7.03.3.14z');
+assert(uv==='7.03.3.15','Upcoming version must be 7.03.3.15');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
@@ -263,7 +263,7 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14y'"),'14y direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14z'"),'14z direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
@@ -308,7 +308,7 @@ assert(runtime.includes('v703314zAutoMergeExactMasterDuplicates')&&runtime.inclu
 assert(!runtime.includes('renderInventoryDuplicateNameWarning')&&!index.includes('inventoryDuplicateNameWarning'),'Duplicate Standard Item Name warning must not render on the Inventory page');
 assert(runtime.includes('refreshParsedDuplicateStandardNameWarnings14z')&&runtime.includes('duplicate-standard-name-review')&&runtime.includes('Double-check duplicate Standard Item Name'),'Post-import Line Items Review must highlight same-name/different-SKU rows');
 assert(parserV4Review.includes('duplicateStandardItemNameGroups'),'Parser V4 Review bridge duplicate Standard Item Name helper missing');
-assert(index.includes('styles.css?v=7.03.3.14y-r25'),'Styles cache-bust revision missing');
+assert(index.includes('styles.css?v=7.03.3.14z-r27'),'Styles cache-bust revision missing');
 console.log('standard-item-duplicate-policy: exact identity auto-merge + line-item Review yellow warning PASS');
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes(activeRuntimePath),'Active bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
@@ -545,4 +545,4 @@ assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813
 console.log('parser-v2-rollback: numbered-schedule promotion layer disabled by design PASS');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.14y regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.14z regression gates PASS.');
