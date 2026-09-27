@@ -2573,6 +2573,13 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
     const v2=window.InventoryHubParserV2?.analyze?.({sources,raw:evidence,candidates,legacyResult:normalized});
     if(v2)normalized={...normalized,parseEvidence:{...(normalized.parseEvidence||{}),v2Analysis:v2},parserV2Mode:'authoritative'};
   }catch(v2Err){console.warn('Parser V2 evidence analysis failed; canonical parse preserved for verification.',v2Err);}
+  // Apply the common evidence-driven recovery on every normal import before V2/V3.
+  // Sources reaching this point were already gated page-by-page as Invoice / Tax Invoice.
+  // Use one source as primary and the remaining OCR modes as independent witnesses;
+  // never concatenate them into a fake extra witness.
+  const recoveryRaw=String(sources[0]?.text||evidence||'');
+  normalized=globalThis.V7033Patch?.applyParsedFixes?.(normalized,recoveryRaw,sources.slice(1))||normalized;
+  normalized.rawText=evidence;
   return window.InventoryHubCanonicalParser.fromPipeline(normalized,{raw:evidence});
 }
 function snapshotImportReview14x(){
