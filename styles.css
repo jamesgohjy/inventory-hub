@@ -676,3 +676,14 @@ button:disabled{cursor:not-allowed;opacity:.62}
 #deleteFeedbackBtn{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #ef4444;color:#b91c1c;border-radius:9px;padding:10px 12px;font-weight:800;cursor:pointer}
 #deleteFeedbackBtn:hover{background:#fff1f2}
 #deleteFeedbackBtn.hidden{display:none}
+
+
+/* v7.03.3.14y r24 — Standard Item Name duplicate review */
+.inventory-duplicate-name-warning{margin:0 0 14px;background:#fff8e8;border-color:#f6d68a;color:#714b00}
+.inventory-duplicate-name-warning-head{display:flex;align-items:flex-start;gap:10px}
+.inventory-duplicate-name-warning-head>svg{width:18px;height:18px;flex:0 0 18px;color:#b26a00;margin-top:1px}
+.inventory-duplicate-name-warning-head p{margin:3px 0 0;color:#7a5a1c;line-height:1.45}
+.inventory-duplicate-name-warning-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:9px;padding:8px 10px;border:1px solid #f3dcaa;border-radius:8px;background:#fffdf7}
+.inventory-duplicate-name-warning-row strong{font-size:11px;color:#6a4700}
+.inventory-duplicate-name-warning-row span{font-size:10px;color:#86651d;text-align:right}
+@media(max-width:700px){.inventory-duplicate-name-warning-row{align-items:flex-start;flex-direction:column;gap:3px}.inventory-duplicate-name-warning-row span{text-align:left}}
