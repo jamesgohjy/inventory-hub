@@ -9,7 +9,7 @@ const APP_VERSION='7.03.3.14z';
 const RELEASE_CURRENT_NOTES=[
   'Parser V4 is now the production import engine after the full promotion regression gate passed.',
   'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.',
-  'Wrapped numbered equipment rows can recover from independent invoice OCR while unresolved model or replacement conflicts remain review-required.'
+  'Serial labels such as S/N, Serial No and Serial Number now preserve wrapped serial lists and bind them to the nearest verified equipment row.'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
