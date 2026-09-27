@@ -546,7 +546,7 @@
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
     if(isStructuredPhysicalAssetRow(row))return false;
-    if(V703312J_EQUIPMENT_RE.test(text)&&/\b(?:with|including|includes|incl\.?|supplied\s+with)\b[\s\S]{0,80}\b(?:cable|wire|mount|bracket|stand|cart|trolley|lock)\b/i.test(text))return false;
+    if(V703312J_EQUIPMENT_RE.test(text)&&/\b(?:with|including|includes|incl\.?|supplied\s+with)\b[\s\S]{0,80}\b(?:cables?|wires?|mounts?|brackets?|stands?|carts?|trolleys?|locks?)\b/i.test(text))return false;
     return true;
   }
   function v703312jIsTrackedEquipment(row={}){
@@ -679,12 +679,12 @@
     if(/\b(?:PURCHASE\s+ORDER|DELIVERY\s+ORDER|QUOTATION)\b/i.test(raw)&&!/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)\b/i.test(raw))return [];
     const lines=raw.split(/\n+/).map(x=>clean(String(x||'').replace(/[\u2500-\u257f]/g,' '))).filter(Boolean),starts=[];
     const startRe=/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.\-:]?\s+(.+)$/;
-    let invoiceSeen=false;
+    let invoiceSeen=false,stopIndex=lines.length;
     for(let i=0;i<lines.length;i++){
       const line=lines[i];
       if(/\b(?:TAX\s+INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)\b/i.test(line)||/^INVOICE\b/i.test(line)){invoiceSeen=true;continue;}
       if(!invoiceSeen)continue;
-      if(/\bSCOPE\s+OF\s+WORK\b/i.test(line)||/^(?:SUB\s*TOTAL|SUBTOTAL|GST\b|INVOICE\s+TOTAL|GRAND\s+TOTAL|AMOUNT\s+DUE)\b/i.test(line))break;
+      if(/\bSCOPE\s+OF\s+WORK\b/i.test(line)||/^(?:SUB\s*TOTAL|SUBTOTAL|GST\b|INVOICE\s+TOTAL|GRAND\s+TOTAL|AMOUNT\s+DUE)\b/i.test(line)){stopIndex=i;break;}
       const m=line.match(startRe);if(!m)continue;
       const ordinal=Number(m[1]);if(!(ordinal>0&&ordinal<=50))continue;
       starts.push({ordinal,index:i,line,tail:clean(m[2])});
@@ -710,8 +710,8 @@
       return {quantity,unit_price:unit,amount};
     };
     for(let si=0;si<starts.length;si++){
-      const start=starts[si],end=starts[si+1]?.index??lines.length,block=lines.slice(start.index,end);
-      if(block.some(x=>/\bSCOPE\s+OF\s+WORK\b/i.test(x)))break;
+      const start=starts[si],end=Math.min(starts[si+1]?.index??stopIndex,stopIndex),block=lines.slice(start.index,end);
+      if(!block.length)continue;
       const econ=economics(start.line);if(!econ)continue;
       const modelLine=block.find(x=>/\bMODEL\s*:/i.test(x))||'',model=modelToken((modelLine.match(/\bMODEL\s*:\s*(.+)$/i)||[])[1]||'');
       const replacementLine=block.find(x=>/\breplac(?:ed|ement)\s+with\b/i.test(x))||'';
