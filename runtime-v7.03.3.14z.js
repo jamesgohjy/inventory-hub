@@ -5,11 +5,11 @@ window.__AV_DIRECT_RUNTIME_READY__=(async function InventoryHubDirectRuntime14s(
   if(!window.InventoryHubParserTable?.parseHeaderAlignedLayout)throw new Error('Parser table module did not initialise.');
   if(!window.InventoryHubGroupedCompanyUI?.renderGroupedCompanyCards)throw new Error('Grouped company UI module did not initialise.');
 // AV Inventory Hub V7.00 — Structured parser core + regression-safe migration
-const APP_VERSION='7.03.3.14y';
+const APP_VERSION='7.03.3.14z';
 const RELEASE_CURRENT_NOTES=[
-  'Improved line-item price recovery using independent table geometry with fail-closed verification.',
-  'Legacy parser rows are replaced only when the independent equipment set is complete and conflict-free.',
-  'Service, accessory and warranty rows remain excluded from Inventory promotion.'
+  'Parser V4 is now the production import engine after the full promotion regression gate passed.',
+  'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.',
+  'Wrapped numbered equipment rows can recover from independent invoice OCR while unresolved model or replacement conflicts remain review-required.'
 ];
 // Upcoming notes are intentionally manual. Edit only this list for the next release preview.
 // Items already delivered in the current release must not remain here.
@@ -18,7 +18,7 @@ const RELEASE_UPCOMING_NOTES=[
   'Improve automatic item matching and consolidation.',
   'Simplify review messages and workflow.'
 ];
-const RELEASE_UPCOMING_VERSION='7.03.3.14z';
+const RELEASE_UPCOMING_VERSION='7.03.3.15';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
 const authUrlParams=()=>{
   const search=new URLSearchParams(location.search||'');
@@ -4944,6 +4944,6 @@ if(typeof v661FinalizeParsedInvoice==='function'&&!v661FinalizeParsedInvoice.__c
 
 try{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn('V6.69 optional audit/file-input setup skipped',e);}
 
-  window.__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14y';
+  window.__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14z';
   return true;
 })().catch(err=>{window.__AV_DIRECT_RUNTIME_ERROR__=String(err?.message||err);console.error('AV Inventory Hub v7.03.3.14z direct runtime failed',err);throw err;});
