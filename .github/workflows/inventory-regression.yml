@@ -7,7 +7,7 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
-      - "runtime-v7.03.3.14y.js"
+      - "runtime-v7.03.3.*.js"
       - "modules/**"
       - "scripts/**"
       - "index.html"
@@ -26,7 +26,7 @@ on:
       - "app.js"
       - "v7033-core.js"
       - "parser-v7-core.js"
-      - "runtime-v7.03.3.14y.js"
+      - "runtime-v7.03.3.*.js"
       - "modules/**"
       - "scripts/**"
       - "index.html"
@@ -79,3 +79,4 @@ jobs:
           node tests/run-regression.cjs
           node tests/parser-v4-unseen-holdout.cjs
           node tests/parser-v4-concept-sanitized.cjs
+          node tests/parser-v4-serial-evidence.cjs
