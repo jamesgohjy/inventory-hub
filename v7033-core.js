@@ -65,8 +65,8 @@
     const stop=new Set(['WITH','FOR','THE','AND','SYSTEM','DIGITAL','WIRELESS','AUDIO','MICROPHONE','MICROPHONES','SPEAKER','SPEAKERS','PORTABLE','MULTIFUNCTIONAL','TROLLEY','HANDHELD','TRANSMITTER','CARDIOID','CAPSULE','CONDENSER','DYNAMIC','MEDIUM','STOCK']);
     const out=[];
     for(const token of text.match(/[A-Za-z0-9][A-Za-z0-9+._\/-]{1,31}/g)||[]){
-      const key=compact(token);if(key.length<3||stop.has(key))continue;
-      const modelLike=/[A-Za-z]/.test(token)&&/\d/.test(token);
+      const key=compact(token),modelLike=/[A-Za-z]/.test(token)&&/\d/.test(token);
+      if((modelLike&&key.length<2)||(!modelLike&&key.length<3)||stop.has(key))continue;
       if(!out.some(x=>x.key===key))out.push({key,weight:modelLike?8:(key.length>=6?3:2),modelLike});
     }
     return out;
@@ -89,7 +89,9 @@
           }
           if(!modelOverlap&&overlap<2)continue;
           const distance=block.lineIndex-end;
-          score-=Math.max(0,distance)*0.35;
+          // Serial labels belong to the nearest preceding equipment block. Model/token
+          // strength proves identity, but must not let an older row steal a nearer S/N block.
+          score-=Math.max(0,distance)*8;
           if(!best||score>best.score||(score===best.score&&distance<best.distance))best={index:meta.index,score,distance};
         }
       }
