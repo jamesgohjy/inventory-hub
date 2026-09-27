@@ -846,7 +846,6 @@
       recovered.push(...v703314zRecoverWrappedNumberedInvoiceRows(ev.text,ev.source));
       recovered.push(...v703314aRecoverStructuredPricedAssetRows(ev.text,ev.source));
       recovered.push(...v703314aaRecoverModelEquipmentBlocks(ev.text,ev.source));
-      recovered.push(...v703314aaRecoverDirectAssetBlocks(ev.text,ev.source));
       recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
     }
     const out=[];
@@ -1495,7 +1494,7 @@
   }
 
   function v703314pRecoverEquipmentRows(text='',source=''){
-    const out=[...v703314aaRecoverDirectAssetBlocks(text,source),...v703314aaRecoverModelEquipmentBlocks(text,source)];
+    const out=[...v703314aaRecoverModelEquipmentBlocks(text,source)];
     for(const original of String(text||'').replace(/\r/g,'\n').split(/\n+/)){
       const row=v703312kRecoverDirectLine(original,source);if(!row)continue;
       if(v703312jIsServiceRow(row)||v703312jIsAccessoryRow(row)||!v703312jIsTrackedEquipment(row))continue;
