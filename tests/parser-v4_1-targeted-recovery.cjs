@@ -115,7 +115,60 @@ assert(multiline,'Multiline fixture missing');
   console.log('V4.1 CONFLICTING OCR FAIL-CLOSED: PASS');
 }
 
-// 6) Randomized multi-supplier targeted recovery.
+// 6) Cross-row semantic contamination: microphone row must never keep amplifier text.
+{
+  const raw='Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule (Freq: G66) 1 480.00 480.00';
+  const row={
+    sku:'SLXD24/SM58',
+    item_name:'Single Channel Digital Wireless Handheld Mic',
+    description:'Digital Power Amplifier with DSP',
+    quantity:1,unit_price:480,amount:480,
+    provenance:{rawText:raw}
+  };
+  const audit=V41.auditRows([row],{raw});
+  assert(audit.hardFailures.some(x=>x.field==='description'&&x.code==='cross-row-equipment-class-contamination'),
+    'Cross-row microphone/amplifier contamination was not detected');
+  const recovered=V41.recoverRows([row],{raw});
+  assert(recovered.randomCharacterFailureCount===0,'Cross-row contamination survived recovery');
+  assert(recovered.outputRows[0].description!=='Digital Power Amplifier with DSP','Amplifier contamination remained in microphone row');
+  console.log('V4.1 CROSS-ROW EQUIPMENT CLASS CONTAMINATION: PASS');
+}
+
+// 7) Numeric/text fragments from neighbouring rows must not pollute a description.
+{
+  const raw='HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch';
+  const row={
+    sku:'HZMZ-84X84',
+    item_name:'Motorized Screen',
+    description:'(Synchronous) 84 motorised 1 230.00 230.00 plifier 5 29.50 147.50',
+    quantity:2,unit_price:430,amount:860,
+    provenance:{rawText:raw}
+  };
+  const audit=V41.auditRows([row],{raw});
+  assert(audit.hardFailures.some(x=>x.field==='description'&&x.code==='source-region-content-contamination'),
+    'Numeric/source-region contamination was not detected');
+  const recovered=V41.recoverRows([row],{raw});
+  assert(recovered.randomCharacterFailureCount===0,'Numeric contamination survived recovery');
+  assert(!/230\.00|147\.50|plifier/.test(recovered.outputRows[0].description),'Neighbour-row fragments remained after recovery');
+  console.log('V4.1 NUMERIC SOURCE-REGION CONTAMINATION: PASS');
+}
+
+// 8) Source-backed invoice spelling/wording must not be treated as contamination.
+{
+  const raw='Monitor Speeker at the console Yamaha MS101-4 Japan 1 200.00 200.00';
+  const row={
+    sku:'MS101-4',
+    item_name:'Monitor Speaker',
+    description:'Monitor Speeker at the console Yamaha MS101-4 Japan',
+    quantity:1,unit_price:200,amount:200,
+    provenance:{rawText:raw}
+  };
+  const audit=V41.auditRows([row],{raw});
+  assert(audit.hardFailures.length===0,'Source-backed spelling variant was falsely flagged');
+  console.log('V4.1 SOURCE-BACKED TYPO FALSE-POSITIVE GUARD: PASS');
+}
+
+// 9) Randomized multi-supplier targeted recovery.
 (async()=>{
   const cases=loadSupplierCases();
   assert(cases.length>=5,'Expected five supplier cases');
