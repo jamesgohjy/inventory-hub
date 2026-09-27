@@ -70,6 +70,7 @@ jobs:
           node --check modules/parser-v2/verification-gate.js
           node --check modules/parser-v3/engine.js
           node --check modules/parser-v4-review-bridge.js
+          node --check modules/parser-v4_1-shadow.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
           node --check modules/backup-verification-ui.js
@@ -80,5 +81,6 @@ jobs:
           node tests/parser-v4-unseen-holdout.cjs
           node tests/parser-v4-concept-sanitized.cjs
           node tests/parser-v4-serial-evidence.cjs
+          node tests/parser-v4_1-random-character-shadow.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
