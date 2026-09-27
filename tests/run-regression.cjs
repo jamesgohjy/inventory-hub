@@ -270,6 +270,7 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 // when a corroborating numbered price schedule is attached.
 assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
 assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
+assert(runtime.includes("applyParsedFixes?.(normalized,recoveryRaw,sources.slice(1))"),'Normal import finalizer must run common invoice-evidence recovery before V2/V3');
 assert(runtime.includes("((pages[i]||'').match(/\\bMODEL\\s*:/gi)||[]).length>=2||modes.some")&&runtime.includes("filterInvoicePages([hiText],[])"),'High-resolution invoice-model recovery must use native/OCR evidence and re-apply the invoice-page gate');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
 const richMixedText=['TAX INVOICE','No. Description Qty Unit Price Amount','1 Mixer 1 100.00 100.00','SCHEDULES OF PRICES AND TECHNICAL DATA','1 Mixer ABC-1 UK 1 $100.00 $100.00'].join(String.fromCharCode(10));
