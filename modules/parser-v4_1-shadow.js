@@ -129,11 +129,22 @@
     return top;
   }
   function scopedEvidenceTexts(row={},field='',context={}){
-    const direct=rowProvenanceTexts(row,context);
-    if(direct.length)return direct;
+    const direct=rowProvenanceTexts(row,context),targeted=targetedEvidenceTexts(row,field,context);
+    if(direct.length||targeted.length)return [...new Set([...direct,...targeted])];
     const region=bestRawRegion(row,field,context);
-    if(region)return [region.text];
-    return context.allowGlobalFallback?evidenceTexts({...context,row}):[];
+    if(region)return [region.text,...targeted];
+    return context.allowGlobalFallback?[...evidenceTexts({...context,row}),...targeted]:targeted;
+  }
+  function targetedEvidenceTexts(row={},field='',context={}){
+    const p=row?.provenance||{},page=Number(p.page)||null,indexes=new Set((p.rowIndexes||[]).map(Number).filter(Number.isFinite)),out=[];
+    for(const e of context.targetedEvidence||[]){
+      if(clean(e?.field)!==field)continue;
+      if(page&&Number(e?.page)&&Number(e.page)!==page)continue;
+      const er=(e?.rowIndexes||[]).map(Number).filter(Number.isFinite);
+      if(indexes.size&&er.length&&!er.some(x=>indexes.has(x)))continue;
+      const value=clean(e?.value||e?.text||'');if(value)out.push(value);
+    }
+    return [...new Set(out)];
   }
   function explicitEvidence(row={},field='',value=''){
     const target=clean(value);if(!target)return false;
@@ -382,7 +393,7 @@
 
   global.InventoryHubParserV41Shadow=Object.freeze({
     VERSION,evidenceTexts,lineWindows,significantTokens,layoutPages,matchingLayoutRows,rowProvenanceTexts,
-    bestRawRegion,scopedEvidenceTexts,sourceSupport,randomSignature,unsupportedRandomFragments,inspectField,
+    bestRawRegion,targetedEvidenceTexts,scopedEvidenceTexts,sourceSupport,randomSignature,unsupportedRandomFragments,inspectField,
     auditRow,auditRows,headerColumns,cellText,uniqueModelToken,layoutCandidate,targetedEvidenceCandidates,
     provenanceCandidate,rawRegionCandidate,targetedRecoverField,recoverRow,recoverRows,recoveryRequest,selfTest
   });
