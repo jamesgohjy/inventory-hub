@@ -853,8 +853,9 @@
       const existing=out.find(x=>v703312jSameEquipment(x,row));
       if(!existing){row.v703312kEvidenceSources=[row.v703312kSource].filter(Boolean);out.push(row);continue;}
       existing.v703312kEvidenceSources=uniq([...(existing.v703312kEvidenceSources||[]),row.v703312kSource].filter(Boolean));
-      const existingComplete=Number.isFinite(Number(existing.unit_price))&&Number.isFinite(Number(existing.amount));
-      const rowComplete=Number.isFinite(Number(row.unit_price))&&Number.isFinite(Number(row.amount));
+      const hasCompleteEconomics=r=>r&&r.unit_price!==null&&r.unit_price!==undefined&&r.unit_price!==''&&r.amount!==null&&r.amount!==undefined&&r.amount!==''&&Number.isFinite(Number(r.unit_price))&&Number.isFinite(Number(r.amount));
+      const existingComplete=hasCompleteEconomics(existing);
+      const rowComplete=hasCompleteEconomics(row);
       if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
       if(row.v703314zPrintedModel&&row.sku){
         existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
