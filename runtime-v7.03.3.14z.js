@@ -1039,6 +1039,8 @@ function serialTokensFromLine(line=''){
   });
 }
 function attachSerialBlocks(items=[],text=''){
+  const shared=globalThis.V7033Patch?.v703315BindSerialBlocks;
+  if(typeof shared==='function')return shared(items,text);
   const out=items.map(x=>({...x}));
   const lines=normalizePdfText(text).split('\n').map(x=>x.trim()).filter(Boolean);
   const label=/^(?:S\s*[/\\.-]?\s*N|S\.?N\.?|Serial\s*(?:No\.?|Number(?:s)?))\s*[:#.-]?/i;
@@ -1981,7 +1983,12 @@ function v668ModelIdentifierKeys(items=[]){
   return keys;
 }
 function v668ExplicitSerialEvidence(sourceText='',modelKeys=new Set()){
-  const evidence=new Set(),lines=normalizePdfText(sourceText).split('\n').map(x=>x.trim()).filter(Boolean);
+  const evidence=new Set(),shared=globalThis.V7033Patch?.v703315ExtractSerialBlocks?.(sourceText);
+  if(shared?.blocks){
+    for(const block of shared.blocks)for(const token of block.serials||[]){const k=v668CompactIdentifier(token);if(k&&!modelKeys.has(k)&&/\d/.test(token))evidence.add(k);}
+    return evidence;
+  }
+  const lines=normalizePdfText(sourceText).split('\n').map(x=>x.trim()).filter(Boolean);
   const label=/\b(?:S\s*\/?\s*N|S\.?N\.?|Serial\s*(?:No\.?|Number(?:s)?))\s*[:#.-]?\s*(.*)$/i;
   for(const line of lines){
     const m=line.match(label);if(!m)continue;
@@ -2035,6 +2042,8 @@ function v686SerialValuesFromLabelTail(value=''){
   return out;
 }
 function v677ReassignSerialsByEvidence(items=[],sourceText=''){
+  const shared=globalThis.V7033Patch?.v703315BindSerialBlocks;
+  if(typeof shared==='function')return shared((items||[]).map(x=>({...x,serials:''})),sourceText);
   const out=(items||[]).map(x=>({...x,serials:''}));
   const lines=normalizePdfText(sourceText).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
   const serialRe=/\b(?:S\s*\/?\s*N|S\.?N\.?|Serial\s*(?:No\.?|Number(?:s)?))\s*[:#.-]?\s*(.*)$/i;
@@ -2058,7 +2067,7 @@ function v677ReassignSerialsByEvidence(items=[],sourceText=''){
     for(const sn of ev.vals){const key=v668CompactIdentifier(sn);if(!key||arr.some(v=>v668CompactIdentifier(v)===key))continue;const prev=seen.get(key);if(prev!==undefined&&prev!==owner.idx){out[owner.idx].serialReviewRequired=true;out[prev].serialReviewRequired=true;continue;}seen.set(key,owner.idx);arr.push(sn);}
     const existing=String(out[owner.idx].serials||'').split(',').map(x=>x.trim()).filter(Boolean);for(const sn of arr)if(!existing.some(v=>v668CompactIdentifier(v)===v668CompactIdentifier(sn)))existing.push(sn);out[owner.idx].serials=existing.join(', ');
   }
-  for(const item of out){const vals=String(item.serials||'').split(',').map(x=>x.trim()).filter(Boolean),q=Number(item.quantity);if(Number.isInteger(q)&&q>0&&vals.length>q){item.serials='';item.serialReviewRequired=true;item.serialCountReview=true;}}
+  for(const item of out){const vals=String(item.serials||'').split(',').map(x=>x.trim()).filter(Boolean),q=Number(item.quantity);if(Number.isInteger(q)&&q>0&&vals.length>q){item.serialReviewRequired=true;item.serialCountReview=true;}}
   return out;
 }
 function v689SerialIntegrityGate(items=[],sourceText=''){
