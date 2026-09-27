@@ -84,5 +84,6 @@ jobs:
           node tests/parser-v4_1-random-character-shadow.cjs
           node tests/parser-v4_1-targeted-recovery.cjs
           node tests/parser-v4_1-phase1-fair-raw-input.cjs
+          node tests/parser-v4_1-phase2-real-pdf-replay.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
