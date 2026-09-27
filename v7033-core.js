@@ -125,22 +125,18 @@
     if(paymentTerms)structureScore+=1;
     if(currency)structureScore+=1;
 
-    // Document authority is resolved before equipment extraction. A page explicitly headed as
-    // Purchase Order / Quotation / Delivery Order / other non-invoice is never an extraction
-    // source merely because it repeats invoice fields, models or equipment descriptions.
-    if(nonInvoiceTitles.length&&!strongTax&&!strongInvoice){
-      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
-    }
-    // If OCR genuinely exposes both authoritative title classes on one physical page, do not guess.
-    // Keep the page out of automatic extraction and require document-type review.
-    if(nonInvoiceTitles.length&&(strongTax||strongInvoice)){
-      return {allowed:false,disposition:'review',type:'document_title_conflict',reason:'Conflicting Invoice and non-invoice page titles; page is not an automatic extraction source.',reviewRequired:true,score:structureScore,evidence};
-    }
+    // Document authority is resolved before equipment extraction. An explicit Invoice/Tax Invoice
+    // title remains authoritative even when its header contains PO/DO reference fields.
     if(strongTax){
       return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:false,score:12+structureScore,evidence};
     }
     if(strongInvoice&&(invoiceNo||invoiceDate||itemTable||totals||billTo)){
       return {allowed:true,disposition:'accept',type:'invoice',reason:'Invoice heading phrase with supporting invoice structure.',reviewRequired:false,score:10+structureScore,evidence};
+    }
+    // A PO/quotation/delivery page that merely repeats invoice numbers, models or equipment
+    // remains ineligible. Invoice-like body structure cannot promote a prohibited document type.
+    if(nonInvoiceTitles.length){
+      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
     }
 
     if(fuzzyHead&&structureScore>=4){
