@@ -151,7 +151,7 @@ class SupabaseDB{
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
-const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,v2FullDocumentEvidence:null,importHumanReviewApproved:false};
+const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,v2FullDocumentEvidence:null,importHumanReviewApproved:false,masterDuplicateAutoMergeError:null};
 const prettyEmailName=(email='')=>{const base=String(email||'').split('@')[0];return base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase()).trim()||'Team Member';};
 const currentRole=()=>CFG.mode==='supabase'?String(state.profile?.role||'viewer').trim().toLowerCase():'admin';
 const canEdit=()=>['admin','editor'].includes(currentRole());
@@ -212,6 +212,55 @@ function stockTakeDifferences(){return (state.data?.items||[]).map(i=>{const raw
 async function openLatestInvoiceForItem(id){const ps=itemInvoices(id).filter(p=>p.document_id).sort((a,b)=>String(b.invoice_date||'').localeCompare(String(a.invoice_date||'')));if(!ps.length){toast('No linked invoice PDF for this item.');return;}try{const u=await state.db.fileUrl(ps[0].document_id);if(u)window.open(u,'_blank');}catch(e){toast(friendlyError(e));}}
 async function copyItemSerials(id){const serials=itemSerials(id);if(!serials.length){toast('No serial numbers recorded for this item.');return;}await navigator.clipboard.writeText(serials.join(', '));toast(`${serials.length} serial number${serials.length===1?'':'s'} copied.`);}
 
+function v703314zMasterDuplicatePolicy(){
+  const api=globalThis.V7033Patch;
+  return api?.masterItemDuplicatePolicy?api.masterItemDuplicatePolicy(state.data?.items||[]):{autoMergeGroups:[],reviewGroups:[]};
+}
+function v703314zMergePayload(target={},source={}){
+  const td=String(target.description||'').trim(),sd=String(source.description||'').trim();
+  const description=td.length>=sd.length?td:sd;
+  return {
+    sku:String(target.sku||'').trim(),
+    item_name:String(target.item_name||source.item_name||'').trim(),
+    category:String(target.category||source.category||'').trim(),
+    unit:String(target.unit||source.unit||'pcs').trim()||'pcs',
+    description,
+    image_url:target.image_url||source.image_url||null
+  };
+}
+async function v703314zAutoMergeExactMasterDuplicates(){
+  if(!canEdit())return {merged:0,groups:0,skipped:'role'};
+  const policy=v703314zMasterDuplicatePolicy();
+  if(!policy.autoMergeGroups.length)return {merged:0,groups:0};
+  let merged=0;const failures=[];
+  for(const group of policy.autoMergeGroups){
+    const target=group.canonical;
+    for(const source of group.duplicates||[]){
+      try{
+        await v703314dMergeMasterItems(source,target,v703314zMergePayload(target,source));
+        merged++;
+      }catch(err){
+        const msg=String(err?.message||err||'');
+        if(/Source Master Item was not found|Source or target item no longer exists|disappeared before merge/i.test(msg))continue;
+        failures.push({source:source.id,target:target.id,message:msg});
+      }
+    }
+  }
+  state.masterDuplicateAutoMergeError=failures.length?failures:null;
+  return {merged,groups:policy.autoMergeGroups.length,failures};
+}
+function renderInventoryDuplicateNameWarning(){
+  const box=$('inventoryDuplicateNameWarning');if(!box)return;
+  const policy=v703314zMasterDuplicatePolicy(),groups=policy.reviewGroups||[];
+  if(!groups.length&&!state.masterDuplicateAutoMergeError){box.classList.add('hidden');box.innerHTML='';return;}
+  const warnings=groups.map(group=>{
+    const models=[...new Set((group.rows||[]).map(x=>String(x.sku||x.model||'').trim()).filter(Boolean))];
+    return '<div class="inventory-duplicate-name-warning-row"><strong>'+esc(group.standardItemName||'Duplicate Standard Item Name')+'</strong><span>SKU / Model: '+esc(models.join(' · ')||'Missing model')+'</span></div>';
+  }).join('');
+  const mergeError=state.masterDuplicateAutoMergeError?'<p><strong>Automatic duplicate merge needs attention.</strong> One or more exact duplicate identities could not be merged safely. No partial unsafe merge was forced.</p>':'';
+  box.innerHTML='<div class="inventory-duplicate-name-warning-head"><i data-lucide="triangle-alert"></i><div><strong>Double-check duplicate Standard Item Name</strong><p>The same Standard Item Name is used by different SKU / Model codes. These records were kept separate. Confirm that the names are correct before merging or editing them.</p></div></div>'+warnings+mergeError;
+  box.classList.remove('hidden');window.lucide?.createIcons();
+}
 async function reload(){
   if(CFG.mode==='supabase')setHealth('reconnecting','Reconnecting');
   try{
@@ -221,7 +270,14 @@ async function reload(){
       if(liveProfile)state.profile={...(state.profile||{}),...liveProfile};
       setUserIdentity(state.session);
     }
+    const autoMerge=await v703314zAutoMergeExactMasterDuplicates();
+    if(autoMerge.merged>0){
+      state.data=await state.db.load();
+      if(state.session){const liveProfile=(state.data.profiles||[]).find(p=>p.id===state.session.user?.id);if(liveProfile)state.profile={...(state.profile||{}),...liveProfile};}
+      console.info('Auto-merged exact Standard Item Name + SKU/Model duplicates',autoMerge);
+    }
     renderAll();
+    if(autoMerge.merged>0)toast('Merged '+autoMerge.merged+' exact duplicate Master Item'+(autoMerge.merged===1?'':'s')+'.');
     setHealth('live',CFG.mode==='supabase'?'Live':'Demo mode');
   }catch(e){
     setHealth('offline','Offline');
@@ -350,6 +406,7 @@ function renderCategories(){
   $('categoryFilter').value=cats.some(c=>c.toLowerCase()===cur.toLowerCase())?cats.find(c=>c.toLowerCase()===cur.toLowerCase()):'';
 }
 function renderInventory(){
+  renderInventoryDuplicateNameWarning();
   const q=norm($('inventorySearch').value),cat=v703311CanonicalCategory($('categoryFilter').value),editable=canEdit(),group=$('inventoryGroup')?.value||'none';
   const filtered=state.data.items.filter(i=>{
     const canonicalCategory=v703311CanonicalCategory(i.category);
