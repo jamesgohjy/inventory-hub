@@ -48,7 +48,10 @@
     return s;
   }
   function supportScheduleSources(evidence){
-    return (evidence.sources||[]).filter(s=>/\bSCHEDULES?\s+OF\s+PRICES\b/i.test(String(s.text||''))&&!/\bPURCHASE\s+ORDER\b/i.test(String(s.text||'')));
+    // Invoice authority rule: standalone schedules, quotations, POs and DOs may be
+    // useful to a human reviewer but can never create or repair inventory rows.
+    // Production recovery must come from authorised Invoice / Tax Invoice evidence.
+    return [];
   }
   function corroboratedScheduleTotal(evidence,doc={}){
     const target=[doc.subtotal,doc.total_amount,doc.total].map(Number).find(n=>Number.isFinite(n)&&n>0);
