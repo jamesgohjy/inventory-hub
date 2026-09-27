@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=7.03.3.14y-r25" />
+  <link rel="stylesheet" href="styles.css?v=7.03.3.14z-r27" />
   <link rel="stylesheet" href="ui-v703311.css?v=7.03.3.14q-r1" />
   <link rel="stylesheet" href="components.css?v=7.03.3.14v-r3" />
   <style>
@@ -235,8 +235,8 @@
       </nav>
       <section id="patchNotesPanel" class="sidebar-patch-panel hidden" aria-label="Patch notes" aria-live="polite">
         <div class="sidebar-patch-head"><span>Release Notes</span><strong>Patch Notes</strong></div>
-        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14y</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Improved line-item price recovery using independent table geometry with fail-closed verification.</li><li>Legacy parser results are replaced only when the independent row set is complete and conflict-free.</li><li>Service, accessory and warranty rows remain excluded from Inventory promotion.</li></ul></article>
-        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.14z</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Improve parsing across more invoice layouts.</li><li>Improve automatic item matching and consolidation.</li><li>Simplify review messages and workflow.</li></ul></article>
+        <article class="sidebar-release-card current"><div class="sidebar-release-title"><span class="sidebar-release-icon current"><i data-lucide="settings"></i></span><div><small>Current Version</small><div class="sidebar-version-line"><strong id="releaseCurrentVersion">v7.03.3.14z</strong><em class="release-badge latest">Latest</em></div></div></div><ul id="releaseCurrentNotes"><li>Parser V4 is now the production import engine after the full promotion regression gate passed.</li><li>Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.</li><li>Wrapped numbered equipment rows can recover from independent invoice OCR while unresolved model or replacement conflicts remain review-required.</li></ul></article>
+        <article class="sidebar-release-card upcoming"><div class="sidebar-release-title"><span class="sidebar-release-icon upcoming"><i data-lucide="rocket"></i></span><div><small>Coming Next</small><div class="sidebar-version-line"><strong id="releaseUpcomingVersion">v7.03.3.15</strong><em class="release-badge next">Upcoming</em></div></div></div><ul id="releaseUpcomingNotes"><li>Improve parsing across more invoice layouts.</li><li>Improve automatic item matching and consolidation.</li><li>Simplify review messages and workflow.</li></ul></article>
       </section>
       <div class="sidebar-footer"><div class="footer-rule"></div><p>Track today.<br>Empower tomorrow.</p><button id="signOutBtn" class="ghost hidden"><i data-lucide="log-out"></i> Sign out</button></div>
     </aside>
@@ -282,7 +282,7 @@
   <div id="toast" class="toast hidden"></div>
   <script src="config.js"></script>
   <script src="parser-v7-core.js?v=7.03.3.14r-r1"></script>
-  <script src="app.js?v=7.03.3.14z-r26"></script>
+  <script src="app.js?v=7.03.3.14z-r27"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="feedback.js?v=7.03.3.14t-r1"></script>
 </body>
