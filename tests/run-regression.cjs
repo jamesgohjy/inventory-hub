@@ -302,10 +302,11 @@ const duplicatePolicyReview=api.masterItemDuplicatePolicy([
 ]);
 assert(duplicatePolicyReview.autoMergeGroups.length===0&&duplicatePolicyReview.reviewGroups.length===1,'Same Standard Item Name + different SKU/model must remain separate for review');
 assert(runtime.includes('v703314zAutoMergeExactMasterDuplicates')&&runtime.includes('await v703314dMergeMasterItems(source,target,v703314zMergePayload(target,source))'),'Live runtime must auto-merge exact Standard Item Name + SKU/model duplicates through the transactional Master Item merge');
-assert(runtime.includes('renderInventoryDuplicateNameWarning();')&&runtime.includes('same Standard Item Name is used by different SKU / Model codes'),'Live Inventory must render a review warning for same-name/different-model records');
-assert(index.includes('id="inventoryDuplicateNameWarning"')&&index.includes('warning-box inventory-duplicate-name-warning hidden'),'Inventory duplicate-name yellow warning host missing');
-assert(index.includes('styles.css?v=7.03.3.14y-r3'),'Styles cache-bust revision missing');
-console.log('standard-item-duplicate-policy: exact identity auto-merge + different-model yellow warning PASS');
+assert(!runtime.includes('renderInventoryDuplicateNameWarning')&&!index.includes('inventoryDuplicateNameWarning'),'Duplicate Standard Item Name warning must not render on the Inventory page');
+assert(runtime.includes('refreshParsedDuplicateStandardNameWarnings14z')&&runtime.includes('duplicate-standard-name-review')&&runtime.includes('Double-check duplicate Standard Item Name'),'Post-import Line Items Review must highlight same-name/different-SKU rows');
+assert(parserV4Review.includes('duplicateStandardItemNameGroups'),'Parser V4 Review bridge duplicate Standard Item Name helper missing');
+assert(index.includes('styles.css?v=7.03.3.14y-r25'),'Styles cache-bust revision missing');
+console.log('standard-item-duplicate-policy: exact identity auto-merge + line-item Review yellow warning PASS');
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes('runtime-v7.03.3.14y.js'),'14y bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
 assert(runtime.includes('pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized'),'Materialized V2 pending rows must remain reviewable instead of disabling the Review workflow');
