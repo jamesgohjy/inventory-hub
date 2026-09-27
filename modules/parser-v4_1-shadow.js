@@ -92,7 +92,7 @@
   function rowProvenanceTexts(row={},context={}){
     const out=[];
     const add=v=>{const s=clean(v);if(s)out.push(s);};
-    add(row?.sourceText);add(row?.rawSourceText);add(row?.lineText);
+    add(row?.sourceText);add(row?.rawSourceText);add(row?.lineText);add(row?.v703312kSourceLine);
     add(row?.provenance?.sourceText);add(row?.provenance?.raw);
     add(row?.provenance?.text);add(row?.provenance?.rawText);
     for(const m of matchingLayoutRows(row,context))for(const r of m.rows)add(r.text||r.items?.map(x=>x.text).join(' '));
