@@ -23,6 +23,36 @@
     const aa=Number(a.amount),ba=Number(b.amount),amountSame=(!Number.isFinite(aa)&&!Number.isFinite(ba))||(Number.isFinite(aa)&&Number.isFinite(ba)&&Math.abs(aa-ba)<=.06);
     return !!((asku&&bsku&&asku===bsku)||(an&&bn&&(an===bn||an.includes(bn)||bn.includes(an))))&&qSame&&amountSame;
   }
+  function standardItemNameKey(v=''){
+    return clean(v).normalize('NFKC').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function skuIdentityKey(row={}){
+    return compact(row.sku||row.model||'');
+  }
+  function duplicateStandardItemNameGroups(items=[]){
+    const groups=new Map();
+    (items||[]).forEach((row,index)=>{
+      const nameKey=standardItemNameKey(row?.item_name||row?.description||'');
+      if(!nameKey)return;
+      if(!groups.has(nameKey))groups.set(nameKey,[]);
+      groups.get(nameKey).push({row,index,skuKey:skuIdentityKey(row)});
+    });
+    const out=[];
+    for(const [nameKey,entries] of groups){
+      if(entries.length<2)continue;
+      const distinctSkuKeys=[...new Set(entries.map(x=>x.skuKey).filter(Boolean))];
+      if(distinctSkuKeys.length<2)continue;
+      out.push({
+        nameKey,
+        standardItemName:clean(entries[0]?.row?.item_name||entries[0]?.row?.description||''),
+        indexes:entries.map(x=>x.index),
+        skuKeys:distinctSkuKeys,
+        skus:[...new Set(entries.map(x=>clean(x.row?.sku||x.row?.model||'')).filter(Boolean))],
+        reason:'same-standard-name-different-sku'
+      });
+    }
+    return out;
+  }
   function materialize(parsed={},incomingCandidates=[]){
     const verified=(parsed.items||[]).map(r=>({...r,v4ReviewState:r.v4ReviewState||'verified'}));
     const pending=[...(parsed?.v2Verification?.pending||[])];
@@ -102,7 +132,15 @@
     if(accepted.v2Verification?.pendingCount!==0||accepted.items.length!==2)failures.push('human review did not resolve pending rows without data loss');
     const rejected=resolveCandidate(m,'candidate-2',false);
     if(rejected.items.some(x=>x.v2CandidateId==='candidate-2')||rejected.v2Verification?.rejectedCount!==1)failures.push('rejected pending candidate was not removed consistently');
+    const duplicateNames=duplicateStandardItemNameGroups([
+      {sku:'AVS-320A',item_name:'Abtus AVS320 HDMI Control Panel'},
+      {sku:'AVS-320',item_name:'  ABTUS AVS320 HDMI control panel  '},
+      {sku:'PT-VW540',item_name:'Projector'}
+    ]);
+    if(duplicateNames.length!==1||duplicateNames[0].indexes.join(',')!=='0,1')failures.push('same Standard Item Name with different SKU must be review-highlighted');
+    if(duplicateStandardItemNameGroups([{sku:'A-1',item_name:'Control Panel'},{sku:'A1',item_name:'Control Panel'}]).length!==0)failures.push('same normalized SKU must not trigger duplicate-name review');
+    if(duplicateStandardItemNameGroups([{sku:'A-1',item_name:'Control Panel'},{sku:'B-1',item_name:'Projector'}]).length!==0)failures.push('different Standard Item Names must not trigger duplicate-name review');
     return {ok:failures.length===0,version:VERSION,failures};
   }
-  global.InventoryHubParserV4ReviewBridge=Object.freeze({VERSION,candidateId,sameCandidate,materialize,rebuildDiagnostics,materializeAndDiagnose,resolveCandidate,confirmHumanReview,selfTest});
+  global.InventoryHubParserV4ReviewBridge=Object.freeze({VERSION,candidateId,sameCandidate,standardItemNameKey,skuIdentityKey,duplicateStandardItemNameGroups,materialize,rebuildDiagnostics,materializeAndDiagnose,resolveCandidate,confirmHumanReview,selfTest});
 })(typeof window!=='undefined'?window:globalThis);
