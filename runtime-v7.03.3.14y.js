@@ -231,7 +231,7 @@ function v703314zMergePayload(target={},source={}){
 async function v703314zAutoMergeExactMasterDuplicates(){
   if(!canEdit())return {merged:0,groups:0,skipped:'role'};
   const policy=v703314zMasterDuplicatePolicy();
-  if(!policy.autoMergeGroups.length)return {merged:0,groups:0};
+  if(!policy.autoMergeGroups.length){state.masterDuplicateAutoMergeError=null;return {merged:0,groups:0};}
   let merged=0;const failures=[];
   for(const group of policy.autoMergeGroups){
     const target=group.canonical;
