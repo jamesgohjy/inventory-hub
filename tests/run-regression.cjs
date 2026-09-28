@@ -269,7 +269,12 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
 // when a corroborating numbered price schedule is attached.
 assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
-assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
+assert(
+  runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&
+  runtime.includes('const ocrAllowed=ocrVerdicts.some')&&
+  runtime.includes('if((nativeAllowed||ocrAllowed)&&modelRich)invoiceModelPages.push(i+1)'),
+  'High-resolution recovery must remain restricted to pages independently authorised as Invoice/Tax Invoice by native text or OCR'
+);
 assert(runtime.includes("applyParsedFixes?.(normalized,recoveryRaw,sources.slice(1))"),'Normal import finalizer must run common invoice-evidence recovery before V2/V3');
 assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("filterInvoicePages([hiText],[])")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, and re-apply the invoice-page gate');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
