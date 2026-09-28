@@ -904,7 +904,8 @@
       s+=Math.min(18,clean(r.item_name||r.description||'').length/8);
       return s;
     };
-    const primary=strength(a)>=strength(b)?{...a}:{...b},other=primary===a?b:a;
+    const aWins=strength(a)>=strength(b);
+    const primary={...(aWins?a:b)},other=aWins?b:a;
     const modelPrimary=clean(primary.sku||primary.model||''),modelOther=clean(other.sku||other.model||'');
     if(!modelPrimary&&modelOther){primary.sku=modelOther;primary.model=modelOther;}
     if(!primary.v703314zPrintedModel&&other.v703314zPrintedModel)primary.v703314zPrintedModel=other.v703314zPrintedModel;
