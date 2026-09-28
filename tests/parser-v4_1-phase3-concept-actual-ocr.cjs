@@ -139,6 +139,8 @@ req('ZX1I90',6,800,4800);
 req('SLXD24SM58',2,950,1900,{allowBlankEconomics:true});
 req('MS1014',1,200,200,{allowBlankEconomics:true});
 req('XDP3002',1,950,950,{allowBlankEconomics:true});
+const xdp=find('XDP3002');
+if(!xdp||norm(xdp.v703314zReplacementModel)!==norm('XDP-3001'))failures.push('XDP-3002 replacement note XDP-3001 not retained');
 req('NEUTRIK',1,450,450);
 
 if(rows.length!==7)failures.push('expected 7 equipment rows, got '+rows.length);
