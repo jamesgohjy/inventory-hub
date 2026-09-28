@@ -90,4 +90,34 @@ assert(runtime.includes("invoice-hires-'+mode.key+'-p"),'two-mode high-resolutio
 assert(runtime.includes("SINGLE_BLOCK"),'high-resolution block OCR mode missing');
 console.log('PHASE4 MODEL OCR ACQUISITION: PASS');
 
-console.log('PHASE4 IDENTITY QUALITY R7 SUMMARY: PASS');
+// Gate 5: row-local explicit Model evidence must outrank cross-row OCR noise only
+// when at least two independent explicit sources confirm the same local model.
+const rowLocal={
+  sku:'',model:'',item_name:'Single Channel Digital Wireless Handheld Microphone System',
+  description:'Single Channel Digital Wireless Handheld Microphone System',
+  v703312kSourceLine:'4 Single Channel Digital Wireless Handheld Microphone System 2 OCR-DAMAGED OCR-DAMAGED | Model: Shure SLXD24/SM58',
+  v703314zdModelCandidates:[
+    {model:'ZX11-90',source:'ocr-a',explicit:true},
+    {model:'ZX11-90',source:'ocr-b',explicit:true},
+    {model:'SLXD24/SM58',source:'ocr-a',explicit:true},
+    {model:'SLXD24/SM58',source:'ocr-b',explicit:true}
+  ]
+};
+const rowLocalResolved=V.v703314zdResolveModelConsensus(rowLocal);
+assert(norm(rowLocalResolved.sku)==='SLXD24SM58','row-local explicit majority did not beat cross-row OCR tie');
+
+const rowLocalConflict={
+  sku:'',model:'',item_name:'Wireless microphone system',description:'Wireless microphone system',
+  v703312kSourceLine:'4 Wireless microphone system 2 900.00 1800.00 | Model: Shure SLXD24/SM58 | Model: Sennheiser EW-D 835-S',
+  v703314zdModelCandidates:[
+    {model:'SLXD24/SM58',source:'ocr-a',explicit:true},
+    {model:'SLXD24/SM58',source:'ocr-b',explicit:true},
+    {model:'EW-D',source:'ocr-a',explicit:true},
+    {model:'EW-D',source:'ocr-b',explicit:true}
+  ]
+};
+const rowLocalConflictResolved=V.v703314zdResolveModelConsensus(rowLocalConflict);
+assert(!rowLocalConflictResolved.sku&&!rowLocalConflictResolved.model,'conflicting row-local models must remain unresolved');
+console.log('PHASE4 ROW-LOCAL MODEL PRIORITY + FAIL-CLOSED CONFLICT: PASS');
+
+console.log('PHASE4 IDENTITY QUALITY R8 SUMMARY: PASS');
