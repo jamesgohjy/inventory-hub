@@ -4,7 +4,7 @@
  */
 (function(global){
   'use strict';
-  const VERSION='4.1-evidence-integrity-targeted-recovery-shadow';
+  const VERSION='4.1.1-evidence-integrity-audit-hardening-shadow';
   const clean=(v='')=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9+._\/-]+/g,' ').replace(/\s+/g,' ').trim();
   const compact=(v='')=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
@@ -265,7 +265,7 @@
     const audited=(rows||[]).map((row,index)=>({index,...auditRow(row,context)}));
     const hardFailures=audited.flatMap(a=>a.hardFailures.map(issue=>({rowIndex:a.index,...issue})));
     const reviewIssues=audited.flatMap(a=>a.reviewIssues.map(issue=>({rowIndex:a.index,...issue})));
-    return Object.freeze({version:VERSION,mode:'shadow',productionMutation:false,ok:hardFailures.length===0,inputCount:(rows||[]).length,outputRows:audited.map(a=>a.row),hardFailures,reviewIssues,randomCharacterFailureCount:hardFailures.length,reviewIssueCount:reviewIssues.length});
+    return Object.freeze({version:VERSION,mode:'shadow',productionMutation:false,ok:hardFailures.length===0&&reviewIssues.length===0,inputCount:(rows||[]).length,outputRows:audited.map(a=>a.row),hardFailures,reviewIssues,randomCharacterFailureCount:hardFailures.length,reviewIssueCount:reviewIssues.length,readyForProduction:hardFailures.length===0&&reviewIssues.length===0});
   }
 
   function center(it){return Number(it?.x)+(Number(it?.width)||0)/2;}
@@ -359,8 +359,25 @@
     }
     return null;
   }
+  function serialCandidates(row={},field='',context={}){
+    const texts=scopedEvidenceTexts(row,field,context),out=[];
+    const add=(value,lane,source='row-local')=>{value=clean(value);if(value&&compact(value).length>=4)out.push({value,lane,source});};
+    for(const text of texts){
+      const re=/\b(?:serial(?:\s*(?:no\.?|number))?|s\/?n)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._\/-]{3,})\b/gi;
+      let m;while((m=re.exec(String(text||''))))add(m[1],'serial-label','row-local');
+    }
+    for(const c of targetedEvidenceCandidates(row,field,context))add(c.value,'targeted-serial',c.source);
+    return [...new Map(out.map(x=>[compact(x.value),x])).values()];
+  }
   function targetedRecoverField(row={},issue={},context={}){
-    const field=issue.field;if(field==='serials'||field==='serial_number')return {recovered:false,field,reason:'serial-recovery-not-enabled'};
+    const field=issue.field;
+    if(field==='serials'||field==='serial_number'){
+      const candidates=serialCandidates(row,field,context);
+      if(candidates.length!==1)return {recovered:false,field,reason:candidates.length?'conflicting-serial-evidence':'no-row-local-serial-evidence',candidates};
+      const candidate=candidates[0],probe={...row,[field]:candidate.value};
+      const check=inspectField(probe,field,candidate.value,scopedEvidenceTexts(probe,field,context));
+      return check.status==='pass'?{recovered:true,field,value:candidate.value,reason:'explicit-row-local-serial-label',support:[candidate.lane],candidates}:{recovered:false,field,reason:'serial-evidence-check-failed',candidate:candidate.value,check,candidates};
+    }
     const candidates=[];
     const add=c=>{if(c&&clean(c.value))candidates.push(c);};
     add(layoutCandidate(row,field,context));add(provenanceCandidate(row,field,context));add(rawRegionCandidate(row,field,context));
@@ -378,7 +395,8 @@
     });
     if(!ranked.length)return {recovered:false,field,reason:'no-targeted-candidate',candidates:[]};
     const top=ranked[0],direct=top.lanes.has('layout-cell')||top.lanes.has('twin-field')||top.lanes.has('twin-field-class-supported')||top.lanes.has('raw-region-twin-class-supported')||top.lanes.has('printed-model')||top.lanes.has('provenance-region');
-    const consensus=top.sources.size>=2;
+    const independentSources=new Set(top.candidates.map(c=>clean(c.evidenceRoot||c.source||'')).filter(x=>x&&x!=='row'&&x!=='raw'));
+    const consensus=independentSources.size>=2;
     if(!direct&&!consensus)return {recovered:false,field,reason:'insufficient-independent-support',candidates};
     if(ranked[1]&&keyFor(field,ranked[1].value)!==keyFor(field,top.value)&&ranked[1].sources.size>=top.sources.size&&!direct)
       return {recovered:false,field,reason:'conflicting-targeted-evidence',candidates};
@@ -390,7 +408,6 @@
   function recoverRow(row={},context={}){
     const before=auditRow(row,context),out={...before.row},recoveries=[],unresolved=[];
     for(const issue of before.hardFailures){
-      if(issue.field==='serials'){unresolved.push({...issue,recoveryReason:'serial-array-remains-blanked'});continue;}
       const r=targetedRecoverField(row,issue,context);
       if(r.recovered){out[issue.field]=r.value;recoveries.push({...r,original:issue.value});}
       else unresolved.push({...issue,recoveryReason:r.reason,recoveryCandidates:r.candidates||[]});
@@ -416,7 +433,8 @@
       unresolvedRecoveries:unresolved,unresolvedRecoveryCount:unresolved.length,
       hardFailures:finalAudit.hardFailures,randomCharacterFailureCount:finalAudit.randomCharacterFailureCount,
       reviewIssues:finalAudit.reviewIssues,reviewIssueCount:finalAudit.reviewIssueCount,
-      ok:finalAudit.randomCharacterFailureCount===0
+      ok:finalAudit.randomCharacterFailureCount===0&&finalAudit.reviewIssueCount===0&&unresolved.length===0,
+      readyForProduction:finalAudit.randomCharacterFailureCount===0&&finalAudit.reviewIssueCount===0&&unresolved.length===0
     });
   }
   function recoveryRequest(row={},field='',reason=''){
@@ -442,7 +460,7 @@
 
   global.InventoryHubParserV41Shadow=Object.freeze({
     VERSION,evidenceTexts,lineWindows,significantTokens,layoutPages,matchingLayoutRows,rowProvenanceTexts,
-    bestRawRegion,targetedEvidenceTexts,scopedEvidenceTexts,sourceSupport,randomSignature,unsupportedRandomFragments,equipmentClass,numericFragmentCount,inspectField,
+    bestRawRegion,targetedEvidenceTexts,scopedEvidenceTexts,sourceSupport,serialCandidates,randomSignature,unsupportedRandomFragments,equipmentClass,numericFragmentCount,inspectField,
     auditRow,auditRows,headerColumns,cellText,uniqueModelToken,layoutCandidate,targetedEvidenceCandidates,
     provenanceCandidate,rawRegionCandidate,targetedRecoverField,recoverRow,recoverRows,recoveryRequest,selfTest
   });
