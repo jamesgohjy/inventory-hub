@@ -322,7 +322,7 @@
   }
   function equipmentType(text=''){
     const s=norm(text);
-    const pairs=[['projector controller','Projector Controller'],['projector control','Projector Controller'],['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['control panel','Control Panel'],['controller','Controller'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
+    const pairs=[['projector controller','Projector Controller'],['projector control','Projector Controller'],['microphone wall receptacle','Microphone Wall Receptacle'],['wall receptacle','Wall Receptacle'],['receptacle','Receptacle'],['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['control panel','Control Panel'],['controller','Controller'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
     for(const [k,v] of pairs)if(s.includes(k))return v;return '';
   }
   function contentWords(s=''){return norm(s).split(' ').filter(w=>w.length>=4&&!/^(?:with|from|year|only|stock|warranty|supply|install|installation|dismantle|dismantled|dismantling|dismount|dismounted|dismounting|commissioning|labour|labor|service|services|safety|wired|secure|classroom)$/.test(w));}
@@ -385,7 +385,7 @@
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
     const cleanName=v=>clean(v||'').replace(/^supply(?:\s+and\s+install)?\s+/i,'').trim();
-    const typeRank=t=>({'Projector Controller':90,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
+    const typeRank=t=>({'Projector Controller':90,'Microphone Wall Receptacle':88,'Wall Receptacle':86,'Receptacle':84,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
     const candidates=[{text:cleanName(row.description),source:'description',bonus:4},{text:cleanName(row.item_name),source:'item_name',bonus:2}]
       .map(x=>({...x,type:equipmentType(x.text)}))
       .filter(x=>x.text&&x.type&&compact(x.text).includes(compact(model))&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|commissioning)\b/i.test(x.text));
