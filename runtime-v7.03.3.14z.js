@@ -2981,7 +2981,10 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   if(!api?.recoverRows)return {...parsed,v41ProductionIntegrity:{status:'unavailable',reason:'V4.1 evidence-integrity module is not loaded.'}};
   const sourceText=String(raw||parsed?.raw||parsed?.rawText||'');
   const sources=Array.isArray(state.v2FullDocumentEvidence)?state.v2FullDocumentEvidence:[];
-  const result=api.recoverRows(parsed?.items||[],{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
+  const patch=window.V7033Patch;
+  const authoritativeRecovered=patch?.v703312jRecoverNumberedEquipmentRows?patch.v703312jRecoverNumberedEquipmentRows(sourceText,sources):[];
+  const reconciled=patch?.v703312jMergeTrackedRows?patch.v703312jMergeTrackedRows(parsed?.items||[],authoritativeRecovered,sourceText):(parsed?.items||[]);
+  const result=api.recoverRows(reconciled,{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
   const report={
     version:api.VERSION||'4.1',
     mode:'production-enforced',
