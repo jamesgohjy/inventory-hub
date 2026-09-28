@@ -719,13 +719,18 @@ async function extractPdf(file){
     const invoiceModelPages=[];
     for(let i=0;i<pdf.numPages;i++){
       const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed;
+      const ocrVerdicts=modes.map(m=>globalThis.V7033Patch?.classifyInvoicePage?.(m.texts[i]||'')).filter(Boolean);
+      const ocrAllowed=ocrVerdicts.some(v=>v.allowed&&v.disposition!=='reject');
       const modelLabelRe=/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|M\/N)\s*[:#-]?\s*[A-Z0-9]/gi;
       const modelRich=((pages[i]||'').match(modelLabelRe)||[]).length>=2||modes.some(m=>((m.texts[i]||'').match(modelLabelRe)||[]).length>=2);
-      if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1);
+      // Scanned/image-only PDFs have no native text authority. Once independent OCR has
+      // positively authorised the page as Invoice/Tax Invoice, allow high-resolution recovery.
+      if((nativeAllowed||ocrAllowed)&&modelRich)invoiceModelPages.push(i+1);
     }
     if(invoiceModelPages.length){
       const hiWorker=await Tesseract.createWorker('eng');
       const hiModes=[
+        {key:'auto',psm:Tesseract.PSM?.AUTO??'3'},
         {key:'column',psm:Tesseract.PSM?.SINGLE_COLUMN??'4'},
         {key:'block',psm:Tesseract.PSM?.SINGLE_BLOCK??'6'}
       ];
