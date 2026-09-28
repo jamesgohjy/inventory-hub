@@ -92,15 +92,15 @@ const con=rows=>V.v703314zdConsolidateRecoveredWitnesses(rows);
   assert(!out.some(r=>['CAIZR','BADIC'].includes(norm(r.sku))),'case7 corrupted OCR model survived');
 }
 
-// Case 8: targeted/block OCR may break a 1:1 explicit tie against generic primary/auto OCR.
+// Case 8: targeted/block OCR does not get to break a 1:1 explicit tie by source label alone.
 {
   const out=con([
     row({sku:'ZX11-90',printed:'ZX11-90',name:'Passive Loudspeakers with mounting brackets',q:6,p:800,a:4800,source:'primary',ordinal:3}),
     row({sku:'ZX1I-90',printed:'ZX1I-90',name:'Passive Loudspeakers with mounting brackets',q:6,p:800,a:4800,source:'ocr-block-targeted',ordinal:3})
   ]);
   assert(out.length===1,'case8 targeted OCR tie did not consolidate');
-  assert(norm(out[0].sku)==='ZX1I90','case8 higher-specificity block OCR did not win explicit tie: '+JSON.stringify(out[0]));
-  assert(out[0].humanReviewRequired,'case8 disagreement must remain review-visible');
+  assert(!String(out[0].sku||out[0].model||'').trim(),'case8 explicit tie was guessed from source specificity: '+JSON.stringify(out[0]));
+  assert(out[0].humanReviewRequired&&out[0].skuReviewRequired,'case8 disagreement must remain review-visible');
 }
 
 console.log('PHASE4 GENERALIZED UNSEEN OCR: PASS 8/8 cases');
