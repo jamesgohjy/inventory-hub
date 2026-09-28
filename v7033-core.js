@@ -1089,7 +1089,83 @@
     return out.map(v703314zdResolveModelConsensus);
   }
 
-    function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
+    function v703314zeNearbyExplicitModelEvidence(row={},raw='',evidenceSources=[]){
+    const results=[];
+    const ordinal=v703314zdRowOrdinal(row);
+    const rowText=clean(row.item_name||row.description||'');
+    const stop=new Set(['SUPPLY','INSTALL','INSTALLATION','SYSTEM','EQUIPMENT','THE','NEW','SPECIFIED','SECTION','INCLUDES','WITH','FOR','AND','FROM','THIS','THAT','CHANNEL','DIGITAL','OUTDOOR','SINGLE','DUAL']);
+    const rowTokens=(norm(rowText).toUpperCase().match(/[A-Z0-9]+/g)||[]).filter(x=>x.length>=4&&!stop.has(x)).slice(0,8);
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
+    const moneyForms=v=>finite(v)?[
+      String(Number(v)),
+      Number(v).toFixed(2),
+      Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+    ].map(norm):[];
+
+    const seen=new Set();
+    for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
+      const source=clean(ev.source)||'evidence';
+      const lines=String(ev.text||'').replace(/\r/g,'').split('\n').map(clean);
+      const anchors=[];
+
+      for(let i=0;i<lines.length;i++){
+        const line=lines[i];if(!line)continue;
+        const n=norm(line),comp=compact(line);
+        let score=0;
+        if(ordinal&&new RegExp('^\\s*'+ordinal+'(?:\\s|[.)-])').test(line))score+=100;
+        const hits=rowTokens.filter(t=>n.includes(t)).length;
+        if(rowTokens.length&&hits>=Math.min(2,rowTokens.length))score+=20+hits*5;
+        if(finite(q)&&new RegExp('(?:^|\\s)'+String(q).replace(/[.*+?^$()|[\]\\{}]/g,'\\  function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){')+'(?:\\s|$)').test(line))score+=8;
+        if(finite(p)&&moneyForms(p).some(x=>x&&n.includes(x)))score+=8;
+        if(finite(a)&&moneyForms(a).some(x=>x&&n.includes(x)))score+=8;
+        const currentSku=compact(row.sku||row.model||'');
+        if(currentSku&&comp.includes(currentSku))score+=10;
+        if(score>=20)anchors.push({i,score});
+      }
+
+      anchors.sort((x,y)=>y.score-x.score);
+      for(const hit of anchors.slice(0,3)){
+        const start=hit.i;
+        let end=Math.min(lines.length-1,start+4);
+        // Do not cross into the next clearly numbered invoice row.
+        for(let j=start+1;j<=end;j++){
+          const m=lines[j]?.match(/^\s*(\d{1,3})\b/);
+          if(m&&(!ordinal||Number(m[1])!==ordinal)){end=j-1;break;}
+        }
+        for(let j=start;j<=end;j++){
+          const line=lines[j];if(!line)continue;
+          for(const e of v703314zdExplicitModelFromText(line)){
+            const key=compact(e.model)+'|'+source;
+            if(seen.has(key))continue;
+            seen.add(key);
+            results.push({
+              model:e.model,source,explicit:true,line,
+              anchorLine:start+1,modelLine:j+1,anchorScore:hit.score,
+              page:ev.page??null,method:'nearby-explicit-model'
+            });
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  function v703314zeAttachNearbyModelEvidence(row={},raw='',evidenceSources=[]){
+    const r={...row};
+    const nearby=v703314zeNearbyExplicitModelEvidence(r,raw,evidenceSources);
+    if(!nearby.length)return r;
+    r.v703314zdModelCandidates=[...(r.v703314zdModelCandidates||[]),...nearby];
+    r.v703314zPrintedModelEvidence=[...(r.v703314zPrintedModelEvidence||[])];
+    for(const e of nearby){
+      if(!r.v703314zPrintedModelEvidence.some(x=>compact(x.model)===compact(e.model)&&clean(x.source)===clean(e.source))){
+        r.v703314zPrintedModelEvidence.push({model:e.model,source:e.source,line:e.line});
+      }
+    }
+    return v703314zdResolveModelConsensus(r);
+  }
+
+  function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
       const lines=String(ev.text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
@@ -1164,7 +1240,8 @@
       if((n>=2&&!row.v703312kIndependentConflict&&!explicitReviewFlag(row))||deterministicSingle){row.humanReviewRequired=false;row.needsReview=false;}
       else{row.humanReviewRequired=true;row.needsReview=true;}
     }
-    return v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(out));
+    const withNearby=out.map(row=>v703314zeAttachNearbyModelEvidence(row,raw,evidenceSources));
+    return v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(withNearby));
   }
   function v703312jSameEquipment(a={},b={}){
     const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb&&sa===sb)return true;
@@ -2092,5 +2169,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,v703314zdExplicitModelFromText,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,v703314zdExplicitModelFromText,v703314zeNearbyExplicitModelEvidence,v703314zeAttachNearbyModelEvidence,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
