@@ -108,7 +108,8 @@ const evidence=[
  {source:'ocr-block-actual-deidentified',kind:'ocr',text:conceptBlock,layout:[]}
 ];
 const conceptRows=V.v703312jRecoverNumberedEquipmentRows(conceptAuto,evidence);
-// Ground truth correction: official Electro-Voice model is ZX1i-90; the earlier ZX11-90 expectation was an OCR corruption, not source truth.\nconst expected=[
+// Ground truth correction: official Electro-Voice model is ZX1i-90; the earlier ZX11-90 expectation was an OCR corruption, not source truth.
+const expected=[
  {id:'CQ12T',q:1,p:1400,a:1400},
  {id:'1604DSP',q:1,p:2500,a:2500},
  {id:'ZX1I90',q:6,p:800,a:4800},
