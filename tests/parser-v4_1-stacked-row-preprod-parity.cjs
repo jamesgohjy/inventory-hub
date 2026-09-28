@@ -74,6 +74,57 @@ S/N: PACKING999999
 const page4=`Description Quantity
 NOTE: Supply and delivery only.`;
 
+const layoutPage1=`TAX INVOICE
+Description Quantity Unit Price Tax Amount SGD
+Attention: Accounts
+Company: Example School
+Address: Example Lane
+575954
+XVive U35C Wireless System for Condenser
+Microphones 5.8GHz
+Warranty: 1 Year, Carry In to Service
+4.00 340.00 9% 1,360.00
+Centre
+IN STOCK
+S/N: U35SER001, U35SER002,
+U35SER003, U35SER004
+Shure SLXD2+ Digital Wireless Handheld
+Microphone Transmitter with SM58 Cardioid
+Capsule (Freq: G66)
+1.00 480.00 9% 480.00
+Warranty: 2 Years, Carry In to Service
+Centre
+IN STOCK
+S/N: SHURESER001, SHURESER002
+Gravity CART M 01 B Multifunctional Trolley
+(Medium)
+2.00 170.00 9% 340.00
+IN STOCK
+S/N: N/A`;
+const layoutPage2=`Description Quantity Unit Price Tax Amount SGD
+XVive AT-2 Portable Audio Tester
+Warranty: 1 Year, Carry In to Service
+1.00 270.00 9% 270.00
+Centre
+IN STOCK
+Serial Number: AT2SER001
+Xvive Audio U3 2.4 GHz Digital Wireless
+Microphone System for Dynamic
+Microphones
+Warranty: 1 Year, Carry In to Service
+4.00 275.00 9% 1,100.00
+Centre
+IN STOCK
+Serial No: U3SER001, U3SER002,
+U3SER003,
+U3SER004
+DEL, Delivery Services with return Trip for
+Signed Delivery Order
+Delivery only to loading bay/guardhouse.
+1.00 50.00 9% 50.00
+Subtotal 3,600.00
+Invoice Total SGD 3,924.00`;
+
 async function productionBoundary(pages){
   const authority=V.filterInvoicePages(pages,[]);
   const raw=authority.text;
@@ -113,6 +164,16 @@ async function productionBoundary(pages){
   assert(!run.items.some(r=>/trolley/i.test(String(r.item_name||r.description||''))),'Trolley accessory leaked');
   assert(!run.items.some(r=>serials(r).includes('PACKING999999')),'Packing-slip serial leaked');
   assert(run.integrity.randomCharacterFailureCount===0,'Contamination hard failure '+JSON.stringify(run.integrity.hardFailures));
+
+  // Real PDF text layers can place Qty/Price/Amount between a wrapped Warranty line and
+  // its continuation/stock/serial lines. The same invoice must remain semantically identical.
+  const layoutRun=await productionBoundary([layoutPage1,layoutPage2,page3,page4]);
+  assert(layoutRun.authority.decisions.map(x=>!!x.allowed).join(',')==='true,true,false,false',
+    'Interleaved layout authority failed: '+JSON.stringify(layoutRun.authority.decisions));
+  assert(JSON.stringify(sortRows(layoutRun.items))===JSON.stringify(sortRows(run.items)),
+    'Interleaved economics layout changed accepted rows: '+JSON.stringify(sortRows(layoutRun.items)));
+  assert(layoutRun.integrity.randomCharacterFailureCount===0,
+    'Interleaved layout contamination hard failure '+JSON.stringify(layoutRun.integrity.hardFailures));
 
   // Idempotence: the production boundary may normalize more than once during Review edits.
   const normalized2=V.applyParsedFixes({...run.review,items:run.items},run.raw,run.evidence);
@@ -158,6 +219,7 @@ async function productionBoundary(pages){
   console.log('PREPROD SERIALS: U35C 4/4, SLXD2+ 2/1 review, AT-2 1/1, U3 4/4 PASS');
   console.log('PREPROD FILTERS: trolley accessory + delivery service excluded PASS');
   console.log('PREPROD IDEMPOTENCE: repeated Review-boundary normalization stable PASS');
+  console.log('PREPROD INTERLEAVED LAYOUT: economics between warranty/serial lines PASS');
   console.log('PREPROD NEGATIVES: inline/no-duplicate, arithmetic fail-closed, PO authority, service-only, legacy model-scope guards PASS');
   console.log('PREPROD CONTAMINATION: 0 hard failures');
   console.log('STACKED ROW PRE-PRODUCTION PARITY: PASS');
