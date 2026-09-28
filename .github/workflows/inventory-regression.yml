@@ -95,5 +95,6 @@ jobs:
           node tests/parser-v4_1-phase4-row-local-model-evidence.cjs
           node tests/parser-v4_1-phase4-nearby-model-evidence.cjs
           node tests/parser-v4_1-phase4-identity-quality-r7.cjs
+          node tests/parser-v4_1-stacked-row-local-identity-shadow.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
