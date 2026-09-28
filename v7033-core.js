@@ -1480,6 +1480,10 @@
       const rawModelTokens=modelText.match(/\b[A-Za-z0-9][A-Za-z0-9+._\/-]{2,}\b/g)||[];
       const alphaNumeric=rawModelTokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
       const sku=(alphaNumeric.at(-1)||modelTokens(modelLine)[0]||'').replace(/[,:;]+$/,'');
+      const replacementLine=block.find(x=>/\breplac(?:ed|ement)\s+with\b/i.test(x))||'';
+      const replacementText=clean((replacementLine.match(/\breplac(?:ed|ement)\s+with\s+(.+)$/i)||[])[1]||'');
+      const replacementTokens=replacementText.match(/\b[A-Za-z0-9][A-Za-z0-9+._\/-]{2,}\b/g)||[];
+      const replacement=(replacementTokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x)).at(-1)||'').replace(/[,:;]+$/,'');
       const base=v703314aaQtyAndDescription(start.body);
       const beforeModel=block.slice(0,modelIndex).map((x,j)=>j===0?base.description:clean(x.replace(/^[|]+\s*/,''))).filter(Boolean);
       let description=beforeModel.slice().reverse().find(x=>equipmentType(x))||base.description||modelText;
@@ -1503,6 +1507,10 @@
         v703314zOrdinal:start.ordinal,
         v703312LineEvidence:{economic,sourceLine:start.i+1,modelLine:start.i+modelIndex+1}
       };
+      if(replacement&&compact(replacement)!==compact(sku)){
+        row.v703314zReplacementModel=replacement;
+        row.skuReviewRequired=true;row.humanReviewRequired=true;row.needsReview=true;
+      }
       if(!economic){
         row.priceReviewRequired=true;row.amountReviewRequired=true;row.humanReviewRequired=true;row.needsReview=true;
         row.v703314aaFailClosedEconomics=true;
