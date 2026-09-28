@@ -319,7 +319,7 @@
   }
   function modelTokens(line=''){
     const s=clean(line);if(!s)return [];
-    const raw=[];const re=/(?:^|[\s(])([A-Z0-9][A-Z0-9+._\/-]{1,27})(?=$|[\s),:;])/gi;let m;
+    const raw=[];const re=/(?:^|[\s(])([A-Z][A-Z0-9+._\/-]{1,27})(?=$|[\s),:;])/gi;let m;
     while((m=re.exec(s))){
       const token=clean(m[1]).replace(/[,:;]+$/,'');
       if(credibleSku(token,s))raw.push(token);
