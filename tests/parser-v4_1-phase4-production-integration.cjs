@@ -15,8 +15,8 @@ assert(runtime.includes('function applyParserV41ProductionIntegrity14z'),
   'production V4.1 integrity wrapper missing');
 assert(runtime.includes('state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);applyParsedReviewToForm();'),
   'V4.1 is not enforced between V3 countercheck and Review');
-assert(app.includes("ASSET_REV='v703314z-phase4rowmodel-r5'"),'Phase 4 diagnostic-parity asset revision missing');
-assert(index.includes('app.js?v=7.03.3.14z-r37'),
+assert(app.includes("ASSET_REV='v703314z-phase4nearby-r6'"),'Phase 4 diagnostic-parity asset revision missing');
+assert(index.includes('app.js?v=7.03.3.14z-r38'),
   'browser cache-bust version was not advanced');
 
 const self=V41.selfTest();
