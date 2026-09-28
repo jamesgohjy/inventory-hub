@@ -634,7 +634,7 @@
 
   // V7.03.3.12l: scanned numbered-table recovery is based on actual OCR evidence,
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
-  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
+  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|supply\s+(?:and|&)\s+install\b|\binstall\b|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|training|knowledge\s+transfer|system\s+tuning|calibration|programming|label(?:ling|ing)|tidying|racking|mounting\s+kits?|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bcabling\b|\bwires?\b|\bwiring\b|\bconnectors?\b|\baccessories?\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
   const V703312J_EQUIPMENT_RE=/\b(?:controllers?|control\s+panels?|keypads?|button\s+keypads?|projectors?|microphones?|mics?|speakers?|loudspeakers?|cameras?|mixers?|consoles?|displays?|monitors?|receivers?|transmitters?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visuali[sz]ers?|document\s+cameras?|lighting\s+controllers?|media\s+players?|cd\/?mp3\s+players?|players?|receptacles?|audio\s+testers?|signal\s+testers?|analy[sz]ers?|scalers?|matrix|nvr|dvr|network\s+video\s+recorders?|digital\s+video\s+recorders?)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
@@ -922,13 +922,42 @@
   }
   function v703312jMergeTrackedRows(existing=[],recovered=[],raw=''){
     const kept=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
-    for(const rec of recovered||[]){const match=kept.find(x=>v703312jSameEquipment(x,rec));if(!match)kept.push(rec);else if((rec.v703312kEvidenceSources||[]).length){
-      match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),...rec.v703312kEvidenceSources]);
-      match.v703312kLevel1=match.v703312kLevel1?.status==='confirmed'?match.v703312kLevel1:rec.v703312kLevel1;
-      const sourceCount=match.v703312kEvidenceSources.length;
-      if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
-      else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
-    }}
+    for(const rec of recovered||[]){
+      const match=kept.find(x=>v703312jSameEquipment(x,rec));
+      if(!match){kept.push({...rec});continue;}
+      const recoveredEvidence=(rec.v703312kEvidenceSources||[]).length||rec.v703312kOcrEvidence||rec.v703314zPrintedModel;
+      if(recoveredEvidence){
+        match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),...(rec.v703312kEvidenceSources||[])]);
+        match.v703312kLevel1=match.v703312kLevel1?.status==='confirmed'?match.v703312kLevel1:rec.v703312kLevel1;
+        // Evidence-backed recovery is allowed to repair degraded downstream materialisation.
+        // Explicit printed model evidence outranks a blank/inferred SKU; verified economics
+        // fill only missing/zero downstream values and never overwrite a conflicting nonzero amount.
+        if(rec.v703314zPrintedModel&&rec.sku){
+          const current=clean(match.sku||'');
+          if(!current||match.skuReviewRequired||!credibleSku(current,v703312jRowText(match))){
+            match.sku=rec.sku;match.model=rec.model||rec.sku;match.v703314zPrintedModel=rec.v703314zPrintedModel;
+          }else if(compact(current)!==compact(rec.sku)){
+            match.skuReviewRequired=true;match.humanReviewRequired=true;match.needsReview=true;match.v703312kIndependentConflict=true;
+          }
+        }else if(!clean(match.sku||'')&&clean(rec.sku||''))match.sku=rec.sku;
+        const matchName=clean(match.item_name||''),recName=clean(rec.item_name||'');
+        const weakName=!matchName||match.humanReviewRequired||match.needsReview||!V703312J_EQUIPMENT_RE.test(matchName)||V703312J_SERVICE_ROW_RE.test(matchName);
+        if(recName&&weakName)match.item_name=recName;
+        if(clean(rec.description||'')&&(!clean(match.description||'')||weakName))match.description=rec.description;
+        const recComplete=rec.unit_price!==null&&rec.unit_price!==undefined&&rec.unit_price!==''&&rec.amount!==null&&rec.amount!==undefined&&rec.amount!==''&&Number.isFinite(Number(rec.unit_price))&&Number.isFinite(Number(rec.amount));
+        const matchPriceMissing=match.unit_price===null||match.unit_price===undefined||match.unit_price===''||Number(match.unit_price)===0;
+        const matchAmountMissing=match.amount===null||match.amount===undefined||match.amount===''||Number(match.amount)===0;
+        if(recComplete&&matchPriceMissing&&matchAmountMissing){
+          match.quantity=rec.quantity;match.unit_price=rec.unit_price;match.amount=rec.amount;
+          delete match.priceReviewRequired;delete match.amountReviewRequired;
+        }
+        if(rec.v703314zReplacementModel)match.v703314zReplacementModel=rec.v703314zReplacementModel;
+        match.v703312kSourceLine=uniq([match.v703312kSourceLine,rec.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+        const sourceCount=match.v703312kEvidenceSources.length;
+        if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
+        else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
+      }
+    }
     return dedupeParsedLineItems(consolidateFragmentedParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw))));
   }
 
