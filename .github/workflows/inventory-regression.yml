@@ -88,5 +88,6 @@ jobs:
           node tests/parser-v4_1-phase3-e2e-authority.cjs
           node tests/parser-v4_1-phase3-concept-actual-ocr.cjs
           node tests/parser-v4_1-phase4-production-integration.cjs
+          node tests/parser-v4_1-phase4-concept-live-failure.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
