@@ -1019,6 +1019,32 @@
     });
     if(!ranked.length)return r;
     const top=ranked[0],runner=ranked[1];
+
+    // Row-local explicit Model evidence outranks nearby cross-row OCR noise, but only
+    // when the local source line contains exactly one model identity and at least two
+    // independent explicit OCR sources confirm that same normalized model.
+    const localExplicit=v703314zdExplicitModelFromText(r.v703312kSourceLine||'');
+    const localGroups=new Map();
+    for(const e of localExplicit){
+      const k=compact(e.model);if(!k)continue;
+      if(!localGroups.has(k))localGroups.set(k,{model:e.model,count:0});
+      localGroups.get(k).count++;
+    }
+    if(localGroups.size===1){
+      const [localKey,local]=[...localGroups.entries()][0];
+      const supported=groups.get(localKey);
+      if(supported&&supported.explicitSources.size>=2){
+        r.sku=local.model;r.model=local.model;r.v703314zPrintedModel=local.model;
+        r.v703314zdModelConsensus={
+          status:'resolved',model:local.model,reason:'row-local-explicit-majority',
+          explicitSources:[...supported.explicitSources],sources:[...supported.allSources],
+          alternatives:ranked.filter(g=>g.key!==localKey).map(g=>g.model)
+        };
+        delete r.skuReviewRequired;
+        return r;
+      }
+    }
+
     let resolved=false,reason='';
     if(ranked.length===1){resolved=true;reason='single-model-evidence';}
     else if(top.explicitSources.size>=2&&top.explicitSources.size>(runner?.explicitSources.size||0)){resolved=true;reason='independent-explicit-majority';}
