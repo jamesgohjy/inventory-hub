@@ -145,6 +145,10 @@ async function productionBoundary(pages){
     ['XVive U35C Wireless System','U35C'],
     ['Xvive Audio U3 Wireless Microphone System','U3']
   ]) assert(V.modelTokens(line).includes(model),'Model token '+model+' not recognized from '+line);
+  const hilongTokens=V.modelTokens('HIKVISION NVR 4CH POE DS-7604NI-Q1 4P(D)');
+  assert(hilongTokens.includes('DS-7604NI-Q1'),'Legacy HI-LONG model DS-7604NI-Q1 was lost');
+  assert(!hilongTokens.includes('4CH')&&!hilongTokens.includes('4P'),'Specification/count tokens were promoted as models: '+JSON.stringify(hilongTokens));
+  assert(!V.modelTokens('Speaker JBL 218S').includes('218S'),'Numeric-leading Studio Craft token 218S must not be newly promoted as SKU');
 
   console.log('PREPROD FAIRNESS: raw text only, zero prebuilt expected rows PASS');
   console.log('PREPROD PRODUCTION BOUNDARY: finalize -> V2 -> V3 -> V4 -> normalize -> V4.1 PASS');
@@ -154,7 +158,7 @@ async function productionBoundary(pages){
   console.log('PREPROD SERIALS: U35C 4/4, SLXD2+ 2/1 review, AT-2 1/1, U3 4/4 PASS');
   console.log('PREPROD FILTERS: trolley accessory + delivery service excluded PASS');
   console.log('PREPROD IDEMPOTENCE: repeated Review-boundary normalization stable PASS');
-  console.log('PREPROD NEGATIVES: inline/no-duplicate, arithmetic fail-closed, PO authority, service-only 4/4 PASS');
+  console.log('PREPROD NEGATIVES: inline/no-duplicate, arithmetic fail-closed, PO authority, service-only, legacy model-scope guards PASS');
   console.log('PREPROD CONTAMINATION: 0 hard failures');
   console.log('STACKED ROW PRE-PRODUCTION PARITY: PASS');
 })().catch(err=>{console.error(err.stack||err);process.exit(1);});
