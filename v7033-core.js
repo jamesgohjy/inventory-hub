@@ -846,11 +846,12 @@
   }
 
   function v703314zdRowOrdinal(row={}){
-    const direct=Number(row.v703314zOrdinal);
-    if(Number.isInteger(direct)&&direct>0)return direct;
+    // The printed source-line ordinal is stronger than a derived parser ordinal.
     const line=clean(row.v703312kSourceLine||'');
     const m=line.match(/^\s*(\d{1,3})\b/);
-    return m?Number(m[1]):null;
+    if(m)return Number(m[1]);
+    const direct=Number(row.v703314zOrdinal);
+    return Number.isInteger(direct)&&direct>0?direct:null;
   }
 
   function v703314zdIdentityTokens(row={}){
@@ -920,12 +921,18 @@
       if(v.length<2||v.length>64)return;
       if(/^(?:n\/a|na|none|nil|not applicable)$/i.test(v))return;
 
-      // Explicit Model lines often contain "Brand Model". Prefer the terminal token
-      // only when it has strong model-like structure (digit and/or model punctuation).
-      // Single-word alphabetic models such as "Neutrik" remain intact.
-      const parts=v.split(/\s+/).filter(Boolean),last=parts.at(-1)||'';
-      const strongTerminal=/[0-9]/.test(last)||/[+._\/-]/.test(last);
-      if(parts.length>1&&strongTerminal&&/^[A-Za-z0-9][A-Za-z0-9+._\/-]{1,63}$/.test(last))v=last;
+      // Explicit Model lines may contain Brand + Model + OCR tail noise.
+      // Select the strongest model-like token (letters + digits, or model punctuation).
+      // Pure alphabetic single-word models such as "Neutrik" remain intact.
+      const parts=v.split(/\s+/).filter(Boolean);
+      const modelTokens=parts.filter(t=>/^[A-Za-z0-9][A-Za-z0-9+._\/-]{1,63}$/.test(t)&&/[A-Za-z]/.test(t)&&(/[0-9]/.test(t)||/[+._\/-]/.test(t)));
+      if(modelTokens.length){
+        modelTokens.sort((a,b)=>{
+          const score=t=>(/[+._\/-]/.test(t)?8:0)+(/[0-9]/.test(t)?6:0)+(t.length>=5?3:0)+(t.length>=8?2:0);
+          return score(b)-score(a)||b.length-a.length;
+        });
+        v=modelTokens[0];
+      }
 
       out.push({model:v,line:clean(line)});
     };
@@ -1124,8 +1131,9 @@
         if(score>=20)anchors.push({i,score});
       }
 
-      anchors.sort((x,y)=>y.score-x.score);
-      for(const hit of anchors.slice(0,3)){
+      const exactOrdinalAnchors=ordinal?anchors.filter(x=>new RegExp('^\\s*'+ordinal+'(?:\\s|[.)-])').test(lines[x.i]||'')):[];
+      const selectedAnchors=(exactOrdinalAnchors.length?exactOrdinalAnchors:anchors).sort((x,y)=>y.score-x.score);
+      for(const hit of selectedAnchors.slice(0,3)){
         const start=hit.i;
         let end=Math.min(lines.length-1,start+4);
         // Do not cross into the next clearly numbered invoice row.
