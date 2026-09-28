@@ -926,6 +926,15 @@
     return out;
   }
 
+  function v703314zdSourceReliability(source=''){
+    const s=norm(source);
+    if(/(?:native|pdftext|text-layer)/.test(s))return 6;
+    if(/(?:column|block|hires|hi-res|high-res|300dpi|targeted)/.test(s))return 5;
+    if(/(?:model|table)/.test(s))return 4;
+    if(/(?:auto|primary)/.test(s))return 3;
+    return 2;
+  }
+
   function v703314zdResolveModelConsensus(row={}){
     const r={...row},candidates=v703314zdModelCandidates(r);
     r.v703314zdModelCandidates=candidates;
@@ -935,8 +944,11 @@
     for(const c of candidates){
       const k=compact(c.model);if(!k)continue;
       let g=groups.get(k);
-      if(!g){g={key:k,model:c.model,explicitSources:new Set(),allSources:new Set(),explicitCount:0,candidates:[]};groups.set(k,g);}
+      if(!g){g={key:k,model:c.model,explicitSources:new Set(),allSources:new Set(),explicitCount:0,candidates:[],maxReliability:0,totalReliability:0};groups.set(k,g);}
       g.allSources.add(c.source);g.candidates.push(c);
+      const reliability=v703314zdSourceReliability(c.source);
+      g.maxReliability=Math.max(g.maxReliability,reliability);
+      g.totalReliability+=reliability;
       if(c.explicit){g.explicitSources.add(c.source);g.explicitCount++;}
       // Prefer the exact printed spelling for display.
       if(c.explicit)g.model=c.model;
@@ -944,7 +956,9 @@
     const ranked=[...groups.values()].sort((a,b)=>{
       const as=a.explicitSources.size,bs=b.explicitSources.size;
       if(bs!==as)return bs-as;
+      if(b.maxReliability!==a.maxReliability)return b.maxReliability-a.maxReliability;
       if(b.allSources.size!==a.allSources.size)return b.allSources.size-a.allSources.size;
+      if(b.totalReliability!==a.totalReliability)return b.totalReliability-a.totalReliability;
       return b.explicitCount-a.explicitCount;
     });
     if(!ranked.length)return r;
@@ -953,6 +967,7 @@
     if(ranked.length===1){resolved=true;reason='single-model-evidence';}
     else if(top.explicitSources.size>=2&&top.explicitSources.size>(runner?.explicitSources.size||0)){resolved=true;reason='independent-explicit-majority';}
     else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)===0){resolved=true;reason='printed-model-over-inferred-token';}
+    else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)>=1&&top.maxReliability>(runner?.maxReliability||0)){resolved=true;reason='higher-specificity-explicit-ocr';}
     else if(top.explicitSources.size===0&&top.allSources.size>=2&&top.allSources.size>(runner?.allSources.size||0)){resolved=true;reason='independent-inferred-majority';}
 
     if(resolved){
