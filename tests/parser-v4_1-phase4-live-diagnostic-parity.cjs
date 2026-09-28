@@ -72,7 +72,7 @@ req('MS1014',1,null,null);
 const xdp=req('XDP3002',1,null,null);
 assert(norm(xdp.v703314zReplacementModel)==='XDP3001','XDP replacement note lost');
 const neutrik=req('NEUTRIK',1,450,450);
-assert(/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(neutrik.item_name||neutrik.description||'')),'Neutrik name not specific enough: '+JSON.stringify(neutrik));
+assert(String(neutrik.item_name||'').trim()==='Outdoor Dual Microphone Wall Receptacle','Neutrik Standard Item Name must be concise and equipment-only: '+JSON.stringify(neutrik));
 assert(!items.some(r=>/new equipment specified|includesracking|\band brackets\b|labelling|tidying|cabling setups/i.test(String(r.item_name||r.description||''))),'work/fragment row survived final set');
 
 const diag=V.buildParserDiagnostics14l({...parsed,items},invoice,{
