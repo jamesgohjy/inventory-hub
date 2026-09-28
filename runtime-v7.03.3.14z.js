@@ -2978,31 +2978,54 @@ async function applyParserV3Countercheck14y(parsed,raw=''){
 }
 function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   const api=window.InventoryHubParserV41Shadow;
+  const patch=window.V7033Patch;
   if(!api?.recoverRows)return {...parsed,v41ProductionIntegrity:{status:'unavailable',reason:'V4.1 evidence-integrity module is not loaded.'}};
   const sourceText=String(raw||parsed?.raw||parsed?.rawText||'');
   const sources=Array.isArray(state.v2FullDocumentEvidence)?state.v2FullDocumentEvidence:[];
-  const patch=window.V7033Patch;
+  const originalIncoming=[...(parsed?.items||[])];
+
+  // Re-run the authoritative core normalizer at the exact live Review boundary.
+  // This makes Invoice/OCR recovery the base set rather than allowing upstream
+  // fragments to become authoritative merely because they arrived first.
+  const normalized=patch?.applyParsedFixes?patch.applyParsedFixes(parsed,sourceText,sources):parsed;
+  const result=api.recoverRows(normalized?.items||[],{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
+  const finalItems=Array.isArray(result.outputRows)?result.outputRows:(normalized?.items||[]);
+  const finalParsed={...normalized,items:finalItems};
+
   const authoritativeRecovered=patch?.v703312jRecoverNumberedEquipmentRows?patch.v703312jRecoverNumberedEquipmentRows(sourceText,sources):[];
-  const reconciled=patch?.v703312jMergeTrackedRows?patch.v703312jMergeTrackedRows(parsed?.items||[],authoritativeRecovered,sourceText):(parsed?.items||[]);
-  const result=api.recoverRows(reconciled,{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
+  const excludedService=patch?.v703312jIsServiceRow?originalIncoming.filter(patch.v703312jIsServiceRow):[];
+  const excludedAccessory=patch?.v703312jIsAccessoryRow?originalIncoming.filter(patch.v703312jIsAccessoryRow):[];
+  if(patch?.buildParserDiagnostics14l){
+    finalParsed.v703314lDiagnostics=patch.buildParserDiagnostics14l(finalParsed,sourceText,{
+      incoming:originalIncoming,
+      excludedService,
+      excludedAccessory,
+      recovered:authoritativeRecovered,
+      evidenceSources:sources
+    });
+  }
+  finalParsed.v703312jInventoryFilter={
+    excludedServiceCount:excludedService.length,
+    excludedAccessoryCount:excludedAccessory.length,
+    recoveredEquipmentCount:authoritativeRecovered.length
+  };
+
   const report={
     version:api.VERSION||'4.1',
     mode:'production-enforced',
     status:Number(result.randomCharacterFailureCount||0)===0?'pass':'fail',
     inputCount:Number(result.inputCount||0),
-    outputCount:Array.isArray(result.outputRows)?result.outputRows.length:0,
+    outputCount:finalItems.length,
     targetedRecoveryCount:Number(result.targetedRecoveryCount||0),
     unresolvedRecoveryCount:Number(result.unresolvedRecoveryCount||0),
     randomCharacterFailureCount:Number(result.randomCharacterFailureCount||0),
     reviewIssueCount:Number(result.reviewIssueCount||0)
   };
-  return {
-    ...parsed,
-    items:Array.isArray(result.outputRows)?result.outputRows:(parsed?.items||[]),
-    v41ProductionIntegrity:report,
-    parseEvidence:{...(parsed?.parseEvidence||{}),v41ProductionIntegrity:report}
-  };
+  finalParsed.v41ProductionIntegrity=report;
+  finalParsed.parseEvidence={...(finalParsed.parseEvidence||{}),v41ProductionIntegrity:report};
+  return finalParsed;
 }
+
 function parserV3UnresolvedConflicts14y(){
   return (state?.parsed?.v3Verification?.conflicts||[]).filter(x=>!x.resolved);
 }
