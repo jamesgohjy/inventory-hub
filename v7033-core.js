@@ -952,6 +952,22 @@
     const enrich=(base,inc)=>{
       base.v703312kEvidenceSources=uniq([...(base.v703312kEvidenceSources||[]),...(inc.v703312kEvidenceSources||[])].filter(Boolean));
       base.v703312kSourceLine=uniq([base.v703312kSourceLine,inc.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+
+      // Recovery owns row existence, but a matched downstream row may restore a more
+      // exact printed SKU spelling (e.g. SLXD2+, AT-2, RC-208/UK) when that exact value
+      // is directly evidenced on the invoice. This never permits an unprinted correction.
+      const incomingSku=clean(inc.sku||inc.model||''),baseSku=clean(base.sku||base.model||'');
+      const incomingSkuEvidence=incomingSku?v703314nEvidenceMatch(incomingSku,'sku',inc,raw,evidenceSources):{found:false};
+      if(incomingSkuEvidence.found&&credibleSku(incomingSku,v703312jRowText(inc))){
+        const bi=compact(baseSku),ii=compact(incomingSku);
+        const sameNormalized=!!bi&&bi===ii;
+        const moreSpecific=!!bi&&ii.length>bi.length&&(ii.startsWith(bi)||bi.startsWith(ii));
+        if(!baseSku||sameNormalized||moreSpecific){
+          base.sku=incomingSku;base.model=incomingSku;
+          base.v703314zcExactSkuEvidence=incomingSkuEvidence;
+        }
+      }
+
       if(!clean(base.category||'')&&clean(inc.category||''))base.category=inc.category;
       if(!clean(base.warranty||'')&&clean(inc.warranty||''))base.warranty=inc.warranty;
       if(!clean(base.serials||'')&&clean(inc.serials||inc.serial_numbers||'')){
