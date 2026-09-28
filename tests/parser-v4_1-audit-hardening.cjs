@@ -59,6 +59,7 @@ Model: Neutrik
 8 (B) Scope of Work 1 1,800.00 1,800.00
 9 Supply and install cabling 1 300.00 300.00`;
 const ocrB=ocrA.replace('ZX1I-90','Z2X1I-90');
+const ocrC=ocrA.replace('Support up to 12 channels','Supports up to 12 channels');
 const targeted1=`TAX INVOICE
 TARGETED NUMERIC ROW EVIDENCE
 ROW 4 | 2 950.00 1,900.00
@@ -72,6 +73,7 @@ ROW 6 | Qty 1 SGD 950.00 SGD 950.00`;
 const sources=[
  {source:'ocr-auto',kind:'ocr',text:ocrA,layout:[]},
  {source:'ocr-block',kind:'ocr',text:ocrB,layout:[]},
+ {source:'ocr-column',kind:'ocr',text:ocrC,layout:[]},
  {source:'invoice-targeted-row-block-p2',kind:'ocr-targeted',text:targeted1,layout:[]},
  {source:'invoice-targeted-row-sparse-p2',kind:'ocr-targeted',text:targeted2,layout:[]}
 ];
@@ -92,6 +94,17 @@ const xdp=req('XDP3002',1,950,950);
 assert(norm(xdp.v703314zReplacementModel)==='XDP3001','XDP replacement note lost');
 req('NEUTRIK',1,450,450);
 assert(!rows.some(r=>/scope of work|cabling/i.test(String(r.item_name||r.description||''))),'service row leaked');
+
+// A 1-vs-1 explicit model disagreement must fail closed rather than selecting the
+// OCR mode with the higher source reliability label.
+const tieRows=V.v703312jRecoverNumberedEquipmentRows(ocrA,[
+ {source:'ocr-auto',kind:'ocr',text:ocrA,layout:[]},
+ {source:'ocr-block',kind:'ocr',text:ocrB,layout:[]}
+]);
+const tieSpeaker=tieRows.find(r=>Number(r.v703314zOrdinal)===3);
+assert(tieSpeaker,'tie test loudspeaker row missing');
+assert(!String(tieSpeaker.sku||tieSpeaker.model||'').trim()&&tieSpeaker.skuReviewRequired===true,
+  '1-vs-1 explicit model conflict was guessed instead of failed closed: '+JSON.stringify(tieSpeaker));
 const audit=V41.auditRows(rows,{raw:ocrA,sources});
 assert(audit.randomCharacterFailureCount===0,'V4.1 contamination after consensus: '+JSON.stringify(audit.hardFailures));
 
@@ -107,6 +120,7 @@ assert(runtime.includes("{key:'row-block'")&&runtime.includes("{key:'row-sparse'
 console.log('AUDIT AUTHORITY PRECEDENCE: PASS');
 console.log('AUDIT SERIAL OWNERSHIP: PASS');
 console.log('AUDIT CONCEPT RAW OCR CONSENSUS: 7/7 rows with complete economics PASS');
+console.log('AUDIT MODEL CONFLICT: explicit 1-vs-1 tie fails closed; independent majority resolves PASS');
 console.log('AUDIT COLUMN-MAJOR FAIL-SAFE: independent OCR trigger contract PASS');
 console.log('AUDIT SCANNED HIRES/TARGETED OCR: runtime contract PASS');
 console.log('V4.1 AUDIT HARDENING SUMMARY: PASS');
