@@ -1274,10 +1274,11 @@
       const line=clean(line0);if(!line)continue;
       const m=line.match(/^ROW\s+(\d{1,3})\s*[|:;-]?\s*(.*)$/i);if(!m)continue;
       const ordinal=Number(m[1]),tail=clean(m[2]);if(!(ordinal>0&&ordinal<=999))continue;
-      const money=[...tail.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(x=>v703312jMoney(x[1])).filter(Number.isFinite);
-      if(money.length<2)continue;
-      const unit_price=money[money.length-2],amount=money[money.length-1];
-      const beforeMoney=tail.slice(0,Math.max(0,tail.lastIndexOf(String(money[money.length-2]))));
+      const moneyHits=[...tail.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)];
+      if(moneyHits.length<2)continue;
+      const unitHit=moneyHits[moneyHits.length-2],amountHit=moneyHits[moneyHits.length-1];
+      const unit_price=v703312jMoney(unitHit[1]),amount=v703312jMoney(amountHit[1]);
+      const beforeMoney=tail.slice(0,Math.max(0,unitHit.index??0));
       const ints=(beforeMoney.match(/\b\d{1,3}(?:\.00)?\b/g)||[]).map(x=>Number(x)).filter(x=>Number.isInteger(x)&&x>0&&x<=999);
       const quantity=ints.length?ints[ints.length-1]:null;
       if(!(quantity>0)||!Number.isFinite(unit_price)||!Number.isFinite(amount))continue;
