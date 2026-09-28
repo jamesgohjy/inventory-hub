@@ -647,6 +647,41 @@ function ocrTextQuality(text=''){
   score+=Math.min(40,rows.length*8);
   return score;
 }
+function v703316TargetedNumericBands(layout={}){
+  const rows=Array.isArray(layout?.rows)?layout.rows:[],width=Number(layout?.width)||0,height=Number(layout?.height)||0;
+  if(!rows.length||!(width>0)||!(height>0))return [];
+  const header=rows.find(r=>/\bdescription\b/i.test(String(r.text||''))&&/\b(?:qty|quantity)\b/i.test(String(r.text||''))&&/\bprice\b/i.test(String(r.text||''))&&/\bamount\b/i.test(String(r.text||'')));
+  if(!header)return [];
+  const items=header.items||[],center=it=>Number(it?.x)+(Number(it?.width??it?.w)||0)/2;
+  const qty=items.find(it=>/^(?:qty|quantity)$/i.test(String(it.text||'').trim()));
+  const price=[...items].reverse().find(it=>/\bprice\b/i.test(String(it.text||'')));
+  const amount=[...items].reverse().find(it=>/\bamount\b/i.test(String(it.text||'')));
+  if(!qty||!price||!amount)return [];
+  const qtyX=center(qty),priceX=center(price),amountX=center(amount);
+  if(![qtyX,priceX,amountX].every(Number.isFinite)||!(qtyX<priceX&&priceX<amountX))return [];
+  const topOf=r=>height-Number(r?.y||0),headerTop=topOf(header);
+  const stopRows=rows.filter(r=>topOf(r)>headerTop&&/^(?:sub\s*total|subtotal|gst\b|invoice\s+total|grand\s+total|amount\s+due)\b/i.test(String(r.text||'').replace(/^[^A-Za-z]+/,'')));
+  const stopTop=stopRows.length?Math.min(...stopRows.map(topOf)):height*.96;
+  const anchors=[];
+  for(const r of rows){
+    const top=topOf(r);if(!(top>headerTop+2&&top<stopTop))continue;
+    const ord=(r.items||[]).filter(it=>center(it)<width*.20).map(it=>String(it.text||'').trim()).find(t=>/^[1-9]\d?$/.test(t))
+      ||(String(r.text||'').match(/^\s*([1-9]\d?)\b/)||[])[1];
+    if(!ord)continue;
+    anchors.push({ordinal:Number(ord),top});
+  }
+  anchors.sort((a,b)=>a.top-b.top);
+  const unique=[];for(const a of anchors)if(!unique.some(x=>x.ordinal===a.ordinal||Math.abs(x.top-a.top)<3))unique.push(a);
+  const x0=Math.max(0,qtyX-Math.max(18,(priceX-qtyX)*.58)),x1=Math.min(width,amountX+Math.max(40,(amountX-priceX)*.90));
+  const out=[];
+  for(let i=0;i<unique.length;i++){
+    const a=unique[i],next=unique[i+1];
+    const y0=Math.max(headerTop+2,a.top-8),y1=Math.min(stopTop-2,next?next.top-5:a.top+Math.max(42,(height-headerTop)*.075));
+    if(y1-y0<14)continue;
+    out.push({ordinal:a.ordinal,x0:x0/width,x1:x1/width,y0:y0/height,y1:y1/height});
+  }
+  return out.slice(0,30);
+}
 async function extractPdf(file){
   setProgress(5,'Loading PDF…');
   state.ocrCandidates=null;
@@ -727,6 +762,7 @@ async function extractPdf(file){
       // positively authorised the page as Invoice/Tax Invoice, allow high-resolution recovery.
       if((nativeAllowed||ocrAllowed)&&modelRich)invoiceModelPages.push(i+1);
     }
+    const targetedRowCandidates=[];
     if(invoiceModelPages.length){
       const hiWorker=await Tesseract.createWorker('eng');
       const hiModes=[
@@ -744,6 +780,37 @@ async function extractPdf(file){
           const hiGate=globalThis.V7033Patch?.filterInvoicePages([hiText],[]);
           if(hiGate?.texts?.length)state.v2FullDocumentEvidence.push({source:'invoice-hires-'+mode.key+'-p'+pageNo,kind:'ocr',text:hiGate.texts[0],layout:[]});
         }
+
+        // Targeted numeric row OCR: whole-page segmentation can be disrupted by stamps/signatures.
+        // Geometry comes only from an OCR table header + printed row ordinals; values are never guessed.
+        const baseLayouts=modes.map(m=>m.layouts?.[pageNo-1]).filter(x=>x?.rows?.length).sort((a,b)=>(b.items?.length||0)-(a.items?.length||0));
+        const baseLayout=baseLayouts[0],bands=v703316TargetedNumericBands(baseLayout||{});
+        if(baseLayout&&bands.length){
+          const targetModes=[
+            {key:'row-block',psm:Tesseract.PSM?.SINGLE_BLOCK??'6',preprocess:false},
+            {key:'row-sparse',psm:Tesseract.PSM?.SPARSE_TEXT??'11',preprocess:true}
+          ];
+          for(const tm of targetModes){
+            const lines=[];
+            for(const band of bands){
+              const sx=Math.max(0,Math.floor(canvas.width*band.x0)),sy=Math.max(0,Math.floor(canvas.height*band.y0));
+              const ex=Math.min(canvas.width,Math.ceil(canvas.width*band.x1)),ey=Math.min(canvas.height,Math.ceil(canvas.height*band.y1));
+              if(ex-sx<30||ey-sy<12)continue;
+              const crop=document.createElement('canvas');crop.width=ex-sx;crop.height=ey-sy;
+              crop.getContext('2d',{willReadFrequently:true}).drawImage(canvas,sx,sy,crop.width,crop.height,0,0,crop.width,crop.height);
+              const input=tm.preprocess?v703314nPreprocessCanvas(crop):crop;
+              await hiWorker.setParameters({tessedit_pageseg_mode:tm.psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
+              const rr=await hiWorker.recognize(input,{}, {text:true}),tx=String(rr.data?.text||'').replace(/s+/g,' ').trim();
+              if(tx)lines.push('ROW '+band.ordinal+' | '+tx);
+            }
+            if(lines.length){
+              const targetedText='TAX INVOICE\nTARGETED NUMERIC ROW EVIDENCE\n'+lines.join('\n');
+              const source='invoice-targeted-'+tm.key+'-p'+pageNo;
+              state.v2FullDocumentEvidence.push({source,kind:'ocr-targeted',text:targetedText,layout:[]});
+              targetedRowCandidates.push({source,label:'TARGETED ROW OCR',text:targetedText,layout:[],score:1});
+            }
+          }
+        }
       }}finally{await hiWorker.terminate();}
     }
     const candidates=modes.map(m=>{
@@ -756,7 +823,7 @@ async function extractPdf(file){
       console.warn('Structural OCR produced no usable invoice candidate; native evidence retained.');
     }else{
       const nativeCandidate={source:'native-pdf',label:'NATIVE PDF',text:nativePdfText,layout:nativePdfLayout,score:ocrTextQuality(nativePdfText)+nativeLayoutScore,invoicePageDecisions:v70338PrimaryGate.decisions,documentReviewRequired:!!v70338PrimaryGate.reviewRequired};
-      const all=[nativeCandidate,...candidates],seen=new Set();
+      const all=[nativeCandidate,...candidates,...targetedRowCandidates],seen=new Set();
       state.ocrCandidates=all.filter(x=>{const k=String(x.source||'')+'|'+String(x.text||'').replace(/\s+/g,' ').slice(0,1200);if(seen.has(k))return false;seen.add(k);return true;}).sort((a,b)=>(Number(b.score)||0)-(Number(a.score)||0));
       const chosen=state.ocrCandidates[0]||nativeCandidate;text=chosen.text;state.pdfLayout=chosen.layout||nativePdfLayout;
     }
