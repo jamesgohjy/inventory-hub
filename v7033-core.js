@@ -322,7 +322,7 @@
   }
   function equipmentType(text=''){
     const s=norm(text);
-    const pairs=[['projector controller','Projector Controller'],['projector control','Projector Controller'],['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['control panel','Control Panel'],['controller','Controller'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
+    const pairs=[['projector controller','Projector Controller'],['projector control','Projector Controller'],['microphone wall receptacle','Microphone Wall Receptacle'],['wall receptacle','Wall Receptacle'],['receptacle','Receptacle'],['manual screen','Manual Projection Screen'],['motorised screen','Motorised Screen'],['motorized screen','Motorised Screen'],['control panel','Control Panel'],['controller','Controller'],['projector','Projector'],['microphone','Microphone'],['active speaker','Active Speaker'],['speaker','Speaker'],['patch panel','Patch Panel'],['cd mp3 player','CD/MP3 Player'],['player','Player'],['mixer','Mixer'],['camera','Camera'],['screen','Screen'],['display','Display'],['monitor','Monitor'],['receiver','Receiver'],['transmitter','Transmitter'],['amplifier','Amplifier'],['processor','Processor'],['switcher','Switcher']];
     for(const [k,v] of pairs)if(s.includes(k))return v;return '';
   }
   function contentWords(s=''){return norm(s).split(' ').filter(w=>w.length>=4&&!/^(?:with|from|year|only|stock|warranty|supply|install|installation|dismantle|dismantled|dismantling|dismount|dismounted|dismounting|commissioning|labour|labor|service|services|safety|wired|secure|classroom)$/.test(w));}
@@ -384,8 +384,8 @@
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
-    const cleanName=v=>clean(v||'').replace(/^supply(?:\s+and\s+install)?\s+/i,'').trim();
-    const typeRank=t=>({'Projector Controller':90,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
+    const cleanName=v=>clean(v||'').replace(/^supply(?:\s+(?:and|&)\s+install)?\s+/i,'').trim();
+    const typeRank=t=>({'Projector Controller':90,'Microphone Wall Receptacle':88,'Wall Receptacle':86,'Receptacle':84,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
     const candidates=[{text:cleanName(row.description),source:'description',bonus:4},{text:cleanName(row.item_name),source:'item_name',bonus:2}]
       .map(x=>({...x,type:equipmentType(x.text)}))
       .filter(x=>x.text&&x.type&&compact(x.text).includes(compact(model))&&!/\b(?:warranty|delivery|installation|labou?r|service\s+fee|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|commissioning)\b/i.test(x.text));
@@ -398,9 +398,13 @@
       return [clean(identity.brand||''),model,best.type].filter(Boolean).join(' ');
     }
     const brand=clean(identity.brand||'');
+    const descriptive=cleanName(row.description)||cleanName(row.item_name);
+    const descriptiveType=equipmentType(descriptive);
+    const specificDescription=/^(?:Microphone Wall Receptacle|Wall Receptacle|Receptacle|Projector Controller|Control Panel|Manual Projection Screen|Motorised Screen)$/i.test(descriptiveType);
+    if(descriptive&&specificDescription&&descriptive.split(/\s+/).length<=8&&!/\b(?:warranty|delivery|labou?r|service\s+fee|dismantl|commissioning|training|calibration|programming)\b/i.test(descriptive))return descriptive;
     const type=equipmentType([row.item_name,row.description,identity.evidenceLine].filter(Boolean).join(' '));
     const parts=uniq([brand,model,type].filter(Boolean),compact);
-    return parts.length>=2?parts.join(' '):cleanName(row.item_name)||cleanName(row.description);
+    return parts.length>=2?parts.join(' '):cleanName(row.item_name)||descriptive;
   }
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
@@ -634,7 +638,7 @@
 
   // V7.03.3.12l: scanned numbered-table recovery is based on actual OCR evidence,
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
-  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
+  const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|training|knowledge\s+transfer|system\s+tuning|calibration|programming|label(?:ling|ing)|tidying|racking|mounting\s+kits?|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bcabling\b|\bwires?\b|\bwiring\b|\bconnectors?\b|\baccessories?\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
   const V703312J_EQUIPMENT_RE=/\b(?:controllers?|control\s+panels?|keypads?|button\s+keypads?|projectors?|microphones?|mics?|speakers?|loudspeakers?|cameras?|mixers?|consoles?|displays?|monitors?|receivers?|transmitters?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visuali[sz]ers?|document\s+cameras?|lighting\s+controllers?|media\s+players?|cd\/?mp3\s+players?|players?|receptacles?|audio\s+testers?|signal\s+testers?|analy[sz]ers?|scalers?|matrix|nvr|dvr|network\s+video\s+recorders?|digital\s+video\s+recorders?)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
@@ -920,15 +924,60 @@
     const na=normalizedItemIdentity(a.item_name||a.description||''),nb=normalizedItemIdentity(b.item_name||b.description||'');
     return !!na&&!!nb&&(na===nb||na.includes(nb)||nb.includes(na));
   }
+  function v703314zaStrongEconomicAlias(a={},b={}){
+    const sa=compact(a.sku||''),sb=compact(b.sku||'');
+    // Never fuzzy-merge two explicitly different model identities.
+    if(sa&&sb&&sa!==sb)return false;
+    const qa=Number(a.quantity),qb=Number(b.quantity),pa=Number(a.unit_price),pb=Number(b.unit_price),aa=Number(a.amount),ab=Number(b.amount);
+    if(!(qa>0&&qb>0&&Number.isFinite(pa)&&Number.isFinite(pb)&&Number.isFinite(aa)&&Number.isFinite(ab)))return false;
+    if(Math.abs(qa-qb)>1e-9||Math.abs(pa-pb)>.01||Math.abs(aa-ab)>.01)return false;
+    const tokens=row=>{
+      const stop=new Set(['SUPPLY','INSTALL','INSTALLATION','SYSTEM','EQUIPMENT','THE','NEW','SPECIFIED','SECTION','INCLUDES','WITH','FOR','AND','A','AN']);
+      return new Set((norm(row.item_name||row.description||'').toUpperCase().match(/[A-Z0-9]+/g)||[]).filter(x=>x.length>=4&&!stop.has(x)));
+    };
+    const ta=tokens(a),tb=tokens(b);if(!ta.size||!tb.size)return false;
+    const overlap=[...ta].filter(x=>tb.has(x)).length,short=Math.min(ta.size,tb.size);
+    const equipmentBoth=V703312J_EQUIPMENT_RE.test(v703312jRowText(a))&&V703312J_EQUIPMENT_RE.test(v703312jRowText(b));
+    return equipmentBoth&&overlap>=3&&overlap/short>=.6;
+  }
   function v703312jMergeTrackedRows(existing=[],recovered=[],raw=''){
     const kept=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
-    for(const rec of recovered||[]){const match=kept.find(x=>v703312jSameEquipment(x,rec));if(!match)kept.push(rec);else if((rec.v703312kEvidenceSources||[]).length){
-      match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),...rec.v703312kEvidenceSources]);
-      match.v703312kLevel1=match.v703312kLevel1?.status==='confirmed'?match.v703312kLevel1:rec.v703312kLevel1;
-      const sourceCount=match.v703312kEvidenceSources.length;
-      if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
-      else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
-    }}
+    for(const rec of recovered||[]){
+      const match=kept.find(x=>v703312jSameEquipment(x,rec))||kept.find(x=>v703314zaStrongEconomicAlias(x,rec));
+      if(!match){kept.push({...rec});continue;}
+      const recoveredEvidence=(rec.v703312kEvidenceSources||[]).length||rec.v703312kOcrEvidence||rec.v703314zPrintedModel;
+      if(recoveredEvidence){
+        match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),...(rec.v703312kEvidenceSources||[])]);
+        match.v703312kLevel1=match.v703312kLevel1?.status==='confirmed'?match.v703312kLevel1:rec.v703312kLevel1;
+        // Evidence-backed recovery is allowed to repair degraded downstream materialisation.
+        // Explicit printed model evidence outranks a blank/inferred SKU; verified economics
+        // fill only missing/zero downstream values and never overwrite a conflicting nonzero amount.
+        if(rec.v703314zPrintedModel&&rec.sku){
+          const current=clean(match.sku||'');
+          if(!current||match.skuReviewRequired||!credibleSku(current,v703312jRowText(match))){
+            match.sku=rec.sku;match.model=rec.model||rec.sku;match.v703314zPrintedModel=rec.v703314zPrintedModel;
+          }else if(compact(current)!==compact(rec.sku)){
+            match.skuReviewRequired=true;match.humanReviewRequired=true;match.needsReview=true;match.v703312kIndependentConflict=true;
+          }
+        }else if(!clean(match.sku||'')&&clean(rec.sku||''))match.sku=rec.sku;
+        const matchName=clean(match.item_name||''),recName=clean(rec.item_name||'');
+        const weakName=!matchName||match.humanReviewRequired||match.needsReview||!V703312J_EQUIPMENT_RE.test(matchName)||V703312J_SERVICE_ROW_RE.test(matchName);
+        if(recName&&weakName)match.item_name=recName;
+        if(clean(rec.description||'')&&(!clean(match.description||'')||weakName))match.description=rec.description;
+        const recComplete=rec.unit_price!==null&&rec.unit_price!==undefined&&rec.unit_price!==''&&rec.amount!==null&&rec.amount!==undefined&&rec.amount!==''&&Number.isFinite(Number(rec.unit_price))&&Number.isFinite(Number(rec.amount));
+        const matchPriceMissing=match.unit_price===null||match.unit_price===undefined||match.unit_price===''||Number(match.unit_price)===0;
+        const matchAmountMissing=match.amount===null||match.amount===undefined||match.amount===''||Number(match.amount)===0;
+        if(recComplete&&matchPriceMissing&&matchAmountMissing){
+          match.quantity=rec.quantity;match.unit_price=rec.unit_price;match.amount=rec.amount;
+          delete match.priceReviewRequired;delete match.amountReviewRequired;
+        }
+        if(rec.v703314zReplacementModel)match.v703314zReplacementModel=rec.v703314zReplacementModel;
+        match.v703312kSourceLine=uniq([match.v703312kSourceLine,rec.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+        const sourceCount=match.v703312kEvidenceSources.length;
+        if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
+        else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
+      }
+    }
     return dedupeParsedLineItems(consolidateFragmentedParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw))));
   }
 
