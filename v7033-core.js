@@ -945,7 +945,14 @@
   }
   function v703314zcReconcileReviewRows(existing=[],recovered=[],raw='',evidenceSources=[]){
     const incoming=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
-    const authoritative=(recovered||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r)).map(r=>({...r}));
+    const authoritative=(recovered||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r)).map(r=>{
+      const row={...r};
+      const name=clean(row.item_name||row.description||'');
+      if(/^supply\s*(?:&|and)\s*install\s+/i.test(name)){
+        row.item_name=clean(name.replace(/^supply\s*(?:&|and)\s*install\s+/i,''));
+      }
+      return row;
+    });
     if(!authoritative.length)return v703312jMergeTrackedRows(incoming,recovered,raw);
 
     const out=authoritative.map(r=>({...r}));
