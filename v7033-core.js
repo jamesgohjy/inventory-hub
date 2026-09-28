@@ -910,6 +910,34 @@
     return {match,reason:match?(explicitConflict?'conflicting-model-same-physical-row':'cross-ocr-witness'):'insufficient-evidence',score,overlap,sameType,sameOrdinal,common};
   }
 
+  function v703314zdExplicitModelFromText(text=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n|\s+\|\s+/).map(clean).filter(Boolean);
+    const out=[];
+    const push=(value,line)=>{
+      let v=clean(value).replace(/^[\s:;#-]+|[;,]+$/g,'');
+      if(!v)return;
+      v=v.split(/\s+(?:qty|quantity|unit\s*price|amount|sgd|subtotal|gst|total)\b/i)[0].trim();
+      if(v.length<2||v.length>64)return;
+      if(/^(?:n\/a|na|none|nil|not applicable)$/i.test(v))return;
+
+      // Explicit Model lines often contain "Brand Model". Prefer the terminal token
+      // only when it has strong model-like structure (digit and/or model punctuation).
+      // Single-word alphabetic models such as "Neutrik" remain intact.
+      const parts=v.split(/\s+/).filter(Boolean),last=parts.at(-1)||'';
+      const strongTerminal=/[0-9]/.test(last)||/[+._\/-]/.test(last);
+      if(parts.length>1&&strongTerminal&&/^[A-Za-z0-9][A-Za-z0-9+._\/-]{1,63}$/.test(last))v=last;
+
+      out.push({model:v,line:clean(line)});
+    };
+    for(const line of lines){
+      let m=line.match(/\b(?:model|model\s*no\.?|model\s*number|m\/n)\s*[:#-]?\s*([^|]{2,64})$/i);
+      if(m){push(m[1],line);continue;}
+      m=line.match(/\b(?:sku|part\s*no\.?|part\s*number|item\s*code)\s*[:#-]\s*([A-Za-z0-9][A-Za-z0-9+._\/-]{1,63})\b/i);
+      if(m)push(m[1],line);
+    }
+    return out;
+  }
+
   function v703314zdModelCandidates(row={}){
     const out=[],push=(model,source,explicit,line='')=>{
       const m=clean(model);if(!m)return;
@@ -921,6 +949,24 @@
     for(const e of row.v703314zdModelCandidates||[])push(e.model,e.source,e.explicit,e.line);
     for(const e of row.v703314zPrintedModelEvidence||[])push(e.model,e.source,true,e.line);
     if(row.v703314zPrintedModel)push(row.v703314zPrintedModel,row.v703312kSource,true,row.v703312kSourceLine);
+
+    // Recover explicit model evidence from row-local text only when structured
+    // per-source printed-model evidence is absent. Once OCR witnesses are merged,
+    // v703312kSourceLine can contain lines from several sources; re-reading that
+    // aggregate and assigning every value to one source would falsify consensus.
+    const alreadyHasExplicit=out.some(x=>x.explicit);
+    if(!alreadyHasExplicit){
+      const evidenceTexts=[
+        row.v703312kSourceLine,
+        row.v7Provenance?.sku?.sourceText,
+        row.provenance?.sku?.sourceText,
+        row.raw_text,row.rawText,row.source_text,row.sourceText
+      ].filter(Boolean);
+      for(const text of evidenceTexts){
+        for(const e of v703314zdExplicitModelFromText(text))push(e.model,row.v703312kSource||row.source||'row-local-explicit',true,e.line);
+      }
+    }
+
     const sku=clean(row.sku||row.model||'');
     if(sku&&compact(sku)!==compact(row.v703314zPrintedModel||''))push(sku,row.v703312kSource,false,row.v703312kSourceLine);
     return out;
@@ -931,8 +977,9 @@
     if(/(?:native|pdftext|text-layer)/.test(s))return 6;
     if(/(?:column|block|hires|hi-res|high-res|300dpi|targeted)/.test(s))return 5;
     if(/(?:model|table)/.test(s))return 4;
-    if(/(?:auto|primary)/.test(s))return 3;
-    return 2;
+    // Generic/unknown OCR witnesses are peers of primary/auto OCR. Do not let
+    // naming alone break an explicit-model tie.
+    return 3;
   }
 
   function v703314zdResolveModelConsensus(row={}){
@@ -2045,5 +2092,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,v703314zdExplicitModelFromText,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
