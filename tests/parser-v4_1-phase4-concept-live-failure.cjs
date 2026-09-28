@@ -55,8 +55,8 @@ assert(recovered.length===7,'authoritative Concept recovery must yield 7 rows, g
 const merged=V.v703312jMergeTrackedRows(degradedLiveRows,recovered,ocrA);
 const audited=V41.recoverRows(merged,{raw:ocrA,sources});
 const rows=audited.outputRows;
-
-assert(rows.length===7,'live Concept reconciliation must yield exactly 7 equipment rows, got '+rows.length);
+console.log('PHASE4 CONCEPT LIVE DEBUG ROWS: '+JSON.stringify(rows.map(r=>({sku:r.sku,item_name:r.item_name,description:r.description,qty:r.quantity,unit:r.unit_price,amount:r.amount,review:!!(r.humanReviewRequired||r.needsReview)}))));
+assert(rows.length===7,'live Concept reconciliation must yield exactly 7 equipment rows, got '+rows.length+' rows='+JSON.stringify(rows.map(r=>({sku:r.sku,item_name:r.item_name,description:r.description}))));
 assert(!rows.some(r=>/the new equipment specified|racking|mounting kits|cabling|labelling|tidying/i.test(String(r.item_name||r.description||''))),
   'Scope-of-Work/service row survived reconciliation');
 
