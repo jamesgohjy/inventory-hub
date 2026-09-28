@@ -34,6 +34,15 @@
     }
     return out;
   }
+  function v703315SerialContinuationTokens(line=''){
+    const t=clean(line);if(!t)return [];
+    // Continuation rows must look like serial data, not a later equipment/model description.
+    if(/\b(?:projector|microphone|speaker|system|tester|transmitter|receiver|controller|panel|trolley|amplifier|mixer|camera|display|monitor|shipment|warranty|description|quantity|unit\s*price|amount|model)\b/i.test(t))return [];
+    const tokens=v703315SerialTokens(t);if(!tokens.length)return [];
+    const words=t.replace(/[,;]+/g,' ').split(/\s+/).filter(Boolean);
+    if(!/[,;]/.test(t)&&words.length>2)return [];
+    return tokens;
+  }
   function v703315ExtractSerialBlocks(text=''){
     const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),blocks=[];
     const label=V703315_SERIAL_LABEL_RE;
@@ -46,7 +55,7 @@
       for(let j=i+1;j<Math.min(lines.length,i+7);j++){
         const line=lines[j];
         if(label.test(line)||hardStop.test(line)||economic.test(line))break;
-        const tokens=v703315SerialTokens(line);
+        const tokens=v703315SerialContinuationTokens(line);
         if(tokens.length){
           for(const token of tokens)if(!serials.some(v=>compact(v)===compact(token)))serials.push(token);
           endLineIndex=j;continue;
@@ -196,6 +205,14 @@
     const strongTax=taxTitleLines.length>0||fragmentedTax;
     const strongInvoice=invoiceTitleLines.length>0;
 
+    // V4.1 audit hardening: an explicit prohibited document title at the top of the page
+    // outranks stray/duplicated "invoice" text elsewhere on that page. This prevents scanned
+    // PO/DO/quotation/schedule pages from becoming inventory evidence after OCR.
+    const explicitNonInvoiceTitleRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|INSTALLATION\s+REPORT|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)$/i;
+    const explicitEarly=exactNormalizedHeading.slice(0,24);
+    const explicitEarlyPhrases=[...explicitEarly,...adjacentPhrases(explicitEarly,3)];
+    const explicitNonInvoiceTitles=[...new Set(explicitEarlyPhrases.filter(x=>explicitNonInvoiceTitleRe.test(x)))];
+
     // OCR-tolerant heading evidence. This is intentionally weaker and routes to Level 3.
     const fuzzyHead=headingLines.some(line=>{
       if(!titleLineCandidate(line))return false;
@@ -230,8 +247,13 @@
     if(paymentTerms)structureScore+=1;
     if(currency)structureScore+=1;
 
-    // Document authority is resolved before equipment extraction. An explicit Invoice/Tax Invoice
-    // title remains authoritative even when its header contains PO/DO reference fields.
+    // Document authority is resolved before equipment extraction. Explicit prohibited
+    // document titles at the top of a page are terminal even if OCR later repeats "TAX INVOICE".
+    // Labelled PO/DO reference fields inside a real invoice do not match this exact-title rule.
+    if(explicitNonInvoiceTitles.length){
+      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence:{...evidence,explicitNonInvoiceTitles}};
+    }
+    // An explicit Invoice/Tax Invoice title remains authoritative when no prohibited title exists.
     if(strongTax){
       return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:false,score:12+structureScore,evidence};
     }
