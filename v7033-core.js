@@ -950,17 +950,21 @@
     for(const e of row.v703314zPrintedModelEvidence||[])push(e.model,e.source,true,e.line);
     if(row.v703314zPrintedModel)push(row.v703314zPrintedModel,row.v703312kSource,true,row.v703312kSourceLine);
 
-    // Recover explicit model evidence that survived only as row-local/source text.
-    // This is supplier-independent and only activates on explicit labels such as
-    // Model:, Model No:, M/N:, SKU:, Part No:, or Item Code:.
-    const evidenceTexts=[
-      row.v703312kSourceLine,
-      row.v7Provenance?.sku?.sourceText,
-      row.provenance?.sku?.sourceText,
-      row.raw_text,row.rawText,row.source_text,row.sourceText
-    ].filter(Boolean);
-    for(const text of evidenceTexts){
-      for(const e of v703314zdExplicitModelFromText(text))push(e.model,row.v703312kSource||row.source||'row-local-explicit',true,e.line);
+    // Recover explicit model evidence from row-local text only when structured
+    // per-source printed-model evidence is absent. Once OCR witnesses are merged,
+    // v703312kSourceLine can contain lines from several sources; re-reading that
+    // aggregate and assigning every value to one source would falsify consensus.
+    const alreadyHasExplicit=out.some(x=>x.explicit);
+    if(!alreadyHasExplicit){
+      const evidenceTexts=[
+        row.v703312kSourceLine,
+        row.v7Provenance?.sku?.sourceText,
+        row.provenance?.sku?.sourceText,
+        row.raw_text,row.rawText,row.source_text,row.sourceText
+      ].filter(Boolean);
+      for(const text of evidenceTexts){
+        for(const e of v703314zdExplicitModelFromText(text))push(e.model,row.v703312kSource||row.source||'row-local-explicit',true,e.line);
+      }
     }
 
     const sku=clean(row.sku||row.model||'');
