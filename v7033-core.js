@@ -1057,7 +1057,7 @@
     if(wc>=2&&wc<=9)score+=18;else if(wc>12)score-=Math.min(30,(wc-12)*3);
     if(/^(?:with|and|of|for)\b/i.test(n))score-=20;
     if(/\b(?:quidoar|digilal|duecanail|speeker|omitronic|alyr?)\b/i.test(n))score-=18;
-    const mixed=tokens.filter(t=>/[A-Za-z]/.test(t)&&/\d/.test(t)&&!modelLikeToken(t)).length;
+    const mixed=tokens.filter(t=>/[A-Za-z]/.test(t)&&/\d/.test(t)&&!/^[A-Z0-9][A-Z0-9+._\/-]{2,31}$/i.test(t)).length;
     score-=mixed*7;
     const repeats=tokens.length-new Set(tokens.map(t=>compact(t))).size;score-=repeats*5;
     if(/\b(?:digital|wireless|handheld|passive|active|power|monitor|outdoor|dual|single|wall|receptacle|mixer|console|amplifier|speaker|loudspeaker|player|controller|projector|camera|receiver|transmitter|processor|switcher|dsp)\b/i.test(n))score+=10;
