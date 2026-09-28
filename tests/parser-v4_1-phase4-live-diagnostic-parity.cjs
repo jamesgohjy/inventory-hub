@@ -33,7 +33,7 @@ Model: Neutrik
 const sources=[
  {source:'live-auto',kind:'ocr',text:invoice,layout:[]},
  {source:'live-column',kind:'ocr',text:invoice.replace('ZX1I-90','Z2X1I-90'),layout:[]},
- {source:'live-block',kind:'ocr',text:invoice,layout:[]}
+ {source:'live-block',kind:'ocr',text:invoice.replace('Support up to 12 channels','Supports up to 12 channels'),layout:[]}
 ];
 
 // Representative live downstream fragments copied from the failure shape shown in Parser Diagnostics.

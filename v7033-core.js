@@ -845,52 +845,146 @@
     return out;
   }
 
+  function v703314zdRowOrdinal(row={}){
+    const direct=Number(row.v703314zOrdinal);
+    if(Number.isInteger(direct)&&direct>0)return direct;
+    const line=clean(row.v703312kSourceLine||'');
+    const m=line.match(/^\s*(\d{1,3})\b/);
+    return m?Number(m[1]):null;
+  }
+
+  function v703314zdIdentityTokens(row={}){
+    const stop=new Set(['SUPPLY','INSTALL','INSTALLATION','SYSTEM','EQUIPMENT','THE','NEW','SPECIFIED','SECTION','INCLUDES','WITH','FOR','AND','FROM','THIS','THAT','CHANNEL','DIGITAL','OUTDOOR','SINGLE','DUAL','MODEL','MAKE','BRAND']);
+    const modelKeys=new Set([row.sku,row.model,row.v703314zPrintedModel].map(compact).filter(Boolean));
+    const words=(norm([row.item_name,row.description].filter(Boolean).join(' ')).toUpperCase().match(/[A-Z0-9]+/g)||[]);
+    return new Set(words.filter(x=>x.length>=3&&!stop.has(x)&&!modelKeys.has(compact(x))));
+  }
+
   function v703314zdRecoveredWitnessSimilarity(a={},b={}){
     const sa=compact(a.sku||a.model||''),sb=compact(b.sku||b.model||'');
-    if(sa&&sb&&sa!==sb)return {match:false,reason:'different-explicit-sku',score:0};
-
     const qa=Number(a.quantity),qb=Number(b.quantity);
     if(qa>0&&qb>0&&qa!==qb)return {match:false,reason:'quantity-conflict',score:0};
+
+    const ordA=v703314zdRowOrdinal(a),ordB=v703314zdRowOrdinal(b);
+    if(ordA&&ordB&&ordA!==ordB)return {match:false,reason:'different-invoice-row',score:0};
+    const sameOrdinal=!!ordA&&!!ordB&&ordA===ordB;
 
     const has=(r,f)=>r?.[f]!==null&&r?.[f]!==undefined&&r?.[f]!==''&&Number.isFinite(Number(r[f]));
     const pa=has(a,'unit_price')?Number(a.unit_price):null,pb=has(b,'unit_price')?Number(b.unit_price):null;
     const aa=has(a,'amount')?Number(a.amount):null,ab=has(b,'amount')?Number(b.amount):null;
     if(pa!==null&&pb!==null&&Math.abs(pa-pb)>.01)return {match:false,reason:'price-conflict',score:0};
     if(aa!==null&&ab!==null&&Math.abs(aa-ab)>.01)return {match:false,reason:'amount-conflict',score:0};
+    const economicAgreement=(pa===null||pb===null||Math.abs(pa-pb)<=.01)&&(aa===null||ab===null||Math.abs(aa-ab)<=.01);
 
-    const text=r=>norm([
-      r.item_name,r.description,r.v703312kSourceLine,
-      r.v703314zPrintedModel,r.v703314zReplacementModel
-    ].filter(Boolean).join(' '));
-    const stop=new Set(['SUPPLY','INSTALL','INSTALLATION','SYSTEM','EQUIPMENT','THE','NEW','SPECIFIED','SECTION','INCLUDES','WITH','FOR','AND','FROM','THIS','THAT','CHANNEL','DIGITAL','OUTDOOR','SINGLE','DUAL']);
-    const tokens=r=>new Set((text(r).toUpperCase().match(/[A-Z0-9]+/g)||[]).filter(x=>x.length>=3&&!stop.has(x)));
-    const ta=tokens(a),tb=tokens(b);
+    const ta=v703314zdIdentityTokens(a),tb=v703314zdIdentityTokens(b);
     const common=[...ta].filter(x=>tb.has(x));
     const short=Math.max(1,Math.min(ta.size,tb.size));
     const overlap=common.length/short;
-
-    const typeA=equipmentType(text(a)),typeB=equipmentType(text(b));
+    const typeA=equipmentType([a.item_name,a.description].filter(Boolean).join(' '));
+    const typeB=equipmentType([b.item_name,b.description].filter(Boolean).join(' '));
     const sameType=!!typeA&&!!typeB&&typeA===typeB;
-
-    // One witness may carry the explicit model while another carries the cleaner
-    // description. The explicit model is allowed to anchor the pair only when the
-    // quantity/economics do not conflict and the descriptive evidence is strongly related.
+    const explicitConflict=!!sa&&!!sb&&sa!==sb;
     const oneSku=!!(sa||sb)&&!(sa&&sb);
-    const economicAgreement=(pa===null||pb===null||Math.abs(pa-pb)<=.01)&&(aa===null||ab===null||Math.abs(aa-ab)<=.01);
 
     let score=0;
     if(sa&&sb&&sa===sb)score+=100;
     if(oneSku)score+=18;
+    if(explicitConflict)score-=12;
+    if(sameOrdinal)score+=35;
     if(qa>0&&qb>0&&qa===qb)score+=18;
     if(pa!==null&&pb!==null&&Math.abs(pa-pb)<=.01)score+=18;
     if(aa!==null&&ab!==null&&Math.abs(aa-ab)<=.01)score+=18;
     if(sameType)score+=18;
-    score+=Math.round(overlap*30);
+    score+=Math.round(overlap*35);
 
+    // Conflicting model strings may still be two OCR readings of one physical row.
+    // Require stronger non-model identity evidence before grouping them.
+    const conflictMatch=explicitConflict&&economicAgreement&&sameType&&(
+      sameOrdinal&&overlap>=.35
+      ||(!ordA&&!ordB&&common.length>=3&&overlap>=.78&&score>=70)
+    );
     const match=(sa&&sb&&sa===sb)
-      ||(economicAgreement&&sameType&&overlap>=.45&&score>=58)
-      ||(oneSku&&economicAgreement&&overlap>=.55&&score>=55);
-    return {match,reason:match?'cross-ocr-witness':'insufficient-evidence',score,overlap,sameType,common};
+      ||conflictMatch
+      ||(!explicitConflict&&economicAgreement&&sameType&&overlap>=.45&&score>=58)
+      ||(!explicitConflict&&oneSku&&economicAgreement&&overlap>=.55&&score>=55);
+    return {match,reason:match?(explicitConflict?'conflicting-model-same-physical-row':'cross-ocr-witness'):'insufficient-evidence',score,overlap,sameType,sameOrdinal,common};
+  }
+
+  function v703314zdModelCandidates(row={}){
+    const out=[],push=(model,source,explicit,line='')=>{
+      const m=clean(model);if(!m)return;
+      const s=clean(source)||'unknown';
+      const k=compact(m)+'|'+s+'|'+(explicit?'E':'I');
+      if(out.some(x=>x.key===k))return;
+      out.push({key:k,model:m,source:s,explicit:!!explicit,line:clean(line)});
+    };
+    for(const e of row.v703314zdModelCandidates||[])push(e.model,e.source,e.explicit,e.line);
+    for(const e of row.v703314zPrintedModelEvidence||[])push(e.model,e.source,true,e.line);
+    if(row.v703314zPrintedModel)push(row.v703314zPrintedModel,row.v703312kSource,true,row.v703312kSourceLine);
+    const sku=clean(row.sku||row.model||'');
+    if(sku&&compact(sku)!==compact(row.v703314zPrintedModel||''))push(sku,row.v703312kSource,false,row.v703312kSourceLine);
+    return out;
+  }
+
+  function v703314zdSourceReliability(source=''){
+    const s=norm(source);
+    if(/(?:native|pdftext|text-layer)/.test(s))return 6;
+    if(/(?:column|block|hires|hi-res|high-res|300dpi|targeted)/.test(s))return 5;
+    if(/(?:model|table)/.test(s))return 4;
+    if(/(?:auto|primary)/.test(s))return 3;
+    return 2;
+  }
+
+  function v703314zdResolveModelConsensus(row={}){
+    const r={...row},candidates=v703314zdModelCandidates(r);
+    r.v703314zdModelCandidates=candidates;
+    if(!candidates.length)return r;
+
+    const groups=new Map();
+    for(const c of candidates){
+      const k=compact(c.model);if(!k)continue;
+      let g=groups.get(k);
+      if(!g){g={key:k,model:c.model,explicitSources:new Set(),allSources:new Set(),explicitCount:0,candidates:[],maxReliability:0,totalReliability:0};groups.set(k,g);}
+      g.allSources.add(c.source);g.candidates.push(c);
+      const reliability=v703314zdSourceReliability(c.source);
+      g.maxReliability=Math.max(g.maxReliability,reliability);
+      g.totalReliability+=reliability;
+      if(c.explicit){g.explicitSources.add(c.source);g.explicitCount++;}
+      // Prefer the exact printed spelling for display.
+      if(c.explicit)g.model=c.model;
+    }
+    const ranked=[...groups.values()].sort((a,b)=>{
+      const as=a.explicitSources.size,bs=b.explicitSources.size;
+      if(bs!==as)return bs-as;
+      if(b.maxReliability!==a.maxReliability)return b.maxReliability-a.maxReliability;
+      if(b.allSources.size!==a.allSources.size)return b.allSources.size-a.allSources.size;
+      if(b.totalReliability!==a.totalReliability)return b.totalReliability-a.totalReliability;
+      return b.explicitCount-a.explicitCount;
+    });
+    if(!ranked.length)return r;
+    const top=ranked[0],runner=ranked[1];
+    let resolved=false,reason='';
+    if(ranked.length===1){resolved=true;reason='single-model-evidence';}
+    else if(top.explicitSources.size>=2&&top.explicitSources.size>(runner?.explicitSources.size||0)){resolved=true;reason='independent-explicit-majority';}
+    else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)===0){resolved=true;reason='printed-model-over-inferred-token';}
+    else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)>=1&&top.maxReliability>(runner?.maxReliability||0)){resolved=true;reason='higher-specificity-explicit-ocr';}
+    else if(top.explicitSources.size===0&&top.allSources.size>=2&&top.allSources.size>(runner?.allSources.size||0)){resolved=true;reason='independent-inferred-majority';}
+
+    if(resolved){
+      r.sku=top.model;r.model=top.model;
+      if(top.explicitSources.size)r.v703314zPrintedModel=top.model;
+      r.v703314zdModelConsensus={status:'resolved',model:top.model,reason,explicitSources:[...top.explicitSources],sources:[...top.allSources],alternatives:ranked.slice(1).map(g=>g.model)};
+      if(runner){
+        r.skuReviewRequired=true;r.humanReviewRequired=true;r.needsReview=true;
+      }
+    }else{
+      // A conflicting printed-model tie is never guessed. Keep one physical row,
+      // blank the model, and force Level 3 review.
+      r.sku='';r.model='';r.v703314zPrintedModel='';
+      r.skuReviewRequired=true;r.humanReviewRequired=true;r.needsReview=true;r.v703312kIndependentConflict=true;
+      r.v703314zdModelConsensus={status:'unresolved',reason:'conflicting-model-evidence',alternatives:ranked.map(g=>g.model)};
+    }
+    return r;
   }
 
   function v703314zdMergeRecoveredPair(a={},b={}){
@@ -906,9 +1000,7 @@
     };
     const aWins=strength(a)>=strength(b);
     const primary={...(aWins?a:b)},other=aWins?b:a;
-    const modelPrimary=clean(primary.sku||primary.model||''),modelOther=clean(other.sku||other.model||'');
-    if(!modelPrimary&&modelOther){primary.sku=modelOther;primary.model=modelOther;}
-    if(!primary.v703314zPrintedModel&&other.v703314zPrintedModel)primary.v703314zPrintedModel=other.v703314zPrintedModel;
+    primary.v703314zdModelCandidates=[...v703314zdModelCandidates(a),...v703314zdModelCandidates(b)];
 
     const nameA=clean(primary.item_name||''),nameB=clean(other.item_name||'');
     const goodExplicitName=(row,n)=>!!row.v703314zPrintedModel&&!!equipmentType(n)&&!/^(?:with|and|of|for)\b/i.test(n)&&n.split(/\s+/).length>=2;
@@ -916,7 +1008,7 @@
     const nameScore=n=>{
       let s=n.length;
       if(/\b(?:projector|controller|amplifier|mixer|console|speaker|loudspeaker|microphone|receptacle|player|monitor|tester|receiver|transmitter)\b/i.test(n))s+=30;
-      if(/^(?:with|and|of|for)\b|\busa\b/i.test(n))s-=25;
+      if(/^(?:with|and|of|for)\b|\busa\b|\bquidoar\b/i.test(n))s-=25;
       return s;
     };
     if(!primaryExplicitGood&&otherExplicitGood)primary.item_name=nameB;
@@ -933,12 +1025,6 @@
     primary.v703312kEvidenceSources=uniq([...(a.v703312kEvidenceSources||[]),...(b.v703312kEvidenceSources||[]),a.v703312kSource,b.v703312kSource].filter(Boolean));
     primary.v703312kSourceLine=uniq([a.v703312kSourceLine,b.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
     primary.v703314zdCrossOcrMerged=true;
-
-    const explicitModels=uniq([a.sku,a.model,a.v703314zPrintedModel,b.sku,b.model,b.v703314zPrintedModel].map(clean).filter(Boolean),compact);
-    if(explicitModels.length>1){
-      const normalized=uniq(explicitModels,compact);
-      if(normalized.length>1){primary.skuReviewRequired=true;primary.humanReviewRequired=true;primary.needsReview=true;primary.v703312kIndependentConflict=true;}
-    }
     return primary;
   }
 
@@ -953,10 +1039,10 @@
       if(best<0){out.push(row);continue;}
       out[best]=v703314zdMergeRecoveredPair(out[best],row);
     }
-    return out;
+    return out.map(v703314zdResolveModelConsensus);
   }
 
-  function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
+    function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
       const lines=String(ev.text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
@@ -1959,5 +2045,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });

@@ -35,7 +35,7 @@ Model: Neutrik
 11 Provide labelling and tidying the cabling setups. 1 100.00 100.00`;
 
 const ocrB=ocrA.replace('ZX1I-90','Z2X1I-90');
-const ocrC=ocrA;
+const ocrC=ocrA.replace('Support up to 12 channels','Supports up to 12 channels');
 
 const sources=[
  {source:'phase4-live-concept-auto',kind:'ocr',text:ocrA,layout:[]},
