@@ -170,7 +170,7 @@
     const headingPhrases=[...normalizedHeading,...adjacentPhrases(normalizedHeading,3)];
     const earlyPhrases=[...normalizedEarly,...adjacentPhrases(normalizedEarly,3)];
 
-    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|INSTALLATION\s+REPORT|STATEMENT)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
+    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|INSTALLATION\s+REPORT|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
     const nonInvoiceTitles=[...new Set(earlyPhrases.filter(x=>nonInvoiceRe.test(x)))];
 
     // A heading can be merged into surrounding header text by PDF extraction. Accept TAX INVOICE
@@ -266,7 +266,9 @@
     const t=clean(text).replace(/\r/g,'\n');if(!t)return false;
     const head=t.split('\n').map(clean).filter(Boolean).slice(0,18);
     const normalized=head.map(v703313bHeadingText);
-    if(normalized.some(x=>/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PURCHASE\s+ORDER|SERVICE\s+REPORT|INSTALLATION\s+REPORT)\b/i.test(x)))return false;
+    if(normalized.some(x=>/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s+DELIVERY\s+SLIP|PURCHASE\s+ORDER|SERVICE\s+REPORT|INSTALLATION\s+REPORT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)\b/i.test(x)))return false;
+    const scheduleLike=normalized.some(x=>/^(?:SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)\b/i.test(x));
+    if(scheduleLike)return false;
     const table=/\b(?:description|item|product)\b/i.test(t)&&/\b(?:qty|quantity)\b/i.test(t)&&/\b(?:amount|price)\b/i.test(t);
     const totals=/\b(?:subtotal|sub\s*total|gst|tax|grand\s*total|amount\s+due)\b/i.test(t);
     const paging=/\bpage\s*\d+\s*(?:of|\/)\s*\d+\b/i.test(t)||/\bcontinued\b/i.test(t);
