@@ -108,7 +108,6 @@ const evidence=[
  {source:'ocr-block-actual-deidentified',kind:'ocr',text:conceptBlock,layout:[]}
 ];
 const conceptRows=V.v703312jRecoverNumberedEquipmentRows(conceptAuto,evidence);
-console.log('PH4 NEARBY TRACE '+JSON.stringify(conceptRows.filter(r=>/microphone system|monitor speaker/i.test(String(r.item_name||r.description||''))).map(r=>({sku:r.sku,model:r.model,candidates:r.v703314zdModelCandidates,printed:r.v703314zPrintedModelEvidence,consensus:r.v703314zdModelConsensus,sourceLine:r.v703312kSourceLine}))));
 // Ground truth correction: official Electro-Voice model is ZX1i-90; the earlier ZX11-90 expectation was an OCR corruption, not source truth.
 const expected=[
  {id:'CQ12T',q:1,p:1400,a:1400},
