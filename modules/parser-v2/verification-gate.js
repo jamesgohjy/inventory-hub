@@ -55,7 +55,8 @@
     if(COMPANY_RE.test(text)&&!EQUIPMENT_RE.test(text))return {reject:true,reason:'company-header'};
     if(ADDRESS_RE.test(text)||ADDRESS_RE.test(primary)||ADDRESS_RE.test(sku+' '+primary))return {reject:true,reason:'address-metadata'};
     if(DATE_LABEL_RE.test(text)||DATE_VALUE_RE.test(primary)||DATE_VALUE_RE.test(sku))return {reject:true,reason:'date-metadata'};
-    if(WARRANTY_RE.test(text))return {reject:true,reason:'warranty-or-support'};
+    const physicalEquipmentLead=EQUIPMENT_RE.test(primary)&&!/^(?:warranty|extended\s+warranty|support\s+coverage|support\s+plan|maintenance\s+plan|service\s+contract|subscription)\b/i.test(primary);
+    if(WARRANTY_RE.test(text)&&!physicalEquipmentLead)return {reject:true,reason:'warranty-or-support'};
     const serviceSku=/^(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DELIVERY|FREIGHT|TRANSPORT|COURIER|DISMOUNT|DISMANTL|REMOV|RELOCAT|REINSTAT|TEST|COMMISSION|PROGRAM)/i.test(sku);
     const strongServiceStart=/^(?:installation|installing|installed|labou?r|professional services?|services?|repair|delivery|freight|transport|courier|commissioning|testing|programming|dismantle|dismantling|dismount|dismounting|remove|removal|relocate|relocation|reinstate|reinstatement|setup|configuration)\b/i.test(primary);
     const suppliedPhysical=/^\s*supply\s*(?:&|and)?\s*install\b/i.test(primary)&&EQUIPMENT_RE.test(primary)&&!ACCESSORY_RE.test(primary);
