@@ -1116,7 +1116,7 @@
         if(ordinal&&new RegExp('^\\s*'+ordinal+'(?:\\s|[.)-])').test(line))score+=100;
         const hits=rowTokens.filter(t=>n.includes(t)).length;
         if(rowTokens.length&&hits>=Math.min(2,rowTokens.length))score+=20+hits*5;
-        if(finite(q)&&new RegExp('(?:^|\\s)'+String(q).replace(/[.*+?^$()|[\]\\{}]/g,'\\  function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){')+'(?:\\s|$)').test(line))score+=8;
+        if(finite(q)&&n.split(' ').includes(norm(String(q))))score+=8;
         if(finite(p)&&moneyForms(p).some(x=>x&&n.includes(x)))score+=8;
         if(finite(a)&&moneyForms(a).some(x=>x&&n.includes(x)))score+=8;
         const currentSku=compact(row.sku||row.model||'');
