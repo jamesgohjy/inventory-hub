@@ -845,6 +845,113 @@
     return out;
   }
 
+  function v703314zdRecoveredWitnessSimilarity(a={},b={}){
+    const sa=compact(a.sku||a.model||''),sb=compact(b.sku||b.model||'');
+    if(sa&&sb&&sa!==sb)return {match:false,reason:'different-explicit-sku',score:0};
+
+    const qa=Number(a.quantity),qb=Number(b.quantity);
+    if(qa>0&&qb>0&&qa!==qb)return {match:false,reason:'quantity-conflict',score:0};
+
+    const has=(r,f)=>r?.[f]!==null&&r?.[f]!==undefined&&r?.[f]!==''&&Number.isFinite(Number(r[f]));
+    const pa=has(a,'unit_price')?Number(a.unit_price):null,pb=has(b,'unit_price')?Number(b.unit_price):null;
+    const aa=has(a,'amount')?Number(a.amount):null,ab=has(b,'amount')?Number(b.amount):null;
+    if(pa!==null&&pb!==null&&Math.abs(pa-pb)>.01)return {match:false,reason:'price-conflict',score:0};
+    if(aa!==null&&ab!==null&&Math.abs(aa-ab)>.01)return {match:false,reason:'amount-conflict',score:0};
+
+    const text=r=>norm([
+      r.item_name,r.description,r.v703312kSourceLine,
+      r.v703314zPrintedModel,r.v703314zReplacementModel
+    ].filter(Boolean).join(' '));
+    const stop=new Set(['SUPPLY','INSTALL','INSTALLATION','SYSTEM','EQUIPMENT','THE','NEW','SPECIFIED','SECTION','INCLUDES','WITH','FOR','AND','FROM','THIS','THAT','CHANNEL','DIGITAL','OUTDOOR','SINGLE','DUAL']);
+    const tokens=r=>new Set((text(r).toUpperCase().match(/[A-Z0-9]+/g)||[]).filter(x=>x.length>=3&&!stop.has(x)));
+    const ta=tokens(a),tb=tokens(b);
+    const common=[...ta].filter(x=>tb.has(x));
+    const short=Math.max(1,Math.min(ta.size,tb.size));
+    const overlap=common.length/short;
+
+    const typeA=equipmentType(text(a)),typeB=equipmentType(text(b));
+    const sameType=!!typeA&&!!typeB&&typeA===typeB;
+
+    // One witness may carry the explicit model while another carries the cleaner
+    // description. The explicit model is allowed to anchor the pair only when the
+    // quantity/economics do not conflict and the descriptive evidence is strongly related.
+    const oneSku=!!(sa||sb)&&!(sa&&sb);
+    const economicAgreement=(pa===null||pb===null||Math.abs(pa-pb)<=.01)&&(aa===null||ab===null||Math.abs(aa-ab)<=.01);
+
+    let score=0;
+    if(sa&&sb&&sa===sb)score+=100;
+    if(oneSku)score+=18;
+    if(qa>0&&qb>0&&qa===qb)score+=18;
+    if(pa!==null&&pb!==null&&Math.abs(pa-pb)<=.01)score+=18;
+    if(aa!==null&&ab!==null&&Math.abs(aa-ab)<=.01)score+=18;
+    if(sameType)score+=18;
+    score+=Math.round(overlap*30);
+
+    const match=(sa&&sb&&sa===sb)
+      ||(economicAgreement&&sameType&&overlap>=.45&&score>=58)
+      ||(oneSku&&economicAgreement&&overlap>=.55&&score>=55);
+    return {match,reason:match?'cross-ocr-witness':'insufficient-evidence',score,overlap,sameType,common};
+  }
+
+  function v703314zdMergeRecoveredPair(a={},b={}){
+    const strength=r=>{
+      let s=0;
+      if(clean(r.sku||r.model||''))s+=35;
+      if(r.v703314zPrintedModel)s+=15;
+      if(r.unit_price!==null&&r.unit_price!==undefined&&r.unit_price!=='')s+=12;
+      if(r.amount!==null&&r.amount!==undefined&&r.amount!=='')s+=12;
+      if(!(r.humanReviewRequired||r.needsReview))s+=8;
+      s+=Math.min(18,clean(r.item_name||r.description||'').length/8);
+      return s;
+    };
+    const primary=strength(a)>=strength(b)?{...a}:{...b},other=primary===a?b:a;
+    const modelPrimary=clean(primary.sku||primary.model||''),modelOther=clean(other.sku||other.model||'');
+    if(!modelPrimary&&modelOther){primary.sku=modelOther;primary.model=modelOther;}
+    if(!primary.v703314zPrintedModel&&other.v703314zPrintedModel)primary.v703314zPrintedModel=other.v703314zPrintedModel;
+
+    const nameA=clean(primary.item_name||''),nameB=clean(other.item_name||'');
+    const nameScore=n=>{
+      let s=n.length;
+      if(/(?:projector|controller|amplifier|mixer|console|speaker|loudspeaker|microphone|receptacle|player|monitor|tester|receiver|transmitter)/i.test(n))s+=30;
+      if(/^with\b|\busa\b/i.test(n))s-=20;
+      return s;
+    };
+    if(nameB&&nameScore(nameB)>nameScore(nameA))primary.item_name=nameB;
+    if(clean(other.description||'').length>clean(primary.description||'').length)primary.description=other.description;
+
+    for(const f of ['quantity','unit_price','amount']){
+      const missing=primary[f]===null||primary[f]===undefined||primary[f]==='';
+      if(missing&&other[f]!==null&&other[f]!==undefined&&other[f]!=='')primary[f]=other[f];
+    }
+    if(!clean(primary.category||'')&&clean(other.category||''))primary.category=other.category;
+    if(!clean(primary.serials||'')&&clean(other.serials||other.serial_numbers||''))primary.serials=clean(other.serials||other.serial_numbers||'');
+    if(!primary.v703314zReplacementModel&&other.v703314zReplacementModel)primary.v703314zReplacementModel=other.v703314zReplacementModel;
+    primary.v703312kEvidenceSources=uniq([...(a.v703312kEvidenceSources||[]),...(b.v703312kEvidenceSources||[]),a.v703312kSource,b.v703312kSource].filter(Boolean));
+    primary.v703312kSourceLine=uniq([a.v703312kSourceLine,b.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+    primary.v703314zdCrossOcrMerged=true;
+
+    const explicitModels=uniq([a.sku,a.model,a.v703314zPrintedModel,b.sku,b.model,b.v703314zPrintedModel].map(clean).filter(Boolean),compact);
+    if(explicitModels.length>1){
+      const normalized=uniq(explicitModels,compact);
+      if(normalized.length>1){primary.skuReviewRequired=true;primary.humanReviewRequired=true;primary.needsReview=true;primary.v703312kIndependentConflict=true;}
+    }
+    return primary;
+  }
+
+  function v703314zdConsolidateRecoveredWitnesses(items=[]){
+    const out=[];
+    for(const raw of items||[]){
+      let row={...raw},best=-1,bestScore=-1;
+      for(let i=0;i<out.length;i++){
+        const sim=v703314zdRecoveredWitnessSimilarity(out[i],row);
+        if(sim.match&&sim.score>bestScore){best=i;bestScore=sim.score;}
+      }
+      if(best<0){out.push(row);continue;}
+      out[best]=v703314zdMergeRecoveredPair(out[best],row);
+    }
+    return out;
+  }
+
   function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
@@ -920,7 +1027,7 @@
       if((n>=2&&!row.v703312kIndependentConflict&&!explicitReviewFlag(row))||deterministicSingle){row.humanReviewRequired=false;row.needsReview=false;}
       else{row.humanReviewRequired=true;row.needsReview=true;}
     }
-    return dedupeParsedLineItems(out);
+    return v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(out));
   }
   function v703312jSameEquipment(a={},b={}){
     const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb&&sa===sb)return true;
@@ -945,7 +1052,7 @@
   }
   function v703314zcReconcileReviewRows(existing=[],recovered=[],raw='',evidenceSources=[]){
     const incoming=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
-    const authoritative=(recovered||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r)).map(r=>{
+    const authoritative=v703314zdConsolidateRecoveredWitnesses((recovered||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r))).map(r=>{
       const row={...r};
       const name=clean(row.item_name||row.description||'');
       if(/^supply\s*(?:&|and)\s*install\s+/i.test(name)){
@@ -1848,5 +1955,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
