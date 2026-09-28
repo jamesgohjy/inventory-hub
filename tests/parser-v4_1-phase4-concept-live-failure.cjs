@@ -50,7 +50,6 @@ const degradedLiveRows=[
 ];
 
 const recovered=V.v703312jRecoverNumberedEquipmentRows(ocrA,sources);
-console.log('PH4 TRACE LOUDSPEAKER '+JSON.stringify(recovered.filter(r=>/loudspeaker/i.test(String(r.item_name||r.description||''))).map(r=>({sku:r.sku,model:r.model,candidates:r.v703314zdModelCandidates,consensus:r.v703314zdModelConsensus,sources:r.v703312kEvidenceSources,sourceLine:r.v703312kSourceLine}))));
 assert(recovered.length===7,'authoritative Concept recovery must yield 7 rows, got '+recovered.length);
 
 const merged=V.v703312jMergeTrackedRows(degradedLiveRows,recovered,ocrA);
