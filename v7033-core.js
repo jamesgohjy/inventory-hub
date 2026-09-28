@@ -319,8 +319,12 @@
   }
   function modelTokens(line=''){
     const s=clean(line);if(!s)return [];
-    const raw=s.match(/\b[A-Z][A-Z0-9]*(?:[-/.][A-Z0-9]+)*\d[A-Z0-9._\/-]*\b/gi)||[];
-    return uniq(raw.map(x=>x.replace(/[,:;]+$/,'')).filter(x=>credibleSku(x,s)),compact);
+    const raw=[];const re=/(?:^|[\\s(])([A-Z0-9][A-Z0-9+._\\/-]{1,27})(?=$|[\\s),:;])/gi;let m;
+    while((m=re.exec(s))){
+      const token=clean(m[1]).replace(/[,:;]+$/,'');
+      if(credibleSku(token,s))raw.push(token);
+    }
+    return uniq(raw,compact);
   }
   function equipmentType(text=''){
     const s=norm(text);
@@ -363,9 +367,23 @@
     const current=clean(row.sku||'');
     const currentLine=String(raw||'').split(/\r?\n/).find(l=>compact(l).includes(compact(current)))||'';
     const currentCredible=credibleSku(current,currentLine);
+    const currentSupported=currentCredible&&String(raw||'').toUpperCase().includes(current.toUpperCase());
+    const localEvidence=clean(row.v703315StackedSourceLine||row.v703312kSourceLine||row.v7Provenance?.sku?.sourceText||row.provenance?.sku?.sourceText||row.raw_text||row.rawText||row.source_text||row.sourceText||'');
+    const localModels=modelTokens(localEvidence);
+    // A deterministic description-first stacked row owns its local identity. Do not let
+    // a later model elsewhere on the invoice overwrite the first model printed in this row.
+    if(row.v703315StackedRecovery===true&&localModels.length){
+      const model=localModels[0];
+      return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-stacked',score:10,reason:'Row-local stacked invoice evidence outranks invoice-wide model candidates.'};
+    }
+    // Outside stacked recovery, one unambiguous row-local model can safely outrank an
+    // unsupported/global candidate without changing multi-model rows.
+    if(localModels.length===1&&(!currentCredible||!currentSupported)){
+      const model=localModels[0];
+      return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-explicit',score:9,reason:'Unambiguous row-local model evidence outranks unsupported invoice-wide candidates.'};
+    }
     const candidates=productIdentityCandidates(raw,row);
     const top=candidates[0]||null;
-    const currentSupported=currentCredible&&String(raw||'').toUpperCase().includes(current.toUpperCase());
 
     // Never let an unrelated model elsewhere on the invoice overwrite a credible model that is directly printed.
     if(currentCredible&&currentSupported&&!looksLikeDimensionOrSpec(current,currentLine)){
@@ -1552,6 +1570,55 @@
     return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
 
+  function v703315RecoverDescriptionFirstStackedRows(raw='',evidenceSources=[]){
+    const source=String(raw||'').replace(/\r/g,'');if(!source.trim())return [];
+    const parts=source.includes('\f')?source.split('\f'):[source];
+    const rows=[],serialAuthority=[];let blocked=false,invoiceContext=false;
+    const invoiceTitle=/^(?:TAX\s+)?INVOICE$/i;
+    const nonInvoiceTitle=/^(?:PACKING\s*\/\s*DELIVERY\s+SLIP|DELIVERY\s+ORDER|PURCHASE\s+ORDER|QUOTATION|PRO\s*FORMA(?:\s+INVOICE)?)\b/i;
+    const header=/\bDescription\b.*\b(?:Qty|Quantity)\b.*\b(?:Unit\s*)?Price\b.*\bAmount\b/i;
+    const stop=/^(?:Sub\s*Total|Subtotal|Invoice\s+Total|Grand\s+Total|Amount\s+Due|Total\s+Local|Total\s+Net\s+Payments)\b/i;
+    const meta=/^(?:Attention\s*:|Company\s*:|Address\s*:|Email(?:\s+Address)?\s*:|Contact(?:\s+Number)?\s*:|Customer\b|Sold\s+To\b|Ship\s+To\b|Delivered\s+To\b|Invoice\s+Date\b|Invoice\s+(?:No\.?|Number)\b|Reference\b|GST\s+Registration\b|Payable\/Receivable\b|Signature\b|We\s+hereby\b|Company\s+Registration\b)/i;
+    const noise=/^(?:IN\s+STOCK|SGP|SINGAPORE|\d{5,6})$/i;
+    const warranty=/^(?:Warranty|Support\s+Coverage|Support\s+Plan)\s*:/i;
+    const serial=/^(?:S\s*\/\s*N|S\.?N\.?|Serial(?:\s*(?:No\.?|Number))?)\s*[:#.-]?/i;
+    const money=v=>Number(String(v||'').replace(/[,\s]/g,''));
+    const economics=line=>line.match(/^(\d+(?:\.\d+)?)\s+(?:(?:SGD|S?\$)\s*)?([\d,]+\.\d{2})\s+(?:(\d+(?:\.\d+)?)%\s+)?(?:(?:SGD|S?\$)\s*)?([\d,]+\.\d{2})$/i);
+    for(let p=0;p<parts.length;p++){
+      const lines=parts[p].split(/\n+/).map(clean).filter(Boolean);let inTable=false,buf=[];const accepted=[];
+      const flush=e=>{
+        if(!e||!buf.length){buf=[];return;}
+        const q=money(e[1]),unit=money(e[2]),amount=money(e[4]);
+        if(!(q>0)||!Number.isFinite(unit)||!Number.isFinite(amount)||Math.abs(q*unit-amount)>Math.max(.08,Math.abs(amount)*.01)){buf=[];return;}
+        const barrier=buf.findIndex(x=>warranty.test(x)||noise.test(x)||serial.test(x));
+        const identity=(barrier>=0?buf.slice(0,barrier):buf)
+          .filter(x=>!meta.test(x)&&!noise.test(x)&&!header.test(x)&&!invoiceTitle.test(x))
+          .join(' ').replace(/\s+/g,' ').trim();
+        if(identity){
+          rows.push({sku:'',model:'',item_name:identity,description:identity,quantity:q,unit_price:unit,amount,serials:'',
+            v703315StackedRecovery:true,v703315StackedSourceLine:identity,v703312kSourceLine:identity,
+            v703312kSource:'description-first-stacked',economicEvidenceVerified:true,
+            provenance:{source:'description-first-stacked',page:p+1,row:rows.length+1,sourceText:identity}});
+        }
+        buf=[];
+      };
+      for(const line of lines){
+        if(invoiceTitle.test(line)){blocked=false;invoiceContext=true;accepted.push(line);continue;}
+        if(nonInvoiceTitle.test(line)){blocked=true;inTable=false;buf=[];continue;}
+        if(blocked)continue;
+        accepted.push(line);
+        if(header.test(line)){inTable=true;buf=[];continue;}
+        if(!inTable)continue;
+        if(stop.test(line)){buf=[];inTable=false;continue;}
+        const e=economics(line);if(e){flush(e);continue;}
+        buf.push(line);
+      }
+      if(invoiceContext||!blocked)serialAuthority.push(accepted.join('\n'));
+    }
+    const bound=v703315BindSerialBlocks(rows,serialAuthority.join('\n\f\n'));
+    return bound;
+  }
+
   function applyParsedFixes(parsed={},raw='',evidenceSources=[]){
     if(!parsed||typeof parsed!=='object')return parsed;
     const source=String(raw||parsed.raw||parsed.rawText||'');
@@ -1561,6 +1628,10 @@
     const fixed=trackedIncoming.map(r=>validateSkuQtyEvidence(fixRow(r,source),source));
     const evidence14p=v703312kEvidenceTexts(source,evidenceSources);
     let recovered=v703312jRecoverNumberedEquipmentRows(source,evidenceSources);
+    const stackedRecovered=v703315RecoverDescriptionFirstStackedRows(source,evidenceSources)
+      .filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r))
+      .map(r=>fixRow(r,source));
+    if(stackedRecovered.length)recovered=dedupeParsedLineItems([...recovered,...stackedRecovered]);
     if(!fixed.length&&!recovered.length){const extra=[];for(const ev of evidence14p)extra.push(...v703314pRecoverEquipmentRows(ev.text,ev.source));recovered=dedupeParsedLineItems(extra);}
     const merged=v703314zcReconcileReviewRows(fixed,recovered,source,evidenceSources);
     let doc14p=fixDocumentHeader(parsed.doc||{},evidence14p.map(x=>x.text).join('\n'));doc14p=v703314pReconcileHeader(doc14p,evidence14p);
@@ -2236,5 +2307,5 @@
     return true;
   }
 
-  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,v703314zdExplicitModelFromText,v703314zeNearbyExplicitModelEvidence,v703314zeAttachNearbyModelEvidence,v703314zgNameQuality,v703314zgChooseCleanerName,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
+  return {VERSION,BASELINE_VERSION,clean,norm,compact,v703315SerialTokens,v703315ExtractSerialBlocks,v703315BindSerialBlocks,v703315RecoverDescriptionFirstStackedRows,supplierFromEvidence,lineEvidenceSignature,referenceNumberFromLabel,dedupeParsedLineItems,consolidateFragmentedParsedLineItems,v703314xDuplicatePair,validateSkuQtyEvidence,isStructuredPhysicalAssetRow,v703314aRecoverStructuredPricedAssetRows,v703312jIsServiceRow,v703312jIsAccessoryRow,v703312jIsTrackedEquipment,v703314zRecoverWrappedNumberedInvoiceRows,v703312jRecoverNumberedEquipmentRows,v703312jMergeTrackedRows,v703314zcReconcileReviewRows,v703314zdConsolidateRecoveredWitnesses,v703314zdRecoveredWitnessSimilarity,v703314zdResolveModelConsensus,v703314zdExplicitModelFromText,v703314zeNearbyExplicitModelEvidence,v703314zeAttachNearbyModelEvidence,v703314zgNameQuality,v703314zgChooseCleanerName,buildParserDiagnostics14l,classifyInvoicePage,filterInvoicePages,reviewFieldsForRow,looksLikeDimensionOrSpec,credibleSku,modelTokens,productIdentityCandidates,resolveInvoiceIdentity,conciseName,fixRow,normalizeInvoiceNumberCandidate,invoiceNumberFromLabel,fixDocumentHeader,applyParsedFixes,normalizedItemIdentity,standardItemNameKey,masterItemDuplicatePolicy,resolveInventoryMatch,prepareLinesForInventory,analyzeDuplicatePair,duplicateCandidates,safeDuplicateGroups,v703314kHasStrongEquipmentIdentity,v703314lRowDecision,v703314nLineArithmetic,v703314nDocumentArithmetic,v703314nEvidenceMatch,v703314nFieldQuality,v703314nDocumentQuality,v703314nApplyQualityGuards,runQualityRegressionChecks14n,runHoldoutRegressionChecks14n,v703314oSupplierKey,v703314oEvidenceContains,v703314oCorrectionDecision,v703314oExtractProfileCandidate,v703314oValidFingerprint,runIntelligenceRegressionChecks14o,v703314pDateFromLabel,v703314pInvoiceCandidate,v703314pReconcileHeader,v703314pStrongEquipmentInvoice,v703314pRecoverEquipmentRows,runAerospaceRegressionChecks14p,v703314qEconomicValues,v703314qIdentityScore,v703314qMoneySignature,v703314qChooseMoneyCandidate,runMonetaryConsensusRegressionChecks14q,v703314rNumericFragments,v703314rResolveEconomicsFromItems,runHeaderAlignedMoneyRegressionChecks14r,buildParserDiagnostics14l,runRegressionChecks,runHistoricalRegressionChecks,installParserPatch,installUiVersionSync,applyVersionUi,RELEASE_NOTES,RELEASE_UPCOMING_VERSION,RELEASE_UPCOMING_NOTES,RELEASE_ROADMAP,COMPLETED_ROADMAP_IDS};
 });
