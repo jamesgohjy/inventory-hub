@@ -719,19 +719,26 @@ async function extractPdf(file){
     const invoiceModelPages=[];
     for(let i=0;i<pdf.numPages;i++){
       const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed;
-      const modelRich=((pages[i]||'').match(/\bMODEL\s*:/gi)||[]).length>=2||modes.some(m=>((m.texts[i]||'').match(/\bMODEL\s*:/gi)||[]).length>=2);
+      const modelLabelRe=/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|M\/N)\s*[:#-]?\s*[A-Z0-9]/gi;
+      const modelRich=((pages[i]||'').match(modelLabelRe)||[]).length>=2||modes.some(m=>((m.texts[i]||'').match(modelLabelRe)||[]).length>=2);
       if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1);
     }
     if(invoiceModelPages.length){
       const hiWorker=await Tesseract.createWorker('eng');
+      const hiModes=[
+        {key:'column',psm:Tesseract.PSM?.SINGLE_COLUMN??'4'},
+        {key:'block',psm:Tesseract.PSM?.SINGLE_BLOCK??'6'}
+      ];
       try{for(const pageNo of [...new Set(invoiceModelPages)]){
         const page=await pdf.getPage(pageNo),vp=page.getViewport({scale:4.17}),canvas=document.createElement('canvas');
         canvas.width=Math.round(vp.width);canvas.height=Math.round(vp.height);
         await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;
-        await hiWorker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.SINGLE_COLUMN??'4',preserve_interword_spaces:'1',user_defined_dpi:'300'});
-        const result=await hiWorker.recognize(canvas,{}, {text:true}),hiText=String(result.data?.text||'');
-        const hiGate=globalThis.V7033Patch?.filterInvoicePages([hiText],[]);
-        if(hiGate?.texts?.length)state.v2FullDocumentEvidence.push({source:'invoice-hires-column-p'+pageNo,kind:'ocr',text:hiGate.texts[0],layout:[]});
+        for(const mode of hiModes){
+          await hiWorker.setParameters({tessedit_pageseg_mode:mode.psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
+          const result=await hiWorker.recognize(canvas,{}, {text:true}),hiText=String(result.data?.text||'');
+          const hiGate=globalThis.V7033Patch?.filterInvoicePages([hiText],[]);
+          if(hiGate?.texts?.length)state.v2FullDocumentEvidence.push({source:'invoice-hires-'+mode.key+'-p'+pageNo,kind:'ocr',text:hiGate.texts[0],layout:[]});
+        }
       }}finally{await hiWorker.terminate();}
     }
     const candidates=modes.map(m=>{
