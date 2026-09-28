@@ -384,7 +384,7 @@
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
-    const cleanName=v=>clean(v||'').replace(/^supply(?:\s+and\s+install)?\s+/i,'').trim();
+    const cleanName=v=>clean(v||'').replace(/^supply(?:\s+(?:and|&)\s+install)?\s+/i,'').trim();
     const typeRank=t=>({'Projector Controller':90,'Microphone Wall Receptacle':88,'Wall Receptacle':86,'Receptacle':84,'Control Panel':85,'Controller':80,'Processor':78,'Switcher':76,'Active Speaker':74,'Projector':70,'Microphone':68,'Speaker':66,'Mixer':64,'Camera':62,'Display':60,'Monitor':58,'Receiver':56,'Transmitter':54,'Amplifier':52,'Manual Projection Screen':50,'Motorised Screen':50,'Screen':45,'Player':40,'CD/MP3 Player':42}[t]||20);
     const candidates=[{text:cleanName(row.description),source:'description',bonus:4},{text:cleanName(row.item_name),source:'item_name',bonus:2}]
       .map(x=>({...x,type:equipmentType(x.text)}))
@@ -398,9 +398,13 @@
       return [clean(identity.brand||''),model,best.type].filter(Boolean).join(' ');
     }
     const brand=clean(identity.brand||'');
+    const descriptive=cleanName(row.description)||cleanName(row.item_name);
+    const descriptiveType=equipmentType(descriptive);
+    const specificDescription=/^(?:Microphone Wall Receptacle|Wall Receptacle|Receptacle|Projector Controller|Control Panel|Manual Projection Screen|Motorised Screen)$/i.test(descriptiveType);
+    if(descriptive&&specificDescription&&descriptive.split(/\s+/).length<=8&&!/\b(?:warranty|delivery|labou?r|service\s+fee|dismantl|commissioning|training|calibration|programming)\b/i.test(descriptive))return descriptive;
     const type=equipmentType([row.item_name,row.description,identity.evidenceLine].filter(Boolean).join(' '));
     const parts=uniq([brand,model,type].filter(Boolean),compact);
-    return parts.length>=2?parts.join(' '):cleanName(row.item_name)||cleanName(row.description);
+    return parts.length>=2?parts.join(' '):cleanName(row.item_name)||descriptive;
   }
   function explicitReviewFlag(r={}){
     return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
