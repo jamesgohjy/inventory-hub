@@ -41,7 +41,10 @@ function row(x={}){return {
     ['M/N: RX-900','RX900'],
     ['SKU: AVS-320','AVS320'],
     ['Part No: SLX-D2+','SLXD2'],
-    ['Item Code: CAM_12A','CAM12A']
+    ['Item Code: CAM_12A','CAM12A'],
+    ['Model: Electrovoice ZX1I-90','ZX1I90'],
+    ['Model: Allen & Heath CQ12T','CQ12T'],
+    ['Model: Shure SLXD24/SM58','SLXD24SM58']
   ];
   for(const [line,id] of samples){
     const got=V.v703314zdExplicitModelFromText(line);
