@@ -319,7 +319,7 @@
   }
   function modelTokens(line=''){
     const s=clean(line);if(!s)return [];
-    const raw=[];const re=/(?:^|[\\s(])([A-Z0-9][A-Z0-9+._\\/-]{1,27})(?=$|[\\s),:;])/gi;let m;
+    const raw=[];const re=/(?:^|[\s(])([A-Z0-9][A-Z0-9+._\/-]{1,27})(?=$|[\s),:;])/gi;let m;
     while((m=re.exec(s))){
       const token=clean(m[1]).replace(/[,:;]+$/,'');
       if(credibleSku(token,s))raw.push(token);
@@ -1579,7 +1579,8 @@
     const header=/\bDescription\b.*\b(?:Qty|Quantity)\b.*\b(?:Unit\s*)?Price\b.*\bAmount\b/i;
     const stop=/^(?:Sub\s*Total|Subtotal|Invoice\s+Total|Grand\s+Total|Amount\s+Due|Total\s+Local|Total\s+Net\s+Payments)\b/i;
     const meta=/^(?:Attention\s*:|Company\s*:|Address\s*:|Email(?:\s+Address)?\s*:|Contact(?:\s+Number)?\s*:|Customer\b|Sold\s+To\b|Ship\s+To\b|Delivered\s+To\b|Invoice\s+Date\b|Invoice\s+(?:No\.?|Number)\b|Reference\b|GST\s+Registration\b|Payable\/Receivable\b|Signature\b|We\s+hereby\b|Company\s+Registration\b)/i;
-    const noise=/^(?:IN\s+STOCK|SGP|SINGAPORE|\d{5,6})$/i;
+    const noise=/^(?:SGP|SINGAPORE|\d{5,6})$/i;
+    const status=/^(?:IN\s+STOCK|OUT\s+OF\s+STOCK|BACKORDER(?:ED)?)$/i;
     const warranty=/^(?:Warranty|Support\s+Coverage|Support\s+Plan)\s*:/i;
     const serial=/^(?:S\s*\/\s*N|S\.?N\.?|Serial(?:\s*(?:No\.?|Number))?)\s*[:#.-]?/i;
     const money=v=>Number(String(v||'').replace(/[,\s]/g,''));
@@ -1590,10 +1591,13 @@
         if(!e||!buf.length){buf=[];return;}
         const q=money(e[1]),unit=money(e[2]),amount=money(e[4]);
         if(!(q>0)||!Number.isFinite(unit)||!Number.isFinite(amount)||Math.abs(q*unit-amount)>Math.max(.08,Math.abs(amount)*.01)){buf=[];return;}
-        const barrier=buf.findIndex(x=>warranty.test(x)||noise.test(x)||serial.test(x));
-        const identity=(barrier>=0?buf.slice(0,barrier):buf)
-          .filter(x=>!meta.test(x)&&!noise.test(x)&&!header.test(x)&&!invoiceTitle.test(x))
-          .join(' ').replace(/\s+/g,' ').trim();
+        const identityLines=[];let identityStarted=false;
+        for(const x of buf){
+          if(warranty.test(x)||status.test(x)||serial.test(x)){if(identityStarted)break;continue;}
+          if(meta.test(x)||noise.test(x)||header.test(x)||invoiceTitle.test(x))continue;
+          identityLines.push(x);identityStarted=true;
+        }
+        const identity=identityLines.join(' ').replace(/\s+/g,' ').trim();
         if(identity){
           rows.push({sku:'',model:'',item_name:identity,description:identity,quantity:q,unit_price:unit,amount,serials:'',
             v703315StackedRecovery:true,v703315StackedSourceLine:identity,v703312kSourceLine:identity,
