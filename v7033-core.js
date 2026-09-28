@@ -693,7 +693,7 @@
         if(j===i+1&&next.length<=24&&next.split(/\s+/).length<=4)itemName=clean(itemName+' '+next);
       }
       const description=clean(descParts.join(' '));
-      const candidate={sku,item_name:itemName,description,category:v703312jCategory(description)||'AV Accessories',unit:'pcs',quantity,unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:lines[i],v703314aStructuredPricedAsset:true};
+      const candidate={sku,item_name:itemName,description,category:v703312jCategory(description)||'AV Accessories',unit:'pcs',quantity,unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:clean([lines[i],...descParts.slice(1)].join(' | ')),v703314aStructuredPricedAsset:true};
       if(v703312jIsServiceRow(candidate)||!isStructuredPhysicalAssetRow(candidate))continue;
       out.push(candidate);
     }
@@ -845,18 +845,41 @@
       for(const line of lines){const c=v703312kRecoverDirectLine(line,ev.source);if(c)recovered.push(c);}
       recovered.push(...v703314zRecoverWrappedNumberedInvoiceRows(ev.text,ev.source));
       recovered.push(...v703314aRecoverStructuredPricedAssetRows(ev.text,ev.source));
+      recovered.push(...v703314aaRecoverModelEquipmentBlocks(ev.text,ev.source));
       recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
     }
     const out=[];
     for(const row of recovered){
       const existing=out.find(x=>v703312jSameEquipment(x,row));
-      if(!existing){row.v703312kEvidenceSources=[row.v703312kSource].filter(Boolean);out.push(row);continue;}
+      if(!existing){
+        row.v703312kEvidenceSources=[row.v703312kSource].filter(Boolean);
+        if(row.v703314zPrintedModel&&row.sku)row.v703314zPrintedModelEvidence=[{model:row.sku,source:row.v703312kSource||'primary',line:row.v703312kSourceLine||''}];
+        out.push(row);continue;
+      }
       existing.v703312kEvidenceSources=uniq([...(existing.v703312kEvidenceSources||[]),row.v703312kSource].filter(Boolean));
-      const existingComplete=Number.isFinite(Number(existing.unit_price))&&Number.isFinite(Number(existing.amount));
-      const rowComplete=Number.isFinite(Number(row.unit_price))&&Number.isFinite(Number(row.amount));
+      const hasCompleteEconomics=r=>r&&r.unit_price!==null&&r.unit_price!==undefined&&r.unit_price!==''&&r.amount!==null&&r.amount!==undefined&&r.amount!==''&&Number.isFinite(Number(r.unit_price))&&Number.isFinite(Number(r.amount));
+      const existingComplete=hasCompleteEconomics(existing);
+      const rowComplete=hasCompleteEconomics(row);
       if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
       if(row.v703314zPrintedModel&&row.sku){
-        existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
+        existing.v703314zPrintedModelEvidence=existing.v703314zPrintedModelEvidence||[];
+        const vote={model:row.sku,source:row.v703312kSource||'primary',line:row.v703312kSourceLine||''};
+        if(!existing.v703314zPrintedModelEvidence.some(x=>compact(x.model)===compact(vote.model)&&clean(x.source)===clean(vote.source)))existing.v703314zPrintedModelEvidence.push(vote);
+        const currentSku=compact(existing.sku||''),incomingSku=compact(row.sku||'');
+        const existingPrinted=clean(existing.v703314zPrintedModel||'');
+        // Evidence must follow any explicit printed-model value through dedupe/merge.
+        // Keep row-local source regions from both matching candidates; never retain a
+        // promoted SKU/model while dropping the invoice line that proved it.
+        existing.v703312kSourceLine=uniq(
+          [existing.v703312kSourceLine,row.v703312kSourceLine].map(clean).filter(Boolean),
+          clean
+        ).join(' | ');
+        if(!currentSku||!existingPrinted){
+          existing.sku=row.sku;existing.model=row.model||row.sku;existing.v703314zPrintedModel=row.v703314zPrintedModel;existing.v703314zInvoiceWrappedRow=true;existing.v703314zOrdinal=row.v703314zOrdinal;
+        }else if(currentSku!==incomingSku){
+          existing.skuReviewRequired=true;existing.humanReviewRequired=true;existing.needsReview=true;existing.v703312kIndependentConflict=true;
+          existing.v703312kConflictingSkus=uniq([...(existing.v703312kConflictingSkus||[]),existing.sku,row.sku].filter(Boolean),compact);
+        }
       }else if(!existing.sku&&row.sku)existing.sku=row.sku;
       if(row.v703314zReplacementModel){
         existing.v703314zReplacementModel=row.v703314zReplacementModel;existing.skuReviewRequired=true;existing.humanReviewRequired=true;existing.needsReview=true;
@@ -865,6 +888,25 @@
       if(Number(existing.quantity)!==Number(row.quantity)||((existingComplete&&rowComplete)&&(Number(existing.unit_price)!==Number(row.unit_price)||Number(existing.amount)!==Number(row.amount)))){existing.v703312kIndependentConflict=true;existing.humanReviewRequired=true;}
     }
     for(const row of out){
+      // Printed-model OCR consensus: when 2+ independent evidence sources agree on the
+      // same explicit Model value and outvote every alternative, use that majority value.
+      // A dissenting witness remains recorded and keeps the row in review; ties fail closed.
+      const modelEvidence=(row.v703314zPrintedModelEvidence||[]).filter(x=>clean(x.model));
+      if(modelEvidence.length>=2){
+        const groups=new Map();
+        for(const e of modelEvidence){
+          const k=compact(e.model);if(!k)continue;
+          let g=groups.get(k);if(!g){g={key:k,model:e.model,sources:new Set(),evidence:[]};groups.set(k,g);}
+          g.sources.add(clean(e.source)||'primary');g.evidence.push(e);
+        }
+        const ranked=[...groups.values()].sort((a,b)=>b.sources.size-a.sources.size);
+        const top=ranked[0],runner=ranked[1];
+        if(top&&top.sources.size>=2&&top.sources.size>(runner?.sources.size||0)){
+          row.sku=top.model;row.model=top.model;row.v703314zPrintedModel=top.model;
+          row.v703314zModelConsensus={model:top.model,sources:[...top.sources],votes:top.sources.size,totalSources:new Set(modelEvidence.map(x=>clean(x.source)||'primary')).size};
+          if(ranked.length>1){row.skuReviewRequired=true;row.humanReviewRequired=true;row.needsReview=true;row.v703312kIndependentConflict=true;}
+        }
+      }
       const n=(row.v703312kEvidenceSources||[]).length;row.v703312kLevel1={status:'confirmed',reason:'Deterministic OCR/table evidence identifies a tracked equipment row.'};
       row.v703312kLevel2={status:n>=2&&!row.v703312kIndependentConflict?'confirmed':'unavailable',sources:n,reason:n>=2?'Independent OCR reads agree on the same equipment identity and economics.':'A second independent OCR read did not confirm the row.'};
       const deterministicSingle=n===1&&!row.v703312kIndependentConflict&&strongDeterministicEvidence(row,raw)&&!explicitReviewFlag(row);
@@ -1402,8 +1444,109 @@
     for(const line of lines){if(service.test(line))continue;for(const [re,type] of patterns){if(re.test(line)){types.add(type);evidence.push(line.slice(0,240));break;}}}
     return {strong:types.size>=2,count:types.size,types:[...types],evidence:evidence.slice(0,8),reason:types.size>=2?'Multiple non-service physical equipment descriptions are printed in a strongly accepted invoice.':'Not enough independent physical-equipment description evidence.'};
   }
-  function v703314pRecoverEquipmentRows(text='',source=''){
+  // V4.1 Phase 2 — generic fail-closed recovery for OCR-damaged invoice rows.
+  // This never invents monetary values: if Qty × Unit Price cannot be verified against Amount,
+  // the equipment identity/Qty may survive but the economic fields remain blank + review.
+  function v703314aaMoneyTokens(line=''){
+    return (clean(line).replace(/[$€£¥]/g,' ').match(/(?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2}/g)||[])
+      .map(v=>Number(v.replace(/,/g,''))).filter(Number.isFinite);
+  }
+  function v703314aaOrdinalStart(line=''){
+    const s=clean(line).replace(/^[|]+\s*/,'').replace(/\s*[|]+/g,' ');
+    const m=s.match(/^(\d{1,2})\s+(.+)$/);if(!m)return null;
+    const ordinal=Number(m[1]);if(!(ordinal>=1&&ordinal<=99))return null;
+    return {ordinal,body:clean(m[2]),normalized:s};
+  }
+  function v703314aaQtyAndDescription(body=''){
+    const s=clean(body).replace(/[|]+/g,' ');
+    const money=s.match(/(?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2}/);
+    const prefix=money?s.slice(0,money.index):s;
+    const ints=[...prefix.matchAll(/\b\d{1,3}\b/g)];
+    if(!ints.length)return {quantity:null,description:clean(prefix)};
+    const first=ints[0],q=Number(first[0]);
+    const description=clean(prefix.slice(0,first.index)).replace(/\b(?:vol|qty|quantity)\s*$/i,'').trim();
+    return {quantity:Number.isInteger(q)&&q>0&&q<=999?q:null,description};
+  }
+  function v703314aaRecoverModelEquipmentBlocks(text='',source=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),starts=[];
+    for(let i=0;i<lines.length;i++){const hit=v703314aaOrdinalStart(lines[i]);if(hit)starts.push({i,...hit});}
     const out=[];
+    for(let si=0;si<starts.length;si++){
+      const start=starts[si],end=si+1<starts.length?starts[si+1].i:Math.min(lines.length,start.i+18),block=lines.slice(start.i,end);
+      const modelIndex=block.findIndex(x=>/^\s*MODEL\s*:?[ ]*/i.test(x.replace(/^[|]+\s*/,'')));
+      if(modelIndex<0)continue;
+      const modelLine=clean(block[modelIndex]).replace(/^[|]+\s*/,'');
+      const modelText=clean(modelLine.replace(/^MODEL\s*:?[ ]*/i,''));
+      const rawModelTokens=modelText.match(/\b[A-Za-z0-9][A-Za-z0-9+._\/-]{2,}\b/g)||[];
+      const alphaNumeric=rawModelTokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+      const sku=(alphaNumeric.at(-1)||modelTokens(modelLine)[0]||'').replace(/[,:;]+$/,'');
+      const replacementLine=block.find(x=>/\breplac(?:ed|ement)\s+with\b/i.test(x))||'';
+      const replacementText=clean((replacementLine.match(/\breplac(?:ed|ement)\s+with\s+(.+)$/i)||[])[1]||'');
+      const replacementTokens=replacementText.match(/\b[A-Za-z0-9][A-Za-z0-9+._\/-]{2,}\b/g)||[];
+      const replacement=(replacementTokens.filter(x=>/[A-Za-z]/.test(x)&&/\d/.test(x)).at(-1)||'').replace(/[,:;]+$/,'');
+      const base=v703314aaQtyAndDescription(start.body);
+      const beforeModel=block.slice(0,modelIndex).map((x,j)=>j===0?base.description:clean(x.replace(/^[|]+\s*/,''))).filter(Boolean);
+      let description=beforeModel.slice().reverse().find(x=>equipmentType(x))||base.description||modelText;
+      description=clean(description.replace(/^[|]+\s*/,''));
+      const q=base.quantity;
+      if(!(q>0)||!description)continue;
+      const probe={sku,model:sku,item_name:description,description,quantity:q,unit_price:null,amount:null};
+      const tracked=v703312jIsTrackedEquipment(probe)||equipmentType(description)||equipmentType(modelText);
+      if(!tracked||v703312jIsServiceRow(probe)||v703312jIsAccessoryRow(probe))continue;
+      const money=v703314aaMoneyTokens(start.body),p=money.length>=2?money[money.length-2]:null,a=money.length>=2?money[money.length-1]:null;
+      const economic=Number.isFinite(p)&&Number.isFinite(a)&&Math.abs(q*p-a)<=Math.max(.08,Math.abs(a)*.002);
+      const row={
+        ...probe,
+        unit_price:economic?p:null,
+        amount:economic?a:null,
+        v703312kSource:source,
+        v703312kOcrEvidence:true,
+        v703312kSourceLine:block.join(' | '),
+        v703314zPrintedModel:modelText,
+        v703314zInvoiceWrappedRow:true,
+        v703314zOrdinal:start.ordinal,
+        v703312LineEvidence:{economic,sourceLine:start.i+1,modelLine:start.i+modelIndex+1}
+      };
+      if(replacement&&compact(replacement)!==compact(sku)){
+        row.v703314zReplacementModel=replacement;
+        row.skuReviewRequired=true;row.humanReviewRequired=true;row.needsReview=true;
+      }
+      if(!economic){
+        row.priceReviewRequired=true;row.amountReviewRequired=true;row.humanReviewRequired=true;row.needsReview=true;
+        row.v703314aaFailClosedEconomics=true;
+      }
+      out.push(row);
+    }
+    return dedupeParsedLineItems(out);
+  }
+  function v703314aaRecoverDirectAssetBlocks(text='',source=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),out=[];
+    for(let i=0;i<lines.length;i++){
+      const normalized=lines[i].replace(/[|$€£¥]/g,' ').replace(/\s+/g,' ').trim();
+      const m=normalized.match(/^([A-Z0-9][A-Z0-9+._\/-]{2,27})\s+(.+?)\s+(\d{1,3}(?:[.]\d+)?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2})\s+((?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2})$/i);
+      if(!m)continue;
+      const sku=clean(m[1]),q=Number(m[3]),p=Number(m[4].replace(/,/g,'')),a=Number(m[5].replace(/,/g,''));
+      if(!(q>0)||!Number.isFinite(p)||!Number.isFinite(a)||Math.abs(q*p-a)>Math.max(.08,Math.abs(a)*.002))continue;
+      const tail=[];
+      for(let j=i+1;j<Math.min(lines.length,i+10);j++){
+        if(/^(?:SUB\s*TOTAL|SUBTOTAL|GST\b|VAT\b|TOTAL\b|AMOUNT\s+DUE)/i.test(lines[j]))break;
+        if(v703314aaOrdinalStart(lines[j]))break;
+        const nextNormalized=lines[j].replace(/[|$€£¥]/g,' ').replace(/\s+/g,' ').trim();
+        const nextDirect=nextNormalized.match(/^([A-Z0-9][A-Z0-9+._\/-]{2,27})\s+(.+?)\s+(\d{1,3}(?:[.]\d+)?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2})\s+((?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2})$/i);
+        if(nextDirect)break;
+        tail.push(lines[j]);
+      }
+      const itemName=clean(m[2]),description=clean([itemName,...tail].join(' '));
+      const row={sku,model:sku,item_name:itemName,description,quantity:q,unit_price:p,amount:a,v703312kSource:source,v703312kOcrEvidence:true,v703312LineEvidence:{economic:true,sourceLine:i+1}};
+      if(v703312jIsServiceRow(row)||v703312jIsAccessoryRow(row))continue;
+      if(!(v703312jIsTrackedEquipment(row)||isStructuredPhysicalAssetRow(row)))continue;
+      out.push(row);
+    }
+    return dedupeParsedLineItems(out);
+  }
+
+  function v703314pRecoverEquipmentRows(text='',source=''){
+    const out=[...v703314aaRecoverModelEquipmentBlocks(text,source)];
     for(const original of String(text||'').replace(/\r/g,'\n').split(/\n+/)){
       const row=v703312kRecoverDirectLine(original,source);if(!row)continue;
       if(v703312jIsServiceRow(row)||v703312jIsAccessoryRow(row)||!v703312jIsTrackedEquipment(row))continue;
