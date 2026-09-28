@@ -916,12 +916,17 @@
     const push=(value,line)=>{
       let v=clean(value).replace(/^[\s:;#-]+|[;,]+$/g,'');
       if(!v)return;
-      // Keep only the first compact product/model expression after an explicit label.
-      // Multi-word values are allowed when the invoice itself prints them, but stop at
-      // obvious economic/table labels so downstream text cannot become a model.
       v=v.split(/\s+(?:qty|quantity|unit\s*price|amount|sgd|subtotal|gst|total)\b/i)[0].trim();
       if(v.length<2||v.length>64)return;
       if(/^(?:n\/a|na|none|nil|not applicable)$/i.test(v))return;
+
+      // Explicit Model lines often contain "Brand Model". Prefer the terminal token
+      // only when it has strong model-like structure (digit and/or model punctuation).
+      // Single-word alphabetic models such as "Neutrik" remain intact.
+      const parts=v.split(/\s+/).filter(Boolean),last=parts.at(-1)||'';
+      const strongTerminal=/[0-9]/.test(last)||/[+._\/-]/.test(last);
+      if(parts.length>1&&strongTerminal&&/^[A-Za-z0-9][A-Za-z0-9+._\/-]{1,63}$/.test(last))v=last;
+
       out.push({model:v,line:clean(line)});
     };
     for(const line of lines){
@@ -968,8 +973,9 @@
     if(/(?:native|pdftext|text-layer)/.test(s))return 6;
     if(/(?:column|block|hires|hi-res|high-res|300dpi|targeted)/.test(s))return 5;
     if(/(?:model|table)/.test(s))return 4;
-    if(/(?:auto|primary)/.test(s))return 3;
-    return 2;
+    // Generic/unknown OCR witnesses are peers of primary/auto OCR. Do not let
+    // naming alone break an explicit-model tie.
+    return 3;
   }
 
   function v703314zdResolveModelConsensus(row={}){
