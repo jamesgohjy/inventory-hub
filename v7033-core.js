@@ -1089,7 +1089,8 @@
     if(ranked.length===1){resolved=true;reason='single-model-evidence';}
     else if(top.explicitSources.size>=2&&top.explicitSources.size>(runner?.explicitSources.size||0)){resolved=true;reason='independent-explicit-majority';}
     else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)===0){resolved=true;reason='printed-model-over-inferred-token';}
-    else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)>=1&&top.maxReliability>(runner?.maxReliability||0)){resolved=true;reason='higher-specificity-explicit-ocr';}
+    // Conflicting explicit model OCR is never resolved from source-mode naming/reliability alone.
+    // A true explicit majority is required; otherwise fail closed to Level 3 review.
     else if(top.explicitSources.size===0&&top.allSources.size>=2&&top.allSources.size>(runner?.allSources.size||0)){resolved=true;reason='independent-inferred-majority';}
 
     if(resolved){
@@ -1305,7 +1306,9 @@
       const top=groups[0],runner=groups[1];
       const consensus=top.sources.size>=2&&top.sources.size>(runner?.sources.size||0);
       if(!consensus){row.v703316EconomicConsensus={status:'review',ordinal,candidates:groups.map(g=>({signature:g.signature,sources:[...g.sources]}))};row.humanReviewRequired=true;row.needsReview=true;return row;}
-      const current=v703314qEconomicValues(row),same=current.ok&&Number(row.quantity)===top.quantity&&Math.abs(Number(row.unit_price)-top.unit_price)<=.01&&Math.abs(Number(row.amount)-top.amount)<=.01;
+      const currentPresent=row.quantity!==null&&row.quantity!==undefined&&String(row.quantity).trim()!==''&&row.unit_price!==null&&row.unit_price!==undefined&&String(row.unit_price).trim()!==''&&row.amount!==null&&row.amount!==undefined&&String(row.amount).trim()!=='';
+      const current=currentPresent?v703314qEconomicValues(row):{ok:false,finite:false};
+      const same=current.ok&&Number(row.quantity)===top.quantity&&Math.abs(Number(row.unit_price)-top.unit_price)<=.01&&Math.abs(Number(row.amount)-top.amount)<=.01;
       if(current.ok&&!same){
         row.v703316EconomicConsensus={status:'conflict',ordinal,current:{quantity:Number(row.quantity),unit_price:Number(row.unit_price),amount:Number(row.amount)},candidate:{quantity:top.quantity,unit_price:top.unit_price,amount:top.amount,sources:[...top.sources]}};
         row.v703312kIndependentConflict=true;row.humanReviewRequired=true;row.needsReview=true;return row;
