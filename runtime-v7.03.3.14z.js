@@ -2743,12 +2743,35 @@ function v661RepairInvoiceMoneyFromLayout(doc={}){
   if([Number(doc.subtotal),Number(doc.gst),Number(doc.total_amount)].every(Number.isFinite)&&Math.abs((Number(doc.subtotal)+Number(doc.gst))-Number(doc.total_amount))>.05)doc.total_amount=null;
   return doc;
 }
+function v703316PhysicalEquipmentSignalCount(raw=''){
+  const lines=normalizePdfText(raw).split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const physical=/\b(?:projector|microphone|speaker|control\s+panel|controller|audio\s+tester|transmitter|receiver|mixer|amplifier|processor|switcher|camera|display|monitor|media\s+player|cd\/?mp3\s+player|receptacle|nvr|dvr)\b/i;
+  const service=/\b(?:installation|installing|labou?r|delivery\s+service|freight|commissioning|training|cabling|racking|mounting\s+kits?|warranty|service\s+centre|service\s+center)\b/i;
+  const meta=/^(?:description|quantity|qty|unit\s*price|amount|subtotal|total|invoice|tax\s+invoice|attention|company|address|email|contact|reference|gst|date)\b/i;
+  const keys=new Set();
+  for(const line of lines){
+    if(meta.test(line)||service.test(line)||!physical.test(line))continue;
+    const compactLine=line.toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    if(compactLine.length<5)continue;
+    // Adjacent wrapped fragments of one item share their strongest model/equipment token.
+    const model=(line.match(/\b[A-Z][A-Z0-9+._\/-]{1,27}\b/gi)||[]).find(x=>/[A-Za-z]/.test(x)&&/\d/.test(x));
+    const type=(line.match(/\b(?:projector|microphone|speaker|controller|tester|transmitter|receiver|mixer|amplifier|processor|switcher|camera|display|monitor|player|receptacle|nvr|dvr)\b/i)||[])[0]||'equipment';
+    keys.add((model||compactLine.slice(0,48))+'|'+String(type).toLowerCase());
+  }
+  return keys.size;
+}
 function needsDeepRecovery(parsed={}){
-  const d=parsed.doc||{},items=validParsedItems(parsed.items||[]),c=parsed?.invoiceClassification?.type||'uncertain';
+  const d=parsed.doc||{},items=validParsedItems(parsed.items||[]),c=parsed?.invoiceClassification?.type||'uncertain',raw=String(parsed?.raw||parsed?.rawText||'');
   // V6.81: a mathematically-consistent row can still be a broken PDF text-layer split (e.g. 201 x 4 = 804 instead of 1 x 804).
   // Treat extreme quantity/price splits as a reason to obtain independent image OCR evidence, never as a reason to auto-correct.
   const needsIndependentRowCheck=items.some(x=>{const q=Number(x.quantity),p=Number(x.unit_price),a=Number(x.amount);return x.quantityReviewRequired||x.priceReviewRequired||x.amountReviewRequired||(q>=100&&p>0&&p<10&&a>=100);});
   if(needsIndependentRowCheck)return true;
+  const physicalSignals=v703316PhysicalEquipmentSignalCount(raw);
+  // A readable invoice can still have a column-major/native text layer where descriptions,
+  // quantities and prices are detached. Do not guess across columns: obtain independent OCR
+  // whenever the raw document visibly contains multiple physical equipment identities but the
+  // current parser materialised substantially fewer rows.
+  if(physicalSignals>=2&&items.length<Math.min(physicalSignals,8))return true;
   const a=Number(d.subtotal),b=Number(d.gst),z=Number(d.total_amount),moneyOk=[a,b,z].every(Number.isFinite)&&Math.abs((a+b)-z)<=.06;
   // Service-only invoices do not need inventory rows, but their invoice number/date/totals still do.
   if(c==='service')return !d.invoice_number||!d.invoice_date||!moneyOk;
