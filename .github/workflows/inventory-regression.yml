@@ -90,5 +90,6 @@ jobs:
           node tests/parser-v4_1-phase4-production-integration.cjs
           node tests/parser-v4_1-phase4-concept-live-failure.cjs
           node tests/parser-v4_1-phase4-live-diagnostic-parity.cjs
+          node tests/parser-v4_1-phase4-cross-ocr-dedupe.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
