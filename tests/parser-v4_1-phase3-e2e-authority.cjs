@@ -56,6 +56,8 @@ Note replaced with XDP-3002
 7 Supply & Install Outdoor Dual Microphone Wall Receptacle 1 450.00 450.00
 Model: Neutrik`;
 
+const conceptWitness3=conceptWitness2.replace('Support up to 12 channels','Supports up to 12 channels');
+
 const conceptPages=[
   'PURCHASE ORDER\\nVendor Name: Concept Systems Technologies\\nPO No: PO-REDACTED',
   conceptInvoice,
@@ -72,7 +74,8 @@ assert(cf.decisions[3].allowed===false&&cf.decisions[4].allowed===false&&cf.deci
 
 const conceptEvidence=[
  {source:'phase3-actual-ocr-witness-a',kind:'ocr',text:conceptInvoice,layout:[]},
- {source:'phase3-actual-ocr-witness-b',kind:'ocr',text:conceptWitness2,layout:[]}
+ {source:'phase3-actual-ocr-witness-b',kind:'ocr',text:conceptWitness2,layout:[]},
+ {source:'phase3-actual-ocr-witness-c',kind:'ocr',text:conceptWitness3,layout:[]}
 ];
 const conceptRows=V.v703312jRecoverNumberedEquipmentRows(conceptInvoice,conceptEvidence);
 const expectedConcept=[
