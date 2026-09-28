@@ -920,10 +920,26 @@
     const na=normalizedItemIdentity(a.item_name||a.description||''),nb=normalizedItemIdentity(b.item_name||b.description||'');
     return !!na&&!!nb&&(na===nb||na.includes(nb)||nb.includes(na));
   }
+  function v703314zaStrongEconomicAlias(a={},b={}){
+    const sa=compact(a.sku||''),sb=compact(b.sku||'');
+    // Never fuzzy-merge two explicitly different model identities.
+    if(sa&&sb&&sa!==sb)return false;
+    const qa=Number(a.quantity),qb=Number(b.quantity),pa=Number(a.unit_price),pb=Number(b.unit_price),aa=Number(a.amount),ab=Number(b.amount);
+    if(!(qa>0&&qb>0&&Number.isFinite(pa)&&Number.isFinite(pb)&&Number.isFinite(aa)&&Number.isFinite(ab)))return false;
+    if(Math.abs(qa-qb)>1e-9||Math.abs(pa-pb)>.01||Math.abs(aa-ab)>.01)return false;
+    const tokens=row=>{
+      const stop=new Set(['SUPPLY','INSTALL','INSTALLATION','SYSTEM','EQUIPMENT','THE','NEW','SPECIFIED','SECTION','INCLUDES','WITH','FOR','AND','A','AN']);
+      return new Set((norm(row.item_name||row.description||'').toUpperCase().match(/[A-Z0-9]+/g)||[]).filter(x=>x.length>=4&&!stop.has(x)));
+    };
+    const ta=tokens(a),tb=tokens(b);if(!ta.size||!tb.size)return false;
+    const overlap=[...ta].filter(x=>tb.has(x)).length,short=Math.min(ta.size,tb.size);
+    const equipmentBoth=V703312J_EQUIPMENT_RE.test(v703312jRowText(a))&&V703312J_EQUIPMENT_RE.test(v703312jRowText(b));
+    return equipmentBoth&&overlap>=3&&overlap/short>=.6;
+  }
   function v703312jMergeTrackedRows(existing=[],recovered=[],raw=''){
     const kept=(existing||[]).filter(r=>!v703312jIsServiceRow(r)&&!v703312jIsAccessoryRow(r));
     for(const rec of recovered||[]){
-      const match=kept.find(x=>v703312jSameEquipment(x,rec));
+      const match=kept.find(x=>v703312jSameEquipment(x,rec))||kept.find(x=>v703314zaStrongEconomicAlias(x,rec));
       if(!match){kept.push({...rec});continue;}
       const recoveredEvidence=(rec.v703312kEvidenceSources||[]).length||rec.v703312kOcrEvidence||rec.v703314zPrintedModel;
       if(recoveredEvidence){
