@@ -34,6 +34,15 @@
     }
     return out;
   }
+  function v703315SerialContinuationTokens(line=''){
+    const t=clean(line);if(!t)return [];
+    // Continuation rows must look like serial data, not a later equipment/model description.
+    if(/\b(?:projector|microphone|speaker|system|tester|transmitter|receiver|controller|panel|trolley|amplifier|mixer|camera|display|monitor|shipment|warranty|description|quantity|unit\s*price|amount|model)\b/i.test(t))return [];
+    const tokens=v703315SerialTokens(t);if(!tokens.length)return [];
+    const words=t.replace(/[,;]+/g,' ').split(/\s+/).filter(Boolean);
+    if(!/[,;]/.test(t)&&words.length>2)return [];
+    return tokens;
+  }
   function v703315ExtractSerialBlocks(text=''){
     const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean),blocks=[];
     const label=V703315_SERIAL_LABEL_RE;
@@ -46,7 +55,7 @@
       for(let j=i+1;j<Math.min(lines.length,i+7);j++){
         const line=lines[j];
         if(label.test(line)||hardStop.test(line)||economic.test(line))break;
-        const tokens=v703315SerialTokens(line);
+        const tokens=v703315SerialContinuationTokens(line);
         if(tokens.length){
           for(const token of tokens)if(!serials.some(v=>compact(v)===compact(token)))serials.push(token);
           endLineIndex=j;continue;
@@ -196,6 +205,14 @@
     const strongTax=taxTitleLines.length>0||fragmentedTax;
     const strongInvoice=invoiceTitleLines.length>0;
 
+    // V4.1 audit hardening: an explicit prohibited document title at the top of the page
+    // outranks stray/duplicated "invoice" text elsewhere on that page. This prevents scanned
+    // PO/DO/quotation/schedule pages from becoming inventory evidence after OCR.
+    const explicitNonInvoiceTitleRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|INSTALLATION\s+REPORT|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)$/i;
+    const explicitEarly=exactNormalizedHeading.slice(0,24);
+    const explicitEarlyPhrases=[...explicitEarly,...adjacentPhrases(explicitEarly,3)];
+    const explicitNonInvoiceTitles=[...new Set(explicitEarlyPhrases.filter(x=>explicitNonInvoiceTitleRe.test(x)))];
+
     // OCR-tolerant heading evidence. This is intentionally weaker and routes to Level 3.
     const fuzzyHead=headingLines.some(line=>{
       if(!titleLineCandidate(line))return false;
@@ -230,8 +247,13 @@
     if(paymentTerms)structureScore+=1;
     if(currency)structureScore+=1;
 
-    // Document authority is resolved before equipment extraction. An explicit Invoice/Tax Invoice
-    // title remains authoritative even when its header contains PO/DO reference fields.
+    // Document authority is resolved before equipment extraction. Explicit prohibited
+    // document titles at the top of a page are terminal even if OCR later repeats "TAX INVOICE".
+    // Labelled PO/DO reference fields inside a real invoice do not match this exact-title rule.
+    if(explicitNonInvoiceTitles.length){
+      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence:{...evidence,explicitNonInvoiceTitles}};
+    }
+    // An explicit Invoice/Tax Invoice title remains authoritative when no prohibited title exists.
     if(strongTax){
       return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:false,score:12+structureScore,evidence};
     }
@@ -1067,7 +1089,8 @@
     if(ranked.length===1){resolved=true;reason='single-model-evidence';}
     else if(top.explicitSources.size>=2&&top.explicitSources.size>(runner?.explicitSources.size||0)){resolved=true;reason='independent-explicit-majority';}
     else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)===0){resolved=true;reason='printed-model-over-inferred-token';}
-    else if(top.explicitSources.size>=1&&(runner?.explicitSources.size||0)>=1&&top.maxReliability>(runner?.maxReliability||0)){resolved=true;reason='higher-specificity-explicit-ocr';}
+    // Conflicting explicit model OCR is never resolved from source-mode naming/reliability alone.
+    // A true explicit majority is required; otherwise fail closed to Level 3 review.
     else if(top.explicitSources.size===0&&top.allSources.size>=2&&top.allSources.size>(runner?.allSources.size||0)){resolved=true;reason='independent-inferred-majority';}
 
     if(resolved){
@@ -1246,6 +1269,60 @@
     return v703314zdResolveModelConsensus(r);
   }
 
+  function v703316OrdinalEconomicEvidence(text='',source=''){
+    const out=[];
+    for(const line0 of String(text||'').replace(/\r/g,'\n').split(/\n+/)){
+      const line=clean(line0);if(!line)continue;
+      const m=line.match(/^ROW\s+(\d{1,3})\s*[|:;-]?\s*(.*)$/i);if(!m)continue;
+      const ordinal=Number(m[1]),tail=clean(m[2]);if(!(ordinal>0&&ordinal<=999))continue;
+      const moneyHits=[...tail.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)];
+      if(moneyHits.length<2)continue;
+      const unitHit=moneyHits[moneyHits.length-2],amountHit=moneyHits[moneyHits.length-1];
+      const unit_price=v703312jMoney(unitHit[1]),amount=v703312jMoney(amountHit[1]);
+      const beforeMoney=tail.slice(0,Math.max(0,unitHit.index??0));
+      const ints=(beforeMoney.match(/\b\d{1,3}(?:\.00)?\b/g)||[]).map(x=>Number(x)).filter(x=>Number.isInteger(x)&&x>0&&x<=999);
+      const quantity=ints.length?ints[ints.length-1]:null;
+      if(!(quantity>0)||!Number.isFinite(unit_price)||!Number.isFinite(amount))continue;
+      if(Math.abs(quantity*unit_price-amount)>Math.max(.05,Math.abs(amount)*.003))continue;
+      out.push({ordinal,quantity,unit_price,amount,source:clean(source)||'targeted-row-ocr',line});
+    }
+    return out;
+  }
+  function v703316ApplyOrdinalEconomicConsensus(rows=[],raw='',evidenceSources=[]){
+    const evidence=[];
+    for(const ev of v703312kEvidenceTexts(raw,evidenceSources))evidence.push(...v703316OrdinalEconomicEvidence(ev.text,ev.source));
+    if(!evidence.length)return rows;
+    const byOrdinal=new Map();
+    for(const e of evidence){
+      const sig=[e.quantity,Number(e.unit_price).toFixed(2),Number(e.amount).toFixed(2)].join('|');
+      let ord=byOrdinal.get(e.ordinal);if(!ord){ord=new Map();byOrdinal.set(e.ordinal,ord);}
+      let g=ord.get(sig);if(!g){g={signature:sig,quantity:e.quantity,unit_price:e.unit_price,amount:e.amount,sources:new Set(),lines:[]};ord.set(sig,g);}
+      g.sources.add(e.source);g.lines.push(e.line);
+    }
+    return (rows||[]).map(rawRow=>{
+      const row={...rawRow},ordinal=v703314zdRowOrdinal(row),groups=ordinal?[...(byOrdinal.get(ordinal)?.values()||[])]:[];
+      if(!groups.length)return row;
+      groups.sort((a,b)=>b.sources.size-a.sources.size);
+      const top=groups[0],runner=groups[1];
+      const consensus=top.sources.size>=2&&top.sources.size>(runner?.sources.size||0);
+      if(!consensus){row.v703316EconomicConsensus={status:'review',ordinal,candidates:groups.map(g=>({signature:g.signature,sources:[...g.sources]}))};row.humanReviewRequired=true;row.needsReview=true;return row;}
+      const currentPresent=row.quantity!==null&&row.quantity!==undefined&&String(row.quantity).trim()!==''&&row.unit_price!==null&&row.unit_price!==undefined&&String(row.unit_price).trim()!==''&&row.amount!==null&&row.amount!==undefined&&String(row.amount).trim()!=='';
+      const current=currentPresent?v703314qEconomicValues(row):{ok:false,finite:false};
+      const same=current.ok&&Number(row.quantity)===top.quantity&&Math.abs(Number(row.unit_price)-top.unit_price)<=.01&&Math.abs(Number(row.amount)-top.amount)<=.01;
+      if(current.ok&&!same){
+        row.v703316EconomicConsensus={status:'conflict',ordinal,current:{quantity:Number(row.quantity),unit_price:Number(row.unit_price),amount:Number(row.amount)},candidate:{quantity:top.quantity,unit_price:top.unit_price,amount:top.amount,sources:[...top.sources]}};
+        row.v703312kIndependentConflict=true;row.humanReviewRequired=true;row.needsReview=true;return row;
+      }
+      if(!current.ok||explicitReviewFlag(row)){
+        row.quantity=top.quantity;row.unit_price=top.unit_price;row.amount=top.amount;
+        delete row.quantityReviewRequired;delete row.priceReviewRequired;delete row.unit_priceReviewRequired;delete row.amountReviewRequired;
+        row.v703316EconomicConsensus={status:'confirmed',ordinal,quantity:top.quantity,unit_price:top.unit_price,amount:top.amount,sources:[...top.sources],lines:top.lines};
+        if(!row.v703312kIndependentConflict&&!row.skuReviewRequired&&!row.serialReviewRequired){row.humanReviewRequired=false;row.needsReview=false;}
+      }else row.v703316EconomicConsensus={status:'confirmed-existing',ordinal,sources:[...top.sources]};
+      return row;
+    });
+  }
+
   function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
@@ -1322,7 +1399,8 @@
       else{row.humanReviewRequired=true;row.needsReview=true;}
     }
     const withNearby=out.map(row=>v703314zeAttachNearbyModelEvidence(row,raw,evidenceSources));
-    return v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(withNearby));
+    const consolidated=v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(withNearby));
+    return v703316ApplyOrdinalEconomicConsensus(consolidated,raw,evidenceSources);
   }
   function v703312jSameEquipment(a={},b={}){
     const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb&&sa===sb)return true;

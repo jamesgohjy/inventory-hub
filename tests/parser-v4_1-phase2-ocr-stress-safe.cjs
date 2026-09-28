@@ -108,17 +108,21 @@ const evidence=[
  {source:'ocr-block-actual-deidentified',kind:'ocr',text:conceptBlock,layout:[]}
 ];
 const conceptRows=V.v703312jRecoverNumberedEquipmentRows(conceptAuto,evidence);
-// Ground truth correction: official Electro-Voice model is ZX1i-90; the earlier ZX11-90 expectation was an OCR corruption, not source truth.
+// The two raw OCR witnesses disagree ZX11-90 vs ZX1I-90. With no third witness/web verification in this isolated test, identity must fail closed to review.
 const expected=[
  {id:'CQ12T',q:1,p:1400,a:1400},
  {id:'1604DSP',q:1,p:2500,a:2500},
- {id:'ZX1I90',q:6,p:800,a:4800},
+ {id:'LOUDSPEAKERS',q:6,p:800,a:4800},
  {id:'SLXD24SM58',q:2,p:0,a:0},
  {id:'MS1014',q:1,p:0,a:0},
  {id:'XDP3002',q:1,p:0,a:0},
  {id:'RECEPTACLE',q:1,p:450,a:450}
 ];
 const cFail=score(conceptRows,expected,'PHASE2 OCR CONCEPT');
+const conflictedSpeaker=conceptRows.find(x=>/passive\s+loudspeakers/i.test(String(x.item_name||x.description||'')));
+if(!conflictedSpeaker)cFail.push('conflicted loudspeaker row missing');
+else if(String(conflictedSpeaker.sku||conflictedSpeaker.model||'').trim()||!conflictedSpeaker.skuReviewRequired)
+  cFail.push('1-vs-1 ZX11-90 / ZX1I-90 OCR conflict must be blank+review, got '+String(conflictedSpeaker.sku||conflictedSpeaker.model||''));
 for(const id of ['SLXD24SM58','MS1014','XDP3002']){
  const r=conceptRows.find(x=>key(x).includes(norm(id)));
  if(r && !(r.unit_price==null && r.amount==null && (r.humanReviewRequired||r.needsReview||r.priceReviewRequired||r.amountReviewRequired))) cFail.push(id+' must be blank+review under obscured OCR');
