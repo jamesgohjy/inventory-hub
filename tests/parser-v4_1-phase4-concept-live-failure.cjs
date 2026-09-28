@@ -50,10 +50,13 @@ const degradedLiveRows=[
 ];
 
 const recovered=V.v703312jRecoverNumberedEquipmentRows(ocrA,sources);
+console.log('PH4 MODEL TRACE RECOVERED '+JSON.stringify(recovered.map(r=>({sku:r.sku,model:r.model,consensus:r.v703314zdModelConsensus,candidates:r.v703314zdModelCandidates}))));
 assert(recovered.length===7,'authoritative Concept recovery must yield 7 rows, got '+recovered.length);
 
 const merged=V.v703312jMergeTrackedRows(degradedLiveRows,recovered,ocrA);
+console.log('PH4 MODEL TRACE MERGED '+JSON.stringify(merged.map(r=>({sku:r.sku,model:r.model,consensus:r.v703314zdModelConsensus}))));
 const audited=V41.recoverRows(merged,{raw:ocrA,sources});
+console.log('PH4 MODEL TRACE AUDITED '+JSON.stringify(audited.outputRows.map(r=>({sku:r.sku,model:r.model,consensus:r.v703314zdModelConsensus}))));
 const rows=audited.outputRows;
 console.log('PHASE4 CONCEPT LIVE DEBUG ROWS: '+JSON.stringify(rows.map(r=>({sku:r.sku,item_name:r.item_name,description:r.description,qty:r.quantity,unit:r.unit_price,amount:r.amount,review:!!(r.humanReviewRequired||r.needsReview)}))));
 assert(rows.length===7,'live Concept reconciliation must yield exactly 7 equipment rows, got '+rows.length+' rows='+JSON.stringify(rows.map(r=>({sku:r.sku,item_name:r.item_name,description:r.description}))));
