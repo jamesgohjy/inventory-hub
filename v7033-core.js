@@ -1268,6 +1268,57 @@
     return v703314zdResolveModelConsensus(r);
   }
 
+  function v703316OrdinalEconomicEvidence(text='',source=''){
+    const out=[];
+    for(const line0 of String(text||'').replace(/\r/g,'\n').split(/\n+/)){
+      const line=clean(line0);if(!line)continue;
+      const m=line.match(/^ROW\s+(\d{1,3})\s*[|:;-]?\s*(.*)$/i);if(!m)continue;
+      const ordinal=Number(m[1]),tail=clean(m[2]);if(!(ordinal>0&&ordinal<=999))continue;
+      const money=[...tail.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(x=>v703312jMoney(x[1])).filter(Number.isFinite);
+      if(money.length<2)continue;
+      const unit_price=money[money.length-2],amount=money[money.length-1];
+      const beforeMoney=tail.slice(0,Math.max(0,tail.lastIndexOf(String(money[money.length-2]))));
+      const ints=(beforeMoney.match(/\b\d{1,3}(?:\.00)?\b/g)||[]).map(x=>Number(x)).filter(x=>Number.isInteger(x)&&x>0&&x<=999);
+      const quantity=ints.length?ints[ints.length-1]:null;
+      if(!(quantity>0)||!Number.isFinite(unit_price)||!Number.isFinite(amount))continue;
+      if(Math.abs(quantity*unit_price-amount)>Math.max(.05,Math.abs(amount)*.003))continue;
+      out.push({ordinal,quantity,unit_price,amount,source:clean(source)||'targeted-row-ocr',line});
+    }
+    return out;
+  }
+  function v703316ApplyOrdinalEconomicConsensus(rows=[],raw='',evidenceSources=[]){
+    const evidence=[];
+    for(const ev of v703312kEvidenceTexts(raw,evidenceSources))evidence.push(...v703316OrdinalEconomicEvidence(ev.text,ev.source));
+    if(!evidence.length)return rows;
+    const byOrdinal=new Map();
+    for(const e of evidence){
+      const sig=[e.quantity,Number(e.unit_price).toFixed(2),Number(e.amount).toFixed(2)].join('|');
+      let ord=byOrdinal.get(e.ordinal);if(!ord){ord=new Map();byOrdinal.set(e.ordinal,ord);}
+      let g=ord.get(sig);if(!g){g={signature:sig,quantity:e.quantity,unit_price:e.unit_price,amount:e.amount,sources:new Set(),lines:[]};ord.set(sig,g);}
+      g.sources.add(e.source);g.lines.push(e.line);
+    }
+    return (rows||[]).map(rawRow=>{
+      const row={...rawRow},ordinal=v703314zdRowOrdinal(row),groups=ordinal?[...(byOrdinal.get(ordinal)?.values()||[])]:[];
+      if(!groups.length)return row;
+      groups.sort((a,b)=>b.sources.size-a.sources.size);
+      const top=groups[0],runner=groups[1];
+      const consensus=top.sources.size>=2&&top.sources.size>(runner?.sources.size||0);
+      if(!consensus){row.v703316EconomicConsensus={status:'review',ordinal,candidates:groups.map(g=>({signature:g.signature,sources:[...g.sources]}))};row.humanReviewRequired=true;row.needsReview=true;return row;}
+      const current=v703314qEconomicValues(row),same=current.ok&&Number(row.quantity)===top.quantity&&Math.abs(Number(row.unit_price)-top.unit_price)<=.01&&Math.abs(Number(row.amount)-top.amount)<=.01;
+      if(current.ok&&!same){
+        row.v703316EconomicConsensus={status:'conflict',ordinal,current:{quantity:Number(row.quantity),unit_price:Number(row.unit_price),amount:Number(row.amount)},candidate:{quantity:top.quantity,unit_price:top.unit_price,amount:top.amount,sources:[...top.sources]}};
+        row.v703312kIndependentConflict=true;row.humanReviewRequired=true;row.needsReview=true;return row;
+      }
+      if(!current.ok||explicitReviewFlag(row)){
+        row.quantity=top.quantity;row.unit_price=top.unit_price;row.amount=top.amount;
+        delete row.quantityReviewRequired;delete row.priceReviewRequired;delete row.unit_priceReviewRequired;delete row.amountReviewRequired;
+        row.v703316EconomicConsensus={status:'confirmed',ordinal,quantity:top.quantity,unit_price:top.unit_price,amount:top.amount,sources:[...top.sources],lines:top.lines};
+        if(!row.v703312kIndependentConflict&&!row.skuReviewRequired&&!row.serialReviewRequired){row.humanReviewRequired=false;row.needsReview=false;}
+      }else row.v703316EconomicConsensus={status:'confirmed-existing',ordinal,sources:[...top.sources]};
+      return row;
+    });
+  }
+
   function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
@@ -1344,7 +1395,8 @@
       else{row.humanReviewRequired=true;row.needsReview=true;}
     }
     const withNearby=out.map(row=>v703314zeAttachNearbyModelEvidence(row,raw,evidenceSources));
-    return v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(withNearby));
+    const consolidated=v703314zdConsolidateRecoveredWitnesses(dedupeParsedLineItems(withNearby));
+    return v703316ApplyOrdinalEconomicConsensus(consolidated,raw,evidenceSources);
   }
   function v703312jSameEquipment(a={},b={}){
     const sa=compact(a.sku||''),sb=compact(b.sku||'');if(sa&&sb&&sa===sb)return true;
