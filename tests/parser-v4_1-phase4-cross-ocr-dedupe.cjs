@@ -37,9 +37,13 @@ for(const id of expected){
   assert(consolidated.some(r=>norm(r.sku||r.model)===id),'missing consolidated model '+id);
 }
 assert(new Set(consolidated.map(r=>norm(r.sku||r.model))).size===7,'duplicate model identities remain');
+const amp=consolidated.find(r=>norm(r.sku)==='1604DSP');
+assert(amp&&String(amp.item_name||'')==='Digital Power Amplifier with DSP','1604DSP must retain cleaner equipment name: '+JSON.stringify(amp));
+const ms=consolidated.find(r=>norm(r.sku)==='MS1014');
+assert(ms&&String(ms.item_name||'')==='Monitor Speaker at the console','MS101-4 name degraded during dedupe: '+JSON.stringify(ms));
 const neutrik=consolidated.find(r=>norm(r.sku)==='NEUTRIK');
 assert(neutrik&&Number(neutrik.quantity)===1&&Number(neutrik.unit_price)===450&&Number(neutrik.amount)===450,'Neutrik economics changed during dedupe');
-assert(String(neutrik.item_name||'').includes('Wall Receptacle'),'Neutrik name degraded during dedupe');
+assert(String(neutrik.item_name||'')==='Outdoor Dual Microphone Wall Receptacle','Neutrik name degraded during dedupe: '+JSON.stringify(neutrik));
 const xdp=consolidated.find(r=>norm(r.sku)==='XDP3002');
 assert(norm(xdp?.v703314zReplacementModel)==='XDP3001','XDP replacement evidence lost during dedupe');
 
