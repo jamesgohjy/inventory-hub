@@ -78,7 +78,7 @@ const conceptRows=V.v703312jRecoverNumberedEquipmentRows(conceptInvoice,conceptE
 const expectedConcept=[
  {id:'CQ12T',q:1,p:1400,a:1400},
  {id:'1604DSP',q:1,p:2500,a:2500},
- {id:'ZX1190',q:6,p:800,a:4800},
+ {id:'ZX1I90',q:6,p:800,a:4800},
  {id:'SLXD24SM58',q:2,p:null,a:null},
  {id:'MS1014',q:1,p:null,a:null},
  {id:'XDP3002',q:1,p:null,a:null},
