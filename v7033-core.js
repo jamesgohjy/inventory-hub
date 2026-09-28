@@ -851,13 +851,20 @@
     const out=[];
     for(const row of recovered){
       const existing=out.find(x=>v703312jSameEquipment(x,row));
-      if(!existing){row.v703312kEvidenceSources=[row.v703312kSource].filter(Boolean);out.push(row);continue;}
+      if(!existing){
+        row.v703312kEvidenceSources=[row.v703312kSource].filter(Boolean);
+        if(row.v703314zPrintedModel&&row.sku)row.v703314zPrintedModelEvidence=[{model:row.sku,source:row.v703312kSource||'primary',line:row.v703312kSourceLine||''}];
+        out.push(row);continue;
+      }
       existing.v703312kEvidenceSources=uniq([...(existing.v703312kEvidenceSources||[]),row.v703312kSource].filter(Boolean));
       const hasCompleteEconomics=r=>r&&r.unit_price!==null&&r.unit_price!==undefined&&r.unit_price!==''&&r.amount!==null&&r.amount!==undefined&&r.amount!==''&&Number.isFinite(Number(r.unit_price))&&Number.isFinite(Number(r.amount));
       const existingComplete=hasCompleteEconomics(existing);
       const rowComplete=hasCompleteEconomics(row);
       if(!existingComplete&&rowComplete){existing.unit_price=row.unit_price;existing.amount=row.amount;existing.quantity=row.quantity;delete existing.priceReviewRequired;delete existing.amountReviewRequired;delete existing.quantityReviewRequired;}
       if(row.v703314zPrintedModel&&row.sku){
+        existing.v703314zPrintedModelEvidence=existing.v703314zPrintedModelEvidence||[];
+        const vote={model:row.sku,source:row.v703312kSource||'primary',line:row.v703312kSourceLine||''};
+        if(!existing.v703314zPrintedModelEvidence.some(x=>compact(x.model)===compact(vote.model)&&clean(x.source)===clean(vote.source)))existing.v703314zPrintedModelEvidence.push(vote);
         const currentSku=compact(existing.sku||''),incomingSku=compact(row.sku||'');
         const existingPrinted=clean(existing.v703314zPrintedModel||'');
         // Evidence must follow any explicit printed-model value through dedupe/merge.
@@ -881,6 +888,25 @@
       if(Number(existing.quantity)!==Number(row.quantity)||((existingComplete&&rowComplete)&&(Number(existing.unit_price)!==Number(row.unit_price)||Number(existing.amount)!==Number(row.amount)))){existing.v703312kIndependentConflict=true;existing.humanReviewRequired=true;}
     }
     for(const row of out){
+      // Printed-model OCR consensus: when 2+ independent evidence sources agree on the
+      // same explicit Model value and outvote every alternative, use that majority value.
+      // A dissenting witness remains recorded and keeps the row in review; ties fail closed.
+      const modelEvidence=(row.v703314zPrintedModelEvidence||[]).filter(x=>clean(x.model));
+      if(modelEvidence.length>=2){
+        const groups=new Map();
+        for(const e of modelEvidence){
+          const k=compact(e.model);if(!k)continue;
+          let g=groups.get(k);if(!g){g={key:k,model:e.model,sources:new Set(),evidence:[]};groups.set(k,g);}
+          g.sources.add(clean(e.source)||'primary');g.evidence.push(e);
+        }
+        const ranked=[...groups.values()].sort((a,b)=>b.sources.size-a.sources.size);
+        const top=ranked[0],runner=ranked[1];
+        if(top&&top.sources.size>=2&&top.sources.size>(runner?.sources.size||0)){
+          row.sku=top.model;row.model=top.model;row.v703314zPrintedModel=top.model;
+          row.v703314zModelConsensus={model:top.model,sources:[...top.sources],votes:top.sources.size,totalSources:new Set(modelEvidence.map(x=>clean(x.source)||'primary')).size};
+          if(ranked.length>1){row.skuReviewRequired=true;row.humanReviewRequired=true;row.needsReview=true;row.v703312kIndependentConflict=true;}
+        }
+      }
       const n=(row.v703312kEvidenceSources||[]).length;row.v703312kLevel1={status:'confirmed',reason:'Deterministic OCR/table evidence identifies a tracked equipment row.'};
       row.v703312kLevel2={status:n>=2&&!row.v703312kIndependentConflict?'confirmed':'unavailable',sources:n,reason:n>=2?'Independent OCR reads agree on the same equipment identity and economics.':'A second independent OCR read did not confirm the row.'};
       const deterministicSingle=n===1&&!row.v703312kIndependentConflict&&strongDeterministicEvidence(row,raw)&&!explicitReviewFlag(row);
