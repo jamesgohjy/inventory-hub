@@ -911,13 +911,16 @@
     if(!primary.v703314zPrintedModel&&other.v703314zPrintedModel)primary.v703314zPrintedModel=other.v703314zPrintedModel;
 
     const nameA=clean(primary.item_name||''),nameB=clean(other.item_name||'');
+    const goodExplicitName=(row,n)=>!!row.v703314zPrintedModel&&!!equipmentType(n)&&!/^(?:with|and|of|for)\b/i.test(n)&&n.split(/\s+/).length>=2;
+    const primaryExplicitGood=goodExplicitName(primary,nameA),otherExplicitGood=goodExplicitName(other,nameB);
     const nameScore=n=>{
       let s=n.length;
-      if(/(?:projector|controller|amplifier|mixer|console|speaker|loudspeaker|microphone|receptacle|player|monitor|tester|receiver|transmitter)/i.test(n))s+=30;
-      if(/^with\b|\busa\b/i.test(n))s-=20;
+      if(/\b(?:projector|controller|amplifier|mixer|console|speaker|loudspeaker|microphone|receptacle|player|monitor|tester|receiver|transmitter)\b/i.test(n))s+=30;
+      if(/^(?:with|and|of|for)\b|\busa\b/i.test(n))s-=25;
       return s;
     };
-    if(nameB&&nameScore(nameB)>nameScore(nameA))primary.item_name=nameB;
+    if(!primaryExplicitGood&&otherExplicitGood)primary.item_name=nameB;
+    else if(!primaryExplicitGood&&!otherExplicitGood&&nameB&&nameScore(nameB)>nameScore(nameA))primary.item_name=nameB;
     if(clean(other.description||'').length>clean(primary.description||'').length)primary.description=other.description;
 
     for(const f of ['quantity','unit_price','amount']){
