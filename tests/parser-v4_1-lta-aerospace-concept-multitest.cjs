@@ -16,7 +16,7 @@ async function pipeline(name,pages,supplier){
  const integrity=V41.recoverRows(normalized.items||[],{raw,sources:evidence,layout:[]});
  return {auth,raw,items:integrity.outputRows||[],integrity};
 }
-const has=(rows,id)=>rows.find(r=>norm([r.sku,r.model,r.item_name,r.description].filter(Boolean).join(' ')).includes(norm(id)));
+const has=(rows,id)=>{const n=norm(id);return rows.find(r=>norm(r.sku||r.model||'')===n)||rows.find(r=>norm([r.item_name,r.description].filter(Boolean).join(' ')).split(/(?=[A-Z])/).join('').includes(n));};
 (async()=>{
  const results=[];
  // Aerospace: raw invoice evidence, no prebuilt rows. Test identities, economics, serials, service/accessory filtering and contamination.
