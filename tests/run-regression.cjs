@@ -539,7 +539,8 @@ assert(setupDoc.includes('Supabase database backups do **not** contain Storage o
 
 assert(fs.existsSync('supabase-v7-03-3-14o-parser-intelligence.sql'),'14o Supabase migration missing');
 const frozen=JSON.parse(read('tests/known-good-releases.json'));
-assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
+assert(frozen.version==='Parser V4.1.1'&&frozen.commit==='8c0bbbff8ce34ace3929c7f187ffc6c05cd213d0'&&frozen.branch==='freeze/v4.1.1-production-baseline','V4.1.1 known-good production baseline changed');
+assert(frozen.previous_known_good?.version==='7.03.3.14m'&&frozen.previous_known_good?.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Historical 14m rollback reference was not preserved');
 
 // Later numbered-schedule recovery is intentionally disabled by the initial Parser V2 rollback.
 console.log('parser-v2-rollback: numbered-schedule promotion layer disabled by design PASS');
