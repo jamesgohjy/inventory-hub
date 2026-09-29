@@ -16,7 +16,8 @@ sandbox.state.data.items=[
  {id:'3',sku:'RX-A100',model:'RX-A100',item_name:'Wireless Receiver'},
  {id:'4',sku:'RX-A100-B',model:'RX-A100',item_name:'Wireless Receiver spare'}
 ];
-sandbox.state.data.items.push({id:'x',sku:'LEGACY-X',model:'',item_name:'Legacy source'});\nlet c=A.smart('x',{sku:'AVS 320',model:'AVS 320',item_name:'Projector Controller'});
+sandbox.state.data.items.push({id:'x',sku:'LEGACY-X',model:'',item_name:'Legacy source'});
+let c=A.smart('x',{sku:'AVS 320',model:'AVS 320',item_name:'Projector Controller'});
 assert(c.length===1&&c[0].item.id==='1','unique normalized AVS-320 candidate not found');
 c=A.smart('x',{sku:'MAS1818',model:'MAS1818',item_name:'Touch Panel'});
 assert(c.length===1&&c[0].item.id==='2','unique MAS-1818 candidate not found');
