@@ -21,7 +21,7 @@ const V41=globalThis.InventoryHubParserV41Shadow;
 const runtime=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.14z.js'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 const norm=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
-const key=r=>norm(r.sku||r.model||'');
+const key=r=>String(r.sku||r.model||'').trim().toUpperCase();
 const serials=r=>Array.isArray(r.serials)?r.serials:String(r.serials||r.serial_numbers||'').split(',').map(x=>x.trim()).filter(Boolean);
 const near=(a,b)=>Math.abs(Number(a)-Number(b))<=.01;
 
