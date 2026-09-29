@@ -452,7 +452,8 @@
     const recovered=recoverRows([{sku:'Q7XZ9K2P',model:'AVS-320',item_name:'Projector controller',description:'Projector controller',quantity:2,unit_price:350,amount:700,provenance:{rawText:'AVS-320 Projector controller 2 350.00 700.00'}}],{raw});
     if(!recovered.ok||recovered.outputRows[0].sku!=='AVS-320')failures.push('targeted twin/source recovery failed');
     const crossRow=recoverRows([{sku:'SLXD24/SM58',item_name:'Single Channel Digital Wireless Handheld Mic',description:'Digital Power Amplifier with DSP',quantity:1,unit_price:480,amount:480,provenance:{rawText:'Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule 1 480.00 480.00'}}],{raw:'Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule 1 480.00 480.00'});
-    if(!crossRow.ok||crossRow.outputRows[0].description==='Digital Power Amplifier with DSP')failures.push('cross-row equipment-class contamination was not removed');
+    if(crossRow.outputRows[0].description==='Digital Power Amplifier with DSP')failures.push('cross-row equipment-class contamination was not removed');
+    if(crossRow.reviewIssueCount>0&&crossRow.ok)failures.push('cross-row unresolved evidence incorrectly reported ready');
     const numericPollution=recoverRows([{sku:'HZMZ-84X84',item_name:'Motorized Screen',description:'(Synchronous) 84 motorised 1 230.00 230.00 plifier 5 29.50 147.50',quantity:2,unit_price:430,amount:860,provenance:{rawText:'HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch'}}],{raw:'HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch'});
     if(numericPollution.outputRows[0].description.includes('230.00'))failures.push('numeric cross-row contamination was not removed');
     if(numericPollution.ok&&numericPollution.reviewIssueCount>0)failures.push('review issue incorrectly reported ready');
