@@ -2293,7 +2293,7 @@
     'Fixed Confirm & Save database deployment and Master Item merge review.',
     'Added a persistent Resolve option for valid Data Health exceptions.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.15';
+  const RELEASE_UPCOMING_VERSION='7.03.3.16';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
