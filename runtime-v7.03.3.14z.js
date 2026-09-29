@@ -3433,7 +3433,8 @@ function v703315SmartMergeCandidates(sourceId,payload={}){
   const proposed={...source,...payload},pkeys=v703315IdentityTokens(proposed);if(!pkeys.size)return [];
   return (state.data?.items||[]).filter(i=>String(i.id)!==String(sourceId)).map(item=>{
     const ikeys=v703315IdentityTokens(item),shared=[...pkeys].filter(k=>ikeys.has(k));
-    const exactSku=v703314dSkuKey(payload.sku||source.sku)===v703314dSkuKey(item.sku);
+    const proposedSku=v703315IdentityKey(payload.sku||source.sku),itemSku=v703315IdentityKey(item.sku);
+    const exactSku=!!proposedSku&&proposedSku.length>=4&&proposedSku===itemSku;
     return {item,shared,exactSku,score:(exactSku?100:0)+shared.length*20};
   }).filter(x=>x.exactSku||x.shared.length).sort((a,b)=>b.score-a.score);
 }
