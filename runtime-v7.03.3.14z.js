@@ -3419,6 +3419,24 @@ $('sidebarImportBtn').onclick=openImport;
 // Global top search was removed in V6; no listener is required.
 $('dashboardInventory').onclick=e=>{const card=e.target.closest('[data-detail]');if(card)openDetail(card.dataset.detail);};
 function v703314dSkuKey(v=''){try{return globalThis.V7033Patch?.compact?.(v)||String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');}catch(_e){return String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');}}
+function v703315IdentityKey(v=''){return String(v||'').normalize('NFKC').toUpperCase().replace(/\b(?:MODEL|MOD|SKU|P\/N|PART\s*NO)\b\s*[:#.-]?/g,' ').replace(/[^A-Z0-9]+/g,'').trim();}
+function v703315IdentityTokens(item={}){
+  const values=[item.sku,item.model,item.item_name,item.description].filter(Boolean),keys=new Set();
+  for(const value of values){
+    const whole=v703315IdentityKey(value);if(whole&&whole.length>=4)keys.add(whole);
+    for(const m of String(value).toUpperCase().matchAll(/\b(?=[A-Z0-9+._\/-]{4,}\b)(?=[A-Z0-9+._\/-]*[A-Z])(?=[A-Z0-9+._\/-]*\d)[A-Z0-9+._\/-]+\b/g)){const k=v703315IdentityKey(m[0]);if(k.length>=4)keys.add(k);}
+  }
+  return keys;
+}
+function v703315SmartMergeCandidates(sourceId,payload={}){
+  const source=(state.data?.items||[]).find(i=>String(i.id)===String(sourceId));if(!source)return [];
+  const proposed={...source,...payload},pkeys=v703315IdentityTokens(proposed);if(!pkeys.size)return [];
+  return (state.data?.items||[]).filter(i=>String(i.id)!==String(sourceId)).map(item=>{
+    const ikeys=v703315IdentityTokens(item),shared=[...pkeys].filter(k=>ikeys.has(k));
+    const exactSku=v703314dSkuKey(payload.sku||source.sku)===v703314dSkuKey(item.sku);
+    return {item,shared,exactSku,score:(exactSku?100:0)+shared.length*20};
+  }).filter(x=>x.exactSku||x.shared.length).sort((a,b)=>b.score-a.score);
+}
 function v703314dDismissMergeDialog(d){
   if(!d)return;
   // Native close first so the dialog's normal close lifecycle runs. Always detach the
@@ -3433,7 +3451,15 @@ function v703314dFindMergeTarget(sourceId,proposedSku){
   const proposed=String(proposedSku||'').trim(),current=String(source.sku||'').trim();
   if(!proposed||proposed===current)return {source,target:null,ambiguous:false,matches:[]};
   const key=v703314dSkuKey(proposed);if(!key)return {source,target:null,ambiguous:false,matches:[]};
-  const matches=(state.data?.items||[]).filter(i=>String(i.id)!==String(sourceId)&&v703314dSkuKey(i.sku)===key);
+  let matches=(state.data?.items||[]).filter(i=>String(i.id)!==String(sourceId)&&v703314dSkuKey(i.sku)===key);
+  if(!matches.length){
+    const smart=v703315SmartMergeCandidates(sourceId,{sku:proposed});
+    // Conservative rule: a normalized model/SKU identity may propose a target only when exactly one
+    // candidate shares identity evidence. Ambiguous candidates remain manual; never auto-merge.
+    const strong=smart.filter(x=>x.shared.length>0);
+    if(strong.length===1)matches=[strong[0].item];
+    else if(strong.length>1)return {source,target:null,ambiguous:true,matches:strong.map(x=>x.item),smart:true};
+  }
   if(!matches.length)return {source,target:null,ambiguous:false,matches:[]};
   const exact=matches.filter(i=>String(i.sku||'').trim().toLowerCase()===proposed.toLowerCase());
   if(exact.length===1)return {source,target:exact[0],ambiguous:false,matches};
