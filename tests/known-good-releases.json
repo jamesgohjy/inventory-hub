@@ -1,8 +1,14 @@
 {
-  "version": "7.03.3.14m",
-  "status": "known-good",
-  "commit": "742bbf4f66b4f3ae257b5e813661c7b555fb874c",
-  "branch": "freeze/v7.03.3.14m-known-good",
-  "purpose": "Recovery baseline. Do not move this branch as part of normal release work.",
-  "verified_release_message": "Publish v7.03.3.14m Admin-only parser diagnostics"
+  "version": "Parser V4.1.1",
+  "status": "known-good-production-baseline",
+  "commit": "8c0bbbff8ce34ace3929c7f187ffc6c05cd213d0",
+  "branch": "freeze/v4.1.1-production-baseline",
+  "purpose": "Production rollback baseline after V4.1.1 evidence-integrity hardening, final live-production-parity validation, multi-supplier validation, full regression, and successful GitHub Pages deployment. Do not move this branch during normal release work.",
+  "verified_release_message": "Promote Parser V4.1.1 evidence integrity to production",
+  "previous_known_good": {
+    "version": "7.03.3.14m",
+    "status": "known-good",
+    "commit": "742bbf4f66b4f3ae257b5e813661c7b555fb874c",
+    "branch": "freeze/v7.03.3.14m-known-good"
+  }
 }

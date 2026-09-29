@@ -322,8 +322,8 @@ for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
 assert(/ASSET_REV='v703314[a-z]+-[^']+'/.test(app),'Active cache-busting asset revision marker missing');
-assert(runtime.includes("'Parser V4 is now the production import engine after the full promotion regression gate passed.'")&&runtime.includes("'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'"),'Direct runtime Patch Notes are not the current v14z user-facing version');
-assert(index.includes('Parser V4 is now the production import engine after the full promotion regression gate passed.')&&index.includes('Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'),'Static Patch Notes fallback is not current');
+assert(runtime.includes("'Parser V4.1.1 is the production evidence-integrity baseline after live production parity, multi-supplier and full regression gates passed.'")&&runtime.includes("'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'")&&!runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not synchronized with delivered V4.1.1 work');
+assert(index.includes('Parser V4.1.1 is the production evidence-integrity baseline after live production parity, multi-supplier and full regression gates passed.')&&index.includes('Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.')&&!index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not synchronized with delivered V4.1.1 work');
 assert(/app\.js\?v=7\.03\.3\.14[a-z]+-r\d+/.test(index),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14z bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
@@ -539,7 +539,8 @@ assert(setupDoc.includes('Supabase database backups do **not** contain Storage o
 
 assert(fs.existsSync('supabase-v7-03-3-14o-parser-intelligence.sql'),'14o Supabase migration missing');
 const frozen=JSON.parse(read('tests/known-good-releases.json'));
-assert(frozen.version==='7.03.3.14m'&&frozen.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Known-good 14m reference changed');
+assert(frozen.version==='Parser V4.1.1'&&frozen.commit==='8c0bbbff8ce34ace3929c7f187ffc6c05cd213d0'&&frozen.branch==='freeze/v4.1.1-production-baseline','V4.1.1 known-good production baseline changed');
+assert(frozen.previous_known_good?.version==='7.03.3.14m'&&frozen.previous_known_good?.commit==='742bbf4f66b4f3ae257b5e813661c7b555fb874c','Historical 14m rollback reference was not preserved');
 
 // Later numbered-schedule recovery is intentionally disabled by the initial Parser V2 rollback.
 console.log('parser-v2-rollback: numbered-schedule promotion layer disabled by design PASS');
