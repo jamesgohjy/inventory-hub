@@ -105,10 +105,10 @@ for(const hc of suites.golden.cases){
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
 const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.14z','Core version must be 7.03.3.14z');
+assert(cv==='7.03.3.15','Core version must be 7.03.3.15');
 assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.15','Upcoming version must be 7.03.3.15');
+assert(uv==='7.03.3.16','Upcoming version must be 7.03.3.16');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
@@ -263,7 +263,7 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.14z'"),'14z direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.15'"),'3.15 direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
@@ -546,4 +546,4 @@ assert(frozen.previous_known_good?.version==='7.03.3.14m'&&frozen.previous_known
 console.log('parser-v2-rollback: numbered-schedule promotion layer disabled by design PASS');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.14z regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.15 regression gates PASS.');
