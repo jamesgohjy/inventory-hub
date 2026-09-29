@@ -7,7 +7,7 @@ window.__AV_DIRECT_RUNTIME_READY__=(async function InventoryHubDirectRuntime14s(
 // AV Inventory Hub V7.00 — Structured parser core + regression-safe migration
 const APP_VERSION='7.03.3.14z';
 const RELEASE_CURRENT_NOTES=[
-  'Parser V4 is now the production import engine after the full promotion regression gate passed.',
+  'Parser V4.1.1 is the production evidence-integrity baseline after live production parity, multi-supplier and full regression gates passed.',
   'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.',
   'Serial labels such as S/N, Serial No and Serial Number now preserve wrapped serial lists and bind them to the nearest verified equipment row.',
   'Recent Inventory Items now use 3D futuristic equipment artwork matched to supported AV equipment types.'
@@ -17,7 +17,6 @@ const RELEASE_CURRENT_NOTES=[
 const RELEASE_UPCOMING_NOTES=[
   'Improve parsing across more invoice layouts.',
   'Improve automatic item matching and consolidation.',
-  'Simplify review messages and workflow.'
 ];
 const RELEASE_UPCOMING_VERSION='7.03.3.15';
 const CFG = window.INVENTORY_CONFIG || {mode:'local'};
