@@ -454,7 +454,12 @@
     const crossRow=recoverRows([{sku:'SLXD24/SM58',item_name:'Single Channel Digital Wireless Handheld Mic',description:'Digital Power Amplifier with DSP',quantity:1,unit_price:480,amount:480,provenance:{rawText:'Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule 1 480.00 480.00'}}],{raw:'Shure SLXD2+ Digital Wireless Handheld Microphone Transmitter with SM58 Cardioid Capsule 1 480.00 480.00'});
     if(!crossRow.ok||crossRow.outputRows[0].description==='Digital Power Amplifier with DSP')failures.push('cross-row equipment-class contamination was not removed');
     const numericPollution=recoverRows([{sku:'HZMZ-84X84',item_name:'Motorized Screen',description:'(Synchronous) 84 motorised 1 230.00 230.00 plifier 5 29.50 147.50',quantity:2,unit_price:430,amount:860,provenance:{rawText:'HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch'}}],{raw:'HZMZ-84X84 ABTUS 84 x 84 Motorized Screen (Synchronous) c/w Abtus SSR8 screen switch'});
-    if(!numericPollution.ok||numericPollution.outputRows[0].description.includes('230.00'))failures.push('numeric cross-row contamination was not removed');
+    if(numericPollution.outputRows[0].description.includes('230.00'))failures.push('numeric cross-row contamination was not removed');
+    if(numericPollution.ok&&numericPollution.reviewIssueCount>0)failures.push('review issue incorrectly reported ready');
+    const serial=recoverRows([{serial_number:'Q7XZ9K2P',item_name:'PTZ Camera',description:'PTZ Camera',quantity:1,provenance:{rawText:'PTZ Camera Serial No: CAM-88421'}}],{raw:'PTZ Camera Serial No: CAM-88421'});
+    if(serial.outputRows[0].serial_number!=='CAM-88421')failures.push('row-local labelled serial recovery failed');
+    const unresolved=recoverRows([{sku:'Q7XZ9K2P',item_name:'Wireless microphone',description:'Wireless microphone',quantity:1,provenance:{rawText:'Wireless microphone'}}],{raw:'Wireless microphone'});
+    if(unresolved.ok||unresolved.readyForProduction)failures.push('unresolved recovery incorrectly reported ready');
     return {ok:failures.length===0,version:VERSION,failures};
   }
 
