@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.14z reference, duplicate-row and review arithmetic patch
+/* AV Inventory Hub v7.03.3.15 reference, duplicate-row and review arithmetic patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.14z';
+  const VERSION='7.03.3.15';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -2293,7 +2293,7 @@
     'Fixed Confirm & Save database deployment and Master Item merge review.',
     'Added a persistent Resolve option for valid Data Health exceptions.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.15';
+  const RELEASE_UPCOMING_VERSION='7.03.3.16';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
