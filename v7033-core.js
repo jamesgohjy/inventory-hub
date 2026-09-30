@@ -859,10 +859,17 @@
     return out;
   }
   function v703312kEvidenceTexts(raw='',evidenceSources=[]){
-    const list=[{source:'primary',text:String(raw||'')},...(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}))];
+    const named=(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}));
+    const normalizeText=v=>String(v||'').replace(/\s+/g,' ').trim().slice(0,5000);
+    const primary={source:'primary',text:String(raw||'')},primaryText=normalizeText(primary.text);
+    const namedTexts=new Set(named.map(x=>normalizeText(x.text)).filter(Boolean));
+    // "primary" is often only the selected copy of one named OCR/native witness.
+    // Do not count that same witness twice. Distinct named sources remain independent
+    // even when their recognized text is identical.
+    const list=[...(primaryText&&!namedTexts.has(primaryText)?[primary]:[]),...named];
     const out=[],seen=new Set();
     for(const x of list){
-      const normalizedText=x.text.replace(/\s+/g,' ').trim().slice(0,5000);
+      const normalizedText=normalizeText(x.text);
       const sourceKey=clean(x.source||'unknown').toLowerCase();
       const key=sourceKey+'|'+normalizedText;
       if(!normalizedText||seen.has(key))continue;
