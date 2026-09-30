@@ -46,13 +46,16 @@
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
-      await loadScript('runtime-v7.03.3.14z.js?v='+key);
+      const productivity=await loadScript('modules/productivity-accuracy-v703316.js?v='+key,'InventoryHubProductivityAccuracy');
+      const productivityGate=productivity.selfTest?.();
+      if(!productivityGate?.ok)throw new Error('v7.03.3.16 productivity/accuracy gate failed: '+(productivityGate?.failures||['self-test unavailable']).join(', '));
+      await loadScript((RELEASE.runtimeFile||'runtime-v7.03.3.16.js')+'?v='+key);
       if(!window.__AV_DIRECT_RUNTIME_READY__?.then)throw new Error('Direct runtime readiness promise was not created.');
       await window.__AV_DIRECT_RUNTIME_READY__;
       if(window.__AV_DIRECT_RUNTIME_LOADED__!==VERSION)throw new Error('Direct runtime did not initialise as '+VERSION+'.');
       v7032.installParserPatch();v7033.installParserPatch();v7033.installUiVersionSync();
-      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='Parser V4 = V2 primary + V3 countercheck/recovery + mandatory web verification';
-      console.info('AV Inventory Hub '+VERSION+' loaded with Parser V4 (V2 primary + V3 countercheck/recovery + mandatory web verification).',Object.fromEntries(gates));
+      window.__AV_INVENTORY_VERSION__=VERSION;window.__AV_INVENTORY_BUILD__=VERSION;window.__AV_INVENTORY_BASELINE__='Parser V4.1.1 = V2 authoritative verification + V3 countercheck/recovery + evidence integrity';
+      console.info('AV Inventory Hub '+VERSION+' loaded with Parser V4.1.1 and v7.03.3.16 productivity/accuracy safeguards.',Object.fromEntries(gates));
     }catch(err){
       console.error('AV Inventory Hub '+VERSION+' startup error:',err);
       const box=document.createElement('div');box.style.cssText='position:fixed;inset:20px;z-index:2147483647;background:#fff;border:1px solid #d33;border-radius:12px;padding:20px;font:14px/1.5 Arial;color:#222;box-shadow:0 10px 30px #0002';
