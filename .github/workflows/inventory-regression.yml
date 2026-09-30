@@ -73,6 +73,7 @@ jobs:
           node --check modules/parser-v3/engine.js
           node --check modules/parser-v4-review-bridge.js
           node --check modules/parser-v4_1-shadow.js
+          node --check modules/parser-v4_1_2-item-blocks.js
           node --check modules/productivity-accuracy-v703316.js
           node --check release-manifest.js
           node --check modules/parser-table.js
@@ -93,6 +94,7 @@ jobs:
           node tests/parser-v4_1-phase3-e2e-authority.cjs
           node tests/parser-v4_1-phase3-concept-actual-ocr.cjs
           node tests/parser-v4_1_2-canonical-concept-gate.cjs
+          node tests/parser-v4_1_2-identity-preservation-r2.cjs
           node tests/parser-v4_1-phase4-production-integration.cjs
           node tests/parser-v4_1-phase4-concept-live-failure.cjs
           node tests/parser-v4_1-phase4-live-diagnostic-parity.cjs
