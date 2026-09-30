@@ -313,7 +313,7 @@
     return (row?.items||[]).filter(it=>{const c=center(it);return Number.isFinite(c)&&c>=lo&&c<hi;}).sort((a,b)=>(Number(a.x)||0)-(Number(b.x)||0)).map(x=>clean(x.text)).filter(Boolean).join(' ').trim();
   }
   function uniqueModelToken(text=''){
-    const hits=[...String(text||'').matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(x=>clean(x[0])).filter(x=>MODEL_TOKEN_RE.test(x)&&/[A-Za-z]/.test(x)&&/\d/.test(x)&&!/^\d+[.,]\d+$/.test(x));
+    const hits=[...String(text||'').matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(x=>clean(x[0])).filter(x=>MODEL_TOKEN_RE.test(x)&&/[A-Za-z]/.test(x)&&/\d/.test(x)&&!/^\d+[.,]\d+$/.test(x)&&!identifierRisk(x,'model',[]).risky);
     const keys=new Map();for(const h of hits)keys.set(compact(h),h);
     return keys.size===1?[...keys.values()][0]:'';
   }
@@ -392,6 +392,14 @@
   }
   function targetedRecoverField(row={},issue={},context={}){
     const field=issue.field;
+    if(field==='item_name'||field==='description'){
+      const tail=trailingTextNoise(issue.value,field);
+      if(tail?.trimmed){
+        const probe={...row,[field]:tail.trimmed};
+        const check=inspectField(probe,field,tail.trimmed,scopedEvidenceTexts(probe,field,context));
+        if(check.status==='pass')return {recovered:true,field,value:tail.trimmed,reason:'trimmed-row-local-ocr-fragment',support:['row-local-trim']};
+      }
+    }
     if(field==='serials'||field==='serial_number'){
       const candidates=serialCandidates(row,field,context);
       if(candidates.length!==1)return {recovered:false,field,reason:candidates.length?'conflicting-serial-evidence':'no-row-local-serial-evidence',candidates};
@@ -438,9 +446,16 @@
       if(issue.field==='serials')safe.serials=(safe.serials||[]).filter(x=>clean(x)!==issue.value);
       else safe[issue.field]='';
     }
+    delete safe.v41ShadowRandomCharacterFail;delete safe.v41ShadowReviewRequired;delete safe.v41ProductionReviewRequired;
+    const integrityIssues=[
+      ...unresolved.map(x=>({field:x.field,code:x.code||'unresolved-recovery',reason:x.recoveryReason||'',value:x.value||''})),
+      ...after.hardFailures.map(x=>({field:x.field,code:x.code||'evidence-integrity-failure',reason:(x.reasons||[]).join(', '),value:x.value||''})),
+      ...after.reviewIssues.map(x=>({field:x.field,code:x.code||'evidence-review',reason:(x.reasons||[]).join(', '),value:x.value||''}))
+    ];
+    if(integrityIssues.length)safe.v41IntegrityIssues=integrityIssues;else delete safe.v41IntegrityIssues;
     if(recoveries.length)safe.v41TargetedRecoveryApplied=true;
-    if(unresolved.length||after.hardFailures.length)safe.v41ShadowReviewRequired=true;
-    return {row:safe,before,after,recoveries,unresolved,ok:after.hardFailures.length===0};
+    if(integrityIssues.length){safe.v41ShadowReviewRequired=true;safe.v41ProductionReviewRequired=true;}
+    return {row:safe,before,after,recoveries,unresolved,ok:after.hardFailures.length===0&&after.reviewIssues.length===0&&unresolved.length===0};
   }
   function recoverRows(rows=[],context={}){
     const results=(rows||[]).map((row,index)=>({index,...recoverRow(row,context)}));
