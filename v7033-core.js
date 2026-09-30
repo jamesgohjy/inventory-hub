@@ -1381,9 +1381,26 @@
       for(const line of lines){const c=v703312kRecoverDirectLine(line,ev.source);if(c)recovered.push(c);}
       recovered.push(...v703314zRecoverWrappedNumberedInvoiceRows(ev.text,ev.source));
       recovered.push(...v703314aRecoverStructuredPricedAssetRows(ev.text,ev.source));
-      recovered.push(...v411r1RecoverSourceEquipmentBlocks(ev.text,ev.source));
       recovered.push(...v703314aaRecoverModelEquipmentBlocks(ev.text,ev.source));
       recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
+    }
+    // Recovery1 source-block parsing is supplement-only. Existing V4.1.1 recovery retains
+    // authority for a row it already found, especially its fail-closed economics. A source
+    // block may add a genuinely missing row, or add a missing printed identity, but cannot
+    // overwrite quantity/price/amount on an existing recovered row.
+    for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
+      for(const supplement of v411r1RecoverSourceEquipmentBlocks(ev.text,ev.source)){
+        const match=recovered.find(x=>v703312jSameEquipment(x,supplement))
+          ||recovered.find(x=>compact(x.sku||x.model||'')&&compact(x.sku||x.model||'')===compact(supplement.sku||supplement.model||''));
+        if(!match){recovered.push(supplement);continue;}
+        const sSku=clean(supplement.sku||supplement.model||''),mSku=clean(match.sku||match.model||'');
+        if(!mSku&&sSku&&credibleSku(sSku,supplement.v703312kSourceLine||'')){
+          match.sku=sSku;match.model=sSku;
+          match.v703314zPrintedModel=supplement.v703314zPrintedModel||sSku;
+          match.v703312kSourceLine=uniq([match.v703312kSourceLine,supplement.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+          match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),supplement.v703312kSource].filter(Boolean));
+        }
+      }
     }
     const out=[];
     for(const row of recovered){
