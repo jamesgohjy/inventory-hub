@@ -98,6 +98,7 @@ jobs:
           node tests/parser-v4_1-stacked-row-local-identity-shadow.cjs
           node tests/parser-v4_1-stacked-row-preprod-parity.cjs
           node tests/parser-v4_1-final-live-production-parity-shadow.cjs
-          node tests/parser-v4_1-lta-aerospace-concept-multitest.cjs\n          node tests/parser-v4_1_1-recovery1-zero-row-concept.cjs
+          node tests/parser-v4_1-lta-aerospace-concept-multitest.cjs
+          node tests/parser-v4_1_1-recovery1-zero-row-concept.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
