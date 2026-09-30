@@ -317,6 +317,17 @@
     if(/^\d+$/.test(s))return false;
     return true;
   }
+  function identifierTokenQuality(v='',line=''){
+    const s=clean(v),src=clean(line);if(!credibleSku(s,src))return -999;
+    let score=0;
+    if(s===s.toUpperCase())score+=3;
+    else if(s===s.toLowerCase()&&/[a-z]/.test(s)&&/\d/.test(s))score-=5;
+    if(/^[A-Za-z]{1,8}\d[A-Za-z0-9+._\/-]*$/.test(s))score+=2;
+    if(/[-/+._]/.test(s))score+=1;
+    if(/^\d{2,}[A-Za-z]{1,2}$/i.test(s)&&s.length<=5)score-=8;
+    if(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER)|ITEM\s*CODE)\b/i.test(src)&&compact(src).includes(compact(s)))score+=8;
+    return score;
+  }
   function modelTokens(line=''){
     const s=clean(line);if(!s)return [];
     const raw=[];const re=/(?:^|[\s(])([A-Z][A-Z0-9+._\/-]{1,27})(?=$|[\s),:;])/gi;let m;
