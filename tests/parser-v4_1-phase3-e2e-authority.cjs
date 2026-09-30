@@ -165,18 +165,22 @@ assert(!serials.includes('SHOULD-NOT-BIND-999'),'Packing-slip serial crossed doc
 // refuse otherwise valid identifiers because it cannot prove which document owns them.
 // V4.1 must prove each value from the row's retained V4 evidence region.
 // No document-wide/global fallback is enabled, preserving cross-row contamination isolation.
-const conceptAudit=V41.auditRows(conceptRows,{
+const conceptAudit=V41.recoverRows(conceptRows,{
   raw:conceptInvoice,
   sources:conceptEvidence
 });
-const hawkoAudit=V41.auditRows(hawkoRows,{
+const hawkoAudit=V41.recoverRows(hawkoRows,{
   raw:hawko,
   sources:[{source:'hawko',kind:'ocr',text:hawko}]
 });
 const auditHard=conceptAudit.randomCharacterFailureCount+hawkoAudit.randomCharacterFailureCount;
-assert(conceptAudit.randomCharacterFailureCount===0,'Concept V4.1 contamination audit hard failures: '+JSON.stringify(conceptAudit.hardFailures));
-assert(hawkoAudit.randomCharacterFailureCount===0,'HAWKO V4.1 contamination audit hard failures: '+JSON.stringify(hawkoAudit.hardFailures));
-
+assert(conceptAudit.randomCharacterFailureCount===0,'Concept V4.1 recovery left hard contamination: '+JSON.stringify(conceptAudit.hardFailures));
+assert(hawkoAudit.randomCharacterFailureCount===0,'HAWKO V4.1 recovery left hard contamination: '+JSON.stringify(hawkoAudit.hardFailures));
+const receptacle=conceptAudit.outputRows.find(r=>/microphone wall receptacle/i.test(String(r.item_name||r.description||'')));
+assert(receptacle,'Concept receptacle row missing after V4.1 recovery');
+assert(!String(receptacle.sku||'').trim()&&!String(receptacle.model||'').trim(),'brand-only Neutrik value must not survive as SKU/model');
+assert(receptacle.v41ProductionReviewRequired===true,'brand-only receptacle identity must be routed to field-level review');
+assert((receptacle.v41IntegrityIssues||[]).some(x=>x.field==='sku'||x.field==='model'),'receptacle review did not preserve identity integrity evidence');
 const elapsed=Date.now()-started;
 const metrics={
   authority:100,
@@ -194,6 +198,6 @@ console.log('PHASE3 FAIRNESS: no parsed/post-extraction rows supplied; expected 
 console.log('PHASE3 AUTHORITY: Concept 2/6 pages accepted; LTA 2/4 pages accepted; HAWKO 1/1 accepted');
 console.log('PHASE3 PARSER: Concept 7/7 equipment rows PASS; HAWKO 1/1 PASS');
 console.log('PHASE3 SERIAL: LTA 11/11 invoice-authority serials PASS; packing-slip leakage=0');
-console.log('PHASE3 CONTAMINATION: random-character hard failures=0');
+console.log('PHASE3 CONTAMINATION: hard failures after targeted recovery=0; brand-only Neutrik identity quarantined for review');
 console.log('PHASE3 METRICS: '+JSON.stringify(metrics));
 console.log('PHASE3 SHADOW SUMMARY: PASS');

@@ -47,14 +47,13 @@
     const existing=Array.isArray(parsed.review)?parsed.review:[];
     const reasons=[...(Array.isArray(ranked)?ranked:[]),...existing];
     rows.forEach((row,index)=>{
-      if(row?.humanReviewRequired||row?.needsReview||row?.serialReviewRequired||row?.serialConflictReviewRequired||row?.serialCountReview){
-        reasons.push({index,reason:'row-review-required'});
+      if(row?.humanReviewRequired||row?.needsReview||row?.serialReviewRequired||row?.serialConflictReviewRequired||row?.serialCountReview||row?.v41ShadowReviewRequired||row?.v41ProductionReviewRequired||(Array.isArray(row?.v41IntegrityIssues)&&row.v41IntegrityIssues.length)){
+        reasons.push({index,reason:'row-review-required',fields:(row.v41IntegrityIssues||[]).map(x=>({field:x.field,code:x.code,reason:x.reason||''}))});
       }
     });
     const seen=new Set();
     return reasons.filter(x=>{const key=JSON.stringify(x);if(seen.has(key))return false;seen.add(key);return true;});
   }
-
   function normalizeRows(rows=[]){
     return (rows||[]).map((input,index)=>{
       const row={...input};
@@ -154,10 +153,10 @@
     const validation=validateCanonical(canonical);
     if(!validation.ok)return {ok:false,status:'block',errors:validation.errors,warnings:validation.warnings,rows:[]};
     const reviewed=!!(humanReviewed||canonical.humanReviewed);
-    if(canonical.status==='review'&&!reviewed)return {ok:false,status:'review',errors:[],warnings:[...(canonical.review||[]),...validation.warnings],rows:canonical.items};
+    const liveReview=reviewReasons(canonical,canonical.items||[]);
+    if((canonical.status==='review'||liveReview.length)&&!reviewed)return {ok:false,status:'review',errors:[],warnings:[...liveReview,...validation.warnings],rows:canonical.items};
     return {ok:true,status:'pass',errors:[],warnings:validation.warnings,rows:canonical.items.map(row=>({...row}))};
   }
-
   function isCanonicalResult(value){
     return !!value&&value.canonical===true&&value.apiVersion===API_VERSION&&Array.isArray(value.items)&&value.doc&&typeof value.doc==='object';
   }

@@ -317,6 +317,17 @@
     if(/^\d+$/.test(s))return false;
     return true;
   }
+  function identifierTokenQuality(v='',line=''){
+    const s=clean(v),src=clean(line);if(!credibleSku(s,src))return -999;
+    let score=0;
+    if(s===s.toUpperCase())score+=3;
+    else if(s===s.toLowerCase()&&/[a-z]/.test(s)&&/\d/.test(s))score-=5;
+    if(/^[A-Za-z]{1,8}\d[A-Za-z0-9+._\/-]*$/.test(s))score+=2;
+    if(/[-/+._]/.test(s))score+=1;
+    if(/^\d{2,}[A-Za-z]{1,2}$/i.test(s)&&s.length<=5)score-=8;
+    if(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER)|ITEM\s*CODE)\b/i.test(src)&&compact(src).includes(compact(s)))score+=8;
+    return score;
+  }
   function modelTokens(line=''){
     const s=clean(line);if(!s)return [];
     const raw=[];const re=/(?:^|[\s(])([A-Z][A-Z0-9+._\/-]{1,27})(?=$|[\s),:;])/gi;let m;
@@ -357,6 +368,7 @@
         score+=targetHits*2;
         if(/\b(?:screen|projector|microphone|speaker|player|controller|panel|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher)\b/i.test(line))score+=3;
         if(compact(raw).includes(compact(model)))score+=2;
+        score+=identifierTokenQuality(model,line);
         const relevant=targetHits>0||typeMatch;
         out.push({brand,model,line,index:i,score,targetHits,typeMatch,relevant,source:(i-headerIndex>=0&&i-headerIndex<=4)?'labelled-product-field':'invoice-text'});
       }
@@ -384,10 +396,26 @@
     }
     const candidates=productIdentityCandidates(raw,row);
     const top=candidates[0]||null;
+    const currentCandidate=candidates.find(c=>compact(c.model)===compact(current)&&clean(c.line)===clean(currentLine))
+      ||candidates.find(c=>compact(c.model)===compact(current))||null;
+    const currentQuality=identifierTokenQuality(current,currentLine);
+    const strongerSameRow=currentLine?candidates.find(c=>
+      c.relevant&&compact(c.model)!==compact(current)&&clean(c.line)===clean(currentLine)
+      &&c.score>=Math.max(9,Number(currentCandidate?.score??5)+5)
+    ):null;
 
-    // Never let an unrelated model elsewhere on the invoice overwrite a credible model that is directly printed.
+    // A clearly stronger model printed on the same physical row may replace a weak OCR token.
+    // Same-row scope is mandatory so an unrelated model elsewhere on the invoice cannot hijack identity.
+    if(currentCredible&&currentSupported&&strongerSameRow){
+      return {brand:strongerSameRow.brand||'',model:strongerSameRow.model,changed:true,evidenceLine:strongerSameRow.line,source:strongerSameRow.source,score:strongerSameRow.score,reason:'Stronger same-row model evidence outranks a weaker OCR identifier token.'};
+    }
+    if(currentCredible&&currentSupported&&currentQuality<-2){
+      return {brand:'',model:'',changed:true,evidenceLine:currentLine,source:'unverified',score:0,reason:'Printed identifier token is structurally weak and requires targeted recovery or review.'};
+    }
+
+    // Directly printed identifiers remain authoritative when they are structurally plausible.
     if(currentCredible&&currentSupported&&!looksLikeDimensionOrSpec(current,currentLine)){
-      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:5,reason:'Current model is directly printed on the invoice.'};
+      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:Math.max(5,currentQuality),reason:'Current model is directly printed on the invoice.'};
     }
     // Global Product No/Model/SKU evidence may correct a row only when it is relevant to that row.
     if(top&&top.relevant&&top.score>=12){
@@ -427,7 +455,7 @@
     return parts.length>=2?parts.join(' '):cleanName(row.item_name)||descriptive;
   }
   function explicitReviewFlag(r={}){
-    return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
+    return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview||r.v41ShadowReviewRequired||r.v41ProductionReviewRequired||(Array.isArray(r.v41IntegrityIssues)&&r.v41IntegrityIssues.length));
   }
   // v7.03.3.14f: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
@@ -438,6 +466,10 @@
     if(r.priceReviewRequired||r.unit_priceReviewRequired)add('unit_price','Unit price evidence is incomplete or conflicts with quantity/amount.');
     if(r.amountReviewRequired)add('amount','Amount evidence is incomplete or conflicts with quantity/unit price.');
     if(r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview)add('serials','Serial-number evidence is incomplete, duplicated or conflicts with quantity.');
+    for(const issue of Array.isArray(r.v41IntegrityIssues)?r.v41IntegrityIssues:[]){
+      const field=issue?.field==='model'?'sku':issue?.field;
+      if(field)add(field,'Evidence-integrity check requires confirmation: '+clean(issue?.code||issue?.reason||'unresolved field evidence')+'.');
+    }
     const reason=clean(r?.verification?.layers?.layer3?.reason||r?.reviewReason||'').toLowerCase();
     if(/sku|model|product\s*(?:no|number)|identity/.test(reason))add('sku',reason);
     if(/standard\s*item|item\s*name|name\s+conflict/.test(reason))add('item_name',reason);
@@ -464,8 +496,13 @@
       if(compact(r.sku||'')!==compact(id.model))r.v7033SkuCorrection={from:clean(r.sku||''),to:id.model,reason:id.reason,evidenceLine:id.evidenceLine,source:id.source};
       r.sku=id.model;
       if(id.score>=7)delete r.skuReviewRequired;
-    }else if(r.sku&&looksLikeDimensionOrSpec(r.sku,raw)){
-      r.v7033RejectedSku=clean(r.sku);r.sku='';r.skuReviewRequired=true;
+    }else if(r.sku){
+      const originalSku=clean(r.sku);
+      const skuLine=String(raw||'').split(/\r?\n/).find(line=>compact(line).includes(compact(originalSku)))||'';
+      if(!credibleSku(originalSku,skuLine)||identifierTokenQuality(originalSku,skuLine)<-2){
+        r.v7033RejectedSku=originalSku;r.sku='';r.skuReviewRequired=true;
+        r.reviewReason='SKU/model token was not strong enough to treat as an equipment identity.';
+      }
     }
     const name=conciseName(r,id);if(name)r.item_name=name;
     r.v7033Identity={brand:id.brand||'',model:id.model||'',source:id.source,score:id.score,evidenceLine:id.evidenceLine||''};
@@ -1886,7 +1923,7 @@
     const source=String(raw||parsed?.raw||parsed?.rawText||''),incoming=[...(context.incoming||[])],items=[...(parsed?.items||[])];
     const classification=classifyInvoicePage(source),doc=parsed?.doc||{},v7=parsed?.v7||parsed?.parseEvidence?.v7||{},comp=v7.completenessValidation||{},verify=parsed?.v703312kVerification||{};
     const decisionRows=incoming.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,...v703314lRowDecision(r)}));
-    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||Object.keys(r.v7033ReviewFields||{}).length)}));
+    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||explicitReviewFlag(r)||Object.keys(r.v7033ReviewFields||{}).length)}));
     const excludedService=[...(context.excludedService||[])],excludedAccessory=[...(context.excludedAccessory||[])],recovered=[...(context.recovered||[])];
     const level3=!!(verify.level3Required||v7.humanReviewRequired||comp.recheckRequired||finalItems.some(x=>x.human_review_required));
     const status=!classification.allowed?'BLOCK':(!items.length?'BLOCK':(level3?'REVIEW':'PASS'));

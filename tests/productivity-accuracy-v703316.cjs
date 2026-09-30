@@ -1,6 +1,8 @@
 const fs=require('fs');
 const path=require('path');
 const P=require('../modules/productivity-accuracy-v703316.js');
+require('../modules/canonical-parser.js');
+const Canonical=globalThis.InventoryHubCanonicalParser;
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 
 const self=P.selfTest();
@@ -19,6 +21,17 @@ const enhanced=P.applyDualExtractionConsensus(parsed,sources);
 assert(enhanced.extractionConsensus.dual_path_available===true,'dual extraction consensus unavailable');
 assert(enhanced.evidenceLedger.rows.length===1,'evidence ledger row missing');
 assert(enhanced.evidenceLedger.rows[0].arithmetic.passed===true,'row arithmetic evidence missing');
+
+const integrityParsed={doc:{supplier_name:'ACME Pte Ltd',invoice_number:'INV-2',invoice_date:'2026-09-30'},items:[{sku:'',item_name:'Wireless Microphone System',description:'Wireless Microphone System',quantity:1,unit_price:480,amount:480,serials:'SN-1',v41ShadowReviewRequired:true,v41ProductionReviewRequired:true,v41IntegrityIssues:[{field:'sku',code:'implausible-identifier-role',reason:'unresolved weak OCR identifier'}]}]};
+const integritySources=[{source:'native',kind:'native',text:'ACME Pte Ltd INV-2 2026-09-30 Wireless Microphone System 1 480 480 SN-1'}];
+const integrityEnhanced=P.applyDualExtractionConsensus(integrityParsed,integritySources);
+assert(integrityEnhanced.evidenceLedger.rows[0].status==='review','V4.1 integrity issue escaped Evidence Ledger review state');
+assert(integrityEnhanced.evidenceLedger.requires_review===true,'Evidence Ledger did not require review for V4.1 issue');
+
+const canonicalIntegrity=Canonical.fromPipeline(integrityParsed,{raw:integritySources[0].text});
+assert(canonicalIntegrity.status==='review','canonical parser did not propagate V4.1 review state');
+const blocked=Canonical.prepareSave(canonicalIntegrity,{humanReviewed:false});
+assert(blocked.ok===false&&blocked.status==='review','canonical save did not fail closed on unresolved V4.1 integrity issue');
 
 const runtime=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.16.js'),'utf8');
 assert(runtime.includes('v703316EnhanceParsed'),'runtime does not attach v7.03.3.16 evidence ledger');

@@ -195,6 +195,26 @@
     const minHits=tokens.length===1?1:2,supported=best>=0.67&&Math.ceil(best*tokens.length)>=minHits;
     return {supported,mode:supported?'same-region-token-coverage':'insufficient-region-coverage',coverage:best};
   }
+  function identifierRisk(value='',field='',texts=[]){
+    if(field!=='sku'&&field!=='model')return {risky:false,reasons:[]};
+    const v=clean(value),reasons=[];if(!v)return {risky:false,reasons};
+    const windows=(texts||[]).flatMap(lineWindows);
+    const labelled=windows.some(w=>/\b(?:model(?:\s*(?:no\.?|number))?|sku|product\s*(?:no\.?|number)|part\s*(?:no\.?|number)|item\s*code)\b/i.test(w)&&compact(w).includes(compact(v)));
+    const mixed=/[A-Za-z]/.test(v)&&/\d/.test(v);
+    if(mixed&&v===v.toLowerCase()&&!/[-/+._]/.test(v)&&v.length<=8)reasons.push('lowercase-mixed-ocr-identifier');
+    if(/^\d{2,}[A-Za-z]{1,2}$/i.test(v)&&v.length<=5)reasons.push('short-numeric-leading-identifier');
+    if(/^[A-Za-z]{3,24}$/.test(v))reasons.push('alpha-only-identifier-needs-independent-verification');
+    return {risky:reasons.length>0,reasons,labelled};
+  }
+  function trailingTextNoise(value='',field=''){
+    if(field!=='item_name'&&field!=='description')return null;
+    const v=clean(value),parts=v.split(/\s+/).filter(Boolean);if(parts.length<3)return null;
+    const last=parts[parts.length-1],lower=last.toLowerCase();
+    if(!/^[a-z]{1,2}$/.test(last)||STOP.has(lower))return null;
+    const trimmed=clean(parts.slice(0,-1).join(' '));
+    if(!EQUIPMENT_RE.test(trimmed))return null;
+    return {token:last,trimmed};
+  }
   function randomSignature(value='',field=''){
     const v=clean(value);if(!v)return {random:false,reasons:[]};
     const reasons=[];if(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(v))reasons.push('invalid-control-or-replacement');
@@ -220,9 +240,12 @@
   }
   function inspectField(row,field,value,texts){
     const support=sourceSupport(value,field,texts),fragments=unsupportedRandomFragments(value,field,texts);
-    if(fragments.length&&!explicitEvidence(row,field,value))return {field,value:clean(value),status:'fail',severity:'hard',code:'random-fragment-contamination',support,reasons:fragments.map(x=>'unsupported-random-fragment:'+x)};
+    const explicit=explicitEvidence(row,field,value),idRisk=identifierRisk(value,field,texts),tail=trailingTextNoise(value,field);
+    if(fragments.length&&!explicit)return {field,value:clean(value),status:'fail',severity:'hard',code:'random-fragment-contamination',support,reasons:fragments.map(x=>'unsupported-random-fragment:'+x)};
+    if(explicit)return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
+    if(idRisk.risky)return {field,value:clean(value),status:'fail',severity:'hard',code:'implausible-identifier-role',support,reasons:idRisk.reasons};
+    if(tail)return {field,value:clean(value),status:'fail',severity:'hard',code:'trailing-ocr-fragment',support,reasons:['unsupported-trailing-fragment:'+tail.token]};
     if(support.supported)return {field,value:clean(value),status:'pass',support};
-    if(explicitEvidence(row,field,value))return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
 
     // Field-content integrity: catch legitimate-looking text pulled from a different row/column.
     // This intentionally runs only after the field fails its own row-source support.
@@ -292,7 +315,7 @@
     return (row?.items||[]).filter(it=>{const c=center(it);return Number.isFinite(c)&&c>=lo&&c<hi;}).sort((a,b)=>(Number(a.x)||0)-(Number(b.x)||0)).map(x=>clean(x.text)).filter(Boolean).join(' ').trim();
   }
   function uniqueModelToken(text=''){
-    const hits=[...String(text||'').matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(x=>clean(x[0])).filter(x=>MODEL_TOKEN_RE.test(x)&&/[A-Za-z]/.test(x)&&/\d/.test(x)&&!/^\d+[.,]\d+$/.test(x));
+    const hits=[...String(text||'').matchAll(/\b[A-Z0-9][A-Z0-9+._\/-]{2,}\b/gi)].map(x=>clean(x[0])).filter(x=>MODEL_TOKEN_RE.test(x)&&/[A-Za-z]/.test(x)&&/\d/.test(x)&&!/^\d+[.,]\d+$/.test(x)&&!identifierRisk(x,'model',[]).risky);
     const keys=new Map();for(const h of hits)keys.set(compact(h),h);
     return keys.size===1?[...keys.values()][0]:'';
   }
@@ -371,6 +394,14 @@
   }
   function targetedRecoverField(row={},issue={},context={}){
     const field=issue.field;
+    if(field==='item_name'||field==='description'){
+      const tail=trailingTextNoise(issue.value,field);
+      if(tail?.trimmed){
+        const probe={...row,[field]:tail.trimmed};
+        const check=inspectField(probe,field,tail.trimmed,scopedEvidenceTexts(probe,field,context));
+        if(check.status==='pass')return {recovered:true,field,value:tail.trimmed,reason:'trimmed-row-local-ocr-fragment',support:['row-local-trim']};
+      }
+    }
     if(field==='serials'||field==='serial_number'){
       const candidates=serialCandidates(row,field,context);
       if(candidates.length!==1)return {recovered:false,field,reason:candidates.length?'conflicting-serial-evidence':'no-row-local-serial-evidence',candidates};
@@ -417,9 +448,24 @@
       if(issue.field==='serials')safe.serials=(safe.serials||[]).filter(x=>clean(x)!==issue.value);
       else safe[issue.field]='';
     }
+    delete safe.v41ShadowRandomCharacterFail;delete safe.v41ShadowReviewRequired;delete safe.v41ProductionReviewRequired;
+    const integrityIssues=[
+      ...unresolved.map(x=>({field:x.field,code:x.code||'unresolved-recovery',reason:x.recoveryReason||'',value:x.value||''})),
+      ...after.hardFailures.map(x=>({field:x.field,code:x.code||'evidence-integrity-failure',reason:(x.reasons||[]).join(', '),value:x.value||''})),
+      ...after.reviewIssues.map(x=>({field:x.field,code:x.code||'evidence-review',reason:(x.reasons||[]).join(', '),value:x.value||''}))
+    ];
+    if(integrityIssues.length)safe.v41IntegrityIssues=integrityIssues;else delete safe.v41IntegrityIssues;
+    if(integrityIssues.length){
+      const fields={...(safe.v7033ReviewFields||{})};
+      for(const issue of integrityIssues){
+        const field=issue.field==='model'?'sku':issue.field;if(!field)continue;
+        fields[field]={status:'review',reason:'Evidence Integrity: '+clean(issue.code||issue.reason||'field evidence requires confirmation')};
+      }
+      safe.v7033ReviewFields=fields;
+    }
     if(recoveries.length)safe.v41TargetedRecoveryApplied=true;
-    if(unresolved.length||after.hardFailures.length)safe.v41ShadowReviewRequired=true;
-    return {row:safe,before,after,recoveries,unresolved,ok:after.hardFailures.length===0};
+    if(integrityIssues.length){safe.v41ShadowReviewRequired=true;safe.v41ProductionReviewRequired=true;}
+    return {row:safe,before,after,recoveries,unresolved,ok:after.hardFailures.length===0&&after.reviewIssues.length===0&&unresolved.length===0};
   }
   function recoverRows(rows=[],context={}){
     const results=(rows||[]).map((row,index)=>({index,...recoverRow(row,context)}));

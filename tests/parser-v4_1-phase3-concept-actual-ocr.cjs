@@ -146,10 +146,16 @@ req('NEUTRIK',1,450,450);
 if(rows.length!==7)failures.push('expected 7 equipment rows, got '+rows.length);
 if(rows.some(r=>/scope of work|dismantle|racking|cabling|labelling|training|installation|warranty/i.test(String(r.item_name||r.description||''))))failures.push('service/work row leaked into equipment output');
 
-const audit=V41.auditRows(rows,{raw:ocr3,sources:evidence});
-if(audit.randomCharacterFailureCount!==0)failures.push('V4.1 hard contamination failures='+JSON.stringify(audit.hardFailures));
+const audit=V41.recoverRows(rows,{raw:ocr3,sources:evidence});
+if(audit.randomCharacterFailureCount!==0)failures.push('V4.1 hard contamination survived recovery='+JSON.stringify(audit.hardFailures));
+const finalReceptacle=audit.outputRows.find(r=>/microphone wall receptacle/i.test(String(r.item_name||r.description||'')));
+if(!finalReceptacle)failures.push('V4.1 final receptacle row missing');
+else{
+  if(String(finalReceptacle.sku||finalReceptacle.model||'').trim())failures.push('brand-only Neutrik survived V4.1 as SKU/model');
+  if(finalReceptacle.v41ProductionReviewRequired!==true)failures.push('brand-only receptacle identity not routed to review');
+}
 
-const resultRows=rows.map(r=>({
+const resultRows=audit.outputRows.map(r=>({
  sku:r.sku||r.model||'',
  item:r.item_name||r.description||'',
  qty:r.quantity,
@@ -160,7 +166,7 @@ const resultRows=rows.map(r=>({
 }));
 console.log('CONCEPT ACTUAL OCR AUTHORITY: accepted='+authority.decisions.filter(x=>x.allowed).map(x=>x.page).join(',')+' rejected='+authority.decisions.filter(x=>!x.allowed).map(x=>x.page).join(','));
 console.log('CONCEPT ACTUAL OCR ROWS: '+JSON.stringify(resultRows));
-console.log('CONCEPT ACTUAL OCR CONTAMINATION: hard='+audit.randomCharacterFailureCount);
+console.log('CONCEPT ACTUAL OCR CONTAMINATION: hard='+audit.randomCharacterFailureCount+' unresolved='+audit.unresolvedRecoveryCount);
 console.log('CONCEPT ACTUAL OCR SERVICE LEAKAGE: '+(failures.some(x=>/service\/work/.test(x))?'FAIL':'0'));
 console.log('CONCEPT ACTUAL OCR FAIRNESS: fresh PSM3/4/6 OCR witnesses from actual Tax Invoice; no post-extraction rows supplied');
 console.log('CONCEPT ACTUAL OCR PHASE3 SUMMARY: '+(failures.length?'FAIL':'PASS')+' rows='+rows.length+'/7 failures='+JSON.stringify(failures));
