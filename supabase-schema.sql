@@ -13,7 +13,7 @@ create table if not exists public.master_items (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create unique index if not exists uq_master_items_sku_ci on public.master_items (lower(sku));
+create unique index if not exists uq_master_items_sku_ci on public.master_items (lower(sku)) where nullif(trim(sku),'') is not null;
 
 create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
