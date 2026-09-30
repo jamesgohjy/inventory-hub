@@ -92,10 +92,17 @@ Note: replaced with XDP-3001
 Model: Neutrik`;
  const cp=['PURCHASE ORDER\nPO Number PO2024',ci,'TAX INVOICE\nDescription Qty Unit Price Amount\nSubtotal 16,500.00\nGST 1,485.00\nInvoice Total 17,985.00','DELIVERY ORDER\nModel Allen & Heath CQ12T','DELIVERY ORDER\nSystem tuning','QUOTATION\nQuotation Validity 90 days'];
  const c=await pipeline('CONCEPT',cp,'Concept Systems Technologies Pte Ltd');
- let cf=[];for(const id of ['CQ12T','1604DSP','ZX1I-90','SLXD24/SM58','MS101-4','XDP-3002','NEUTRIK'])if(!has(c.items,id))cf.push('missing '+id);
+ let cf=[];for(const id of ['CQ12T','1604DSP','ZX1I-90','SLXD24/SM58','MS101-4','XDP-3002'])if(!has(c.items,id))cf.push('missing '+id);
+ const receptacle=c.items.find(r=>/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(r.item_name||r.description||'')));
+ if(!receptacle)cf.push('missing wall receptacle');
+ else{
+   if(String(receptacle.sku||receptacle.model||'').trim())cf.push('brand-only Neutrik survived as identity');
+   if(receptacle.v41ProductionReviewRequired!==true)cf.push('receptacle identity not review-gated');
+   if(Number(receptacle.quantity)!==1||!near(receptacle.unit_price,450)||!near(receptacle.amount,450))cf.push('receptacle economics');
+ }
  if(c.items.length!==7)cf.push('rows '+c.items.length+'/7');if(c.auth.decisions.map(x=>!!x.allowed).join(',')!=='false,true,true,false,false,false')cf.push('authority');
  if(c.items.some(r=>/scope of work|cabling|training|installation|warranty/i.test(String(r.item_name||r.description||''))))cf.push('service leakage');if(c.integrity.randomCharacterFailureCount)cf.push('contamination');
- results.push({supplier:'Concept',pass:!cf.length,rows:c.items.length,authority:c.auth.decisions.map(x=>!!x.allowed),failures:cf,items:c.items.map(r=>({sku:r.sku||r.model,item:r.item_name,qty:r.quantity,unit:r.unit_price,amount:r.amount,review:!!(r.humanReviewRequired||r.needsReview)}))});
+ results.push({supplier:'Concept',pass:!cf.length,rows:c.items.length,authority:c.auth.decisions.map(x=>!!x.allowed),failures:cf,items:c.items.map(r=>({sku:r.sku||r.model,item:r.item_name,qty:r.quantity,unit:r.unit_price,amount:r.amount,review:!!(r.humanReviewRequired||r.needsReview||r.v41ShadowReviewRequired||r.v41ProductionReviewRequired)}))});
  for(const x of results)console.log('MULTI SUPPLIER '+x.supplier+': '+(x.pass?'PASS':'FAIL')+' '+JSON.stringify(x));
  const failed=results.filter(x=>!x.pass);console.log('MULTI SUPPLIER FAIRNESS: raw invoice/page text only; no post-extraction rows supplied to parser');
  console.log('MULTI SUPPLIER SUMMARY: '+(results.length-failed.length)+'/'+results.length+' PASS');
