@@ -41,4 +41,10 @@ assert.equal(A.classifyContent({evidence:bundled,rawRows:[{item_name:'Supply & I
 for(const a of ['1 Raffles Institution Lane Singapore 575954','Blk 2023 Bukit Batok Industrial Park A St.23 #02-104 Singapore 659528','10 Ubi Crescent #06-93 Singapore 408564','Customer Code R2002 Sold To Example School'])
   assert.equal(A.strongPhysicalRow({item_name:a,quantity:1,unit_price:100,amount:100}),false,'metadata/address must not be physical evidence: '+a);
 
+const runtime=fs.readFileSync('runtime-v7.03.3.14z.js','utf8');
+assert.ok(runtime.includes("const recoveryAuthority=window.InventoryHubDocumentAuthorityV411Recovery1?.classifyContent?.({evidence:sourceEvidence,rawRows:[],inventoryRows:state.parsed.items||[]})"),
+  'final Confirm & Save must re-run Recovery1 document authority against source evidence');
+assert.ok(runtime.includes("recoveryAuthority&&recoveryAuthority.type!=='equipment'"),
+  'final Confirm & Save must fail closed when document authority is not equipment');
+
 console.log('V4.1.1 RECOVERY1 DOCUMENT AUTHORITY: SIMULATION PASS');
