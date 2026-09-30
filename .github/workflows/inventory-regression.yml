@@ -16,6 +16,7 @@ on:
       - "supabase-v7-03-3-14d-master-item-merge.sql"
       - "supabase-v7-03-3-14v-canonical-save.sql"
       - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - "supabase-v7-03-3-16-safe-empty-sku.sql"
       - ".github/workflows/database-migrations.yml"
       - "supabase-v7-03-3-14t-backup-verification.sql"
       - "BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md"
@@ -35,6 +36,7 @@ on:
       - "supabase-v7-03-3-14d-master-item-merge.sql"
       - "supabase-v7-03-3-14v-canonical-save.sql"
       - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - "supabase-v7-03-3-16-safe-empty-sku.sql"
       - ".github/workflows/database-migrations.yml"
       - "supabase-v7-03-3-14t-backup-verification.sql"
       - "BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md"
@@ -56,7 +58,7 @@ jobs:
       - name: Syntax-check direct runtime and backup verifier
         run: |
           node --check app.js
-          ACTIVE_RUNTIME="$(node -e "const fs=require('fs');const s=fs.readFileSync('app.js','utf8');const m=s.match(/loadScript\\('(runtime-v7\\.03\\.3\\.14[a-z]+\\.js)\\?v='/);if(!m)process.exit(2);process.stdout.write(m[1]);")"
+          ACTIVE_RUNTIME="$(node -e "const fs=require('fs'),vm=require('vm');const ctx={};ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync('release-manifest.js','utf8'),ctx);process.stdout.write(ctx.INVENTORY_RELEASE.runtimeFile);")"
           echo "Syntax-checking active runtime: $ACTIVE_RUNTIME"
           node --check "$ACTIVE_RUNTIME"
           node --check modules/parser-evidence-engine.js
@@ -71,6 +73,8 @@ jobs:
           node --check modules/parser-v3/engine.js
           node --check modules/parser-v4-review-bridge.js
           node --check modules/parser-v4_1-shadow.js
+          node --check modules/productivity-accuracy-v703316.js
+          node --check release-manifest.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
           node --check modules/backup-verification-ui.js
@@ -78,6 +82,7 @@ jobs:
       - name: Run parser, module, backup and release regression gates
         run: |
           node tests/run-regression.cjs
+          node tests/productivity-accuracy-v703316.cjs
           node tests/parser-v4-unseen-holdout.cjs
           node tests/parser-v4-concept-sanitized.cjs
           node tests/parser-v4-serial-evidence.cjs

@@ -1,7 +1,7 @@
 const fs=require('fs');
 const vm=require('vm');
 
-const src=fs.readFileSync(require('path').join(__dirname,'..','runtime-v7.03.3.14z.js'),'utf8');
+const src=fs.readFileSync(require('path').join(__dirname,'..','runtime-v7.03.3.16.js'),'utf8');
 const fail=msg=>{throw new Error(msg);};
 const assert=(ok,msg)=>{if(!ok)fail(msg);};
 
