@@ -84,7 +84,7 @@ for(const title of ['PRICE SCHEDULE','SCHEDULE OF PRICES','BILL OF QUANTITIES','
 console.log('PHASE4 UNSEEN DOCUMENT-AUTHORITY NEGATIVES: PASS 6/6');
 
 // Gate 4: runtime must activate high-resolution model OCR without requiring a colon.
-const runtime=fs.readFileSync(require('path').join(__dirname,'..','runtime-v7.03.3.14z.js'),'utf8');
+const runtime=fs.readFileSync(require('path').join(__dirname,'..','runtime-v7.03.3.16.js'),'utf8');
 assert(runtime.includes("MODEL(?:\\s*(?:NO\\.?|NUMBER))?"),'model-rich OCR trigger still requires exact Model: syntax');
 assert(runtime.includes("invoice-hires-'+mode.key+'-p"),'two-mode high-resolution model OCR source missing');
 assert(runtime.includes("SINGLE_BLOCK"),'high-resolution block OCR mode missing');
