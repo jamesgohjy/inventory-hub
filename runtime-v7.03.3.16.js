@@ -5095,6 +5095,6 @@ if(typeof v661FinalizeParsedInvoice==='function'&&!v661FinalizeParsedInvoice.__c
 
 try{installParseAuditWrappers();configureInvoiceFileInputs();}catch(e){console.warn('V6.69 optional audit/file-input setup skipped',e);}
 
-  window.__AV_DIRECT_RUNTIME_LOADED__='7.03.3.15';
+  window.__AV_DIRECT_RUNTIME_LOADED__='7.03.3.16';
   return true;
 })().catch(err=>{window.__AV_DIRECT_RUNTIME_ERROR__=String(err?.message||err);console.error('AV Inventory Hub v7.03.3.15 direct runtime failed',err);throw err;});
