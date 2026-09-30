@@ -837,7 +837,9 @@
     }
     if(!options.length)return null;
     options.sort((a,b)=>b.score-a.score);const best=options[0];
-    let desc=clean(line.slice(0,best.descEnd).replace(/[$/]+/g,' '));
+    // Preserve '/' because it is a legitimate model/SKU character (for example RC-208/UK,
+    // SLXD24/SM58). Only currency-marker noise is removed here.
+    let desc=clean(line.slice(0,best.descEnd).replace(/[$]+/g,' '));
     desc=desc.replace(/\s+\d{1,3}(?:\.00)?\s*(?:PCS?|EA|NOS?|UNITS?)?\s*$/i,'').trim();
     return v703312kBuildCandidate(desc,best.quantity,best.unit,best.amount,{source,line:original,qtyDerived:best.kind==='derived'});
   }
