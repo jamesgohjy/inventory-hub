@@ -241,9 +241,11 @@
   function inspectField(row,field,value,texts){
     const support=sourceSupport(value,field,texts),fragments=unsupportedRandomFragments(value,field,texts);
     const explicit=explicitEvidence(row,field,value),idRisk=identifierRisk(value,field,texts),tail=trailingTextNoise(value,field);
-    if(fragments.length&&!explicitEvidence(row,field,value))return {field,value:clean(value),status:'fail',severity:'hard',code:'random-fragment-contamination',support,reasons:fragments.map(x=>'unsupported-random-fragment:'+x)};
+    if(fragments.length&&!explicit)return {field,value:clean(value),status:'fail',severity:'hard',code:'random-fragment-contamination',support,reasons:fragments.map(x=>'unsupported-random-fragment:'+x)};
+    if(explicit)return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
+    if(idRisk.risky)return {field,value:clean(value),status:'fail',severity:'hard',code:'implausible-identifier-role',support,reasons:idRisk.reasons};
+    if(tail)return {field,value:clean(value),status:'fail',severity:'hard',code:'trailing-ocr-fragment',support,reasons:['unsupported-trailing-fragment:'+tail.token]};
     if(support.supported)return {field,value:clean(value),status:'pass',support};
-    if(explicitEvidence(row,field,value))return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
 
     // Field-content integrity: catch legitimate-looking text pulled from a different row/column.
     // This intentionally runs only after the field fails its own row-source support.
