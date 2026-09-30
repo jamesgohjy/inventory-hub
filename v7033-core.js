@@ -427,6 +427,14 @@
         return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:'row-local-model',score:Math.max(7,top.score),reason:'Unambiguous model evidence recovered from the same item block.'};
       }
     }
+    // Preserve a syntactically credible upstream identity when the local item block
+    // contains no contradictory identity. It stays reviewable because the same block
+    // did not independently prove the SKU/model. This prevents an unrelated global
+    // model from replacing or erasing a credible row while still failing closed on
+    // explicit same-block conflicts.
+    if(currentCredible&&localEvidence&&V703312J_EQUIPMENT_RE.test(localEvidence)){
+      return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-current-unconfirmed',score:4,reason:'Credible current identity preserved because the same item block contains no contradictory model; independent identity confirmation is still required.'};
+    }
     return {brand:'',model:'',changed:!!current,evidenceLine:localEvidence,source:'unverified',score:0,reason:'No trustworthy same-item model/SKU evidence was found.'};
   }
 
@@ -493,6 +501,7 @@
       if(compact(r.sku||'')!==compact(id.model))r.v7033SkuCorrection={from:clean(r.sku||''),to:id.model,reason:id.reason,evidenceLine:id.evidenceLine,source:id.source};
       r.sku=id.model;
       if(id.score>=7)delete r.skuReviewRequired;
+      else if(id.source==='row-current-unconfirmed')r.skuReviewRequired=true;
     }else if(r.sku&&looksLikeDimensionOrSpec(r.sku,raw)){
       r.v7033RejectedSku=clean(r.sku);r.sku='';r.skuReviewRequired=true;
     }
