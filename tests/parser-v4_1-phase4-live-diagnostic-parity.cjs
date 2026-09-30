@@ -54,7 +54,9 @@ const degraded=[
 ];
 
 const parsed=V.applyParsedFixes({doc:{supplier_name:'Concept Systems Technologies'},items:degraded},invoice,sources);
+console.log('RECOVERY1 PARITY PRE-V41: '+JSON.stringify((parsed.items||[]).map(x=>({sku:x.sku||x.model||'',item:x.item_name||'',q:x.quantity,p:x.unit_price,a:x.amount,source:x.v7033Identity?.source||x.v703312kSource||'',sourceLine:x.v703312kSourceLine||''}))));
 const audited=V41.recoverRows(parsed.items,{raw:invoice,sources});
+console.log('RECOVERY1 PARITY POST-V41: '+JSON.stringify((audited.outputRows||[]).map(x=>({sku:x.sku||x.model||'',item:x.item_name||'',q:x.quantity,p:x.unit_price,a:x.amount,review:!!(x.humanReviewRequired||x.needsReview)}))));
 const items=audited.outputRows;
 assert(items.length===7,'final live diagnostic parity expected 7 items, got '+items.length+' '+JSON.stringify(items.map(x=>({sku:x.sku,item:x.item_name}))));
 
