@@ -25,7 +25,7 @@ assert(runtime.includes('InventoryHubCanonicalParser.fromPipeline(finalParsed,{r
   'V4.1 production result is not re-canonicalized before Review/save authority');
 assert(runtime.includes('v412.apply(')&&runtime.includes('item-block-recovery-before-validation')===false,
   'V4.1.2 is not applied at the production Review boundary');
-assert(index.includes('app.js?v=7.03.3.16-r4'),
+assert(index.includes('app.js?v=7.03.3.16-r5'),
   'v7.03.3.16 browser cache-bust version was not advanced');
 
 const self=V41.selfTest();
