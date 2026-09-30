@@ -379,7 +379,7 @@
     const q=Number(row.quantity);
     const scored=[];
     for(let i=0;i<lines.length;i++){
-      const lo=Math.max(0,i-2),hi=Math.min(lines.length,i+4),window=lines.slice(lo,hi).join(' | '),key=compact(window),n=norm(window);
+      const lo=Math.max(0,i-2),hi=Math.min(lines.length,i+4),window=lines.slice(lo,hi).join('\n'),key=compact(window),n=norm(window);
       let score=0,anchors=0;
       if(currentKey&&key.includes(currentKey)){score+=26;anchors+=2;}
       if(amountForms.some(x=>window.includes(x))){score+=15;anchors+=2;}
@@ -400,9 +400,10 @@
   function resolveInvoiceIdentity(row={},raw=''){
     const current=clean(row.sku||row.model||'');
     const localEvidence=v411r1RowLocalEvidence(row,raw);
-    const currentCredible=credibleSku(current,localEvidence||current);
-    const currentSupported=!!(currentCredible&&localEvidence&&compact(localEvidence).includes(compact(current)));
-    const explicit=(typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(localEvidence):[]).filter(x=>clean(x.model));
+    const localIdentityEvidence=String(localEvidence||'').replace(/\s+\|\s+/g,'\n');
+    const currentCredible=credibleSku(current,localIdentityEvidence||current);
+    const currentSupported=!!(currentCredible&&localIdentityEvidence&&compact(localIdentityEvidence).includes(compact(current)));
+    const explicit=(typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(localIdentityEvidence):[]).filter(x=>clean(x.model));
     const explicitGroups=new Map();
     for(const e of explicit){const k=compact(e.model);if(!k)continue;if(!explicitGroups.has(k))explicitGroups.set(k,{model:e.model,line:e.line,count:0});explicitGroups.get(k).count++;}
     const explicitRanked=[...explicitGroups.values()].sort((a,b)=>b.count-a.count);
@@ -420,7 +421,7 @@
     if(currentSupported&&!looksLikeDimensionOrSpec(current,localEvidence)){
       return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-local-current',score:8,reason:'Current model is directly supported by the same item block.'};
     }
-    const localCandidates=productIdentityCandidates(localEvidence,row).filter(x=>x.relevant&&credibleSku(x.model,x.line));
+    const localCandidates=productIdentityCandidates(localIdentityEvidence,row).filter(x=>x.relevant&&credibleSku(x.model,x.line));
     if(localCandidates.length){
       const top=localCandidates[0],runner=localCandidates[1];
       if(!runner||top.score-runner.score>=3||compact(top.model)===compact(runner.model)){
