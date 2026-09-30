@@ -201,9 +201,9 @@
     const windows=(texts||[]).flatMap(lineWindows);
     const labelled=windows.some(w=>/\b(?:model(?:\s*(?:no\.?|number))?|sku|product\s*(?:no\.?|number)|part\s*(?:no\.?|number)|item\s*code)\b/i.test(w)&&compact(w).includes(compact(v)));
     const mixed=/[A-Za-z]/.test(v)&&/\d/.test(v);
-    if(!labelled&&mixed&&v===v.toLowerCase()&&!/[-/+._]/.test(v)&&v.length<=8)reasons.push('lowercase-mixed-ocr-identifier');
-    if(!labelled&&/^\d{2,}[A-Za-z]{1,2}$/i.test(v)&&v.length<=5)reasons.push('short-numeric-leading-identifier');
-    if(!labelled&&/^[A-Za-z]{3,24}$/.test(v))reasons.push('untyped-alpha-identifier');
+    if(mixed&&v===v.toLowerCase()&&!/[-/+._]/.test(v)&&v.length<=8)reasons.push('lowercase-mixed-ocr-identifier');
+    if(/^\d{2,}[A-Za-z]{1,2}$/i.test(v)&&v.length<=5)reasons.push('short-numeric-leading-identifier');
+    if(/^[A-Za-z]{3,24}$/.test(v))reasons.push('alpha-only-identifier-needs-independent-verification');
     return {risky:reasons.length>0,reasons,labelled};
   }
   function trailingTextNoise(value='',field=''){
