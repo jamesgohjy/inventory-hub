@@ -159,7 +159,9 @@ function v703316EnhanceParsed(parsed=state.parsed){
   return enhanced;
 }
 function v703316DraftIdentity(file=state.file){
-  return state.importFileHash||[file?.name||'invoice',file?.size||0,file?.lastModified||0].join('|');
+  const actor=state.session?.user?.id||state.session?.user?.email||'local';
+  const documentKey=state.importFileHash||[file?.name||'invoice',file?.size||0,file?.lastModified||0].join('|');
+  return actor+'|'+documentKey;
 }
 function v703316SaveDraft(){
   if(!state.parsed||!state.file)return;
