@@ -59,6 +59,7 @@ jobs:
           ACTIVE_RUNTIME="$(node -e "const fs=require('fs');const s=fs.readFileSync('app.js','utf8');const m=s.match(/loadScript\\('(runtime-v7\\.03\\.3\\.14[a-z]+\\.js)\\?v='/);if(!m)process.exit(2);process.stdout.write(m[1]);")"
           echo "Syntax-checking active runtime: $ACTIVE_RUNTIME"
           node --check "$ACTIVE_RUNTIME"
+          node --check modules/document-authority-v411-recovery1.js
           node --check modules/parser-evidence-engine.js
           node --check modules/parser-v2/evidence-model.js
           node --check modules/parser-v2/header-resolver.js
@@ -78,6 +79,7 @@ jobs:
       - name: Run parser, module, backup and release regression gates
         run: |
           node tests/run-regression.cjs
+          node tests/v411-recovery1-document-authority.cjs
           node tests/parser-v4-unseen-holdout.cjs
           node tests/parser-v4-concept-sanitized.cjs
           node tests/parser-v4-serial-evidence.cjs
