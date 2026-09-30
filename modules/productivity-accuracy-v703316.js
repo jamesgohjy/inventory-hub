@@ -48,24 +48,26 @@
   }
 
   function consensusForRow(row={},sources=[]){
-    const flags=!!(row.quantityReviewRequired||row.priceReviewRequired||row.amountReviewRequired||row.serialConflictReviewRequired||row.serialReviewRequired||row.contaminatedField||row.randomCharacterFailure);
+    const v41Issues=Array.isArray(row.v41IntegrityIssues)?row.v41IntegrityIssues:[];
+    const issueFor=field=>v41Issues.some(x=>(x?.field==='model'?'sku':x?.field)===field);
+    const v41Review=!!(row.v41ShadowReviewRequired||row.v41ProductionReviewRequired||v41Issues.length);
+    const flags=!!(row.quantityReviewRequired||row.priceReviewRequired||row.amountReviewRequired||row.serialConflictReviewRequired||row.serialReviewRequired||row.contaminatedField||row.randomCharacterFailure||row.humanReviewRequired||row.needsReview||row.parserReviewRequired||v41Review);
     const arithmetic=arithmeticEvidence(row);
     const fields={
-      sku:fieldStatus(row.sku,{sources,reviewRequired:flags&&!!row.sku}),
-      item_name:fieldStatus(row.item_name,{sources,reviewRequired:!clean(row.item_name)}),
-      quantity:fieldStatus(row.quantity,{sources,reviewRequired:!!row.quantityReviewRequired,arithmetic:arithmetic.passed}),
-      unit_price:fieldStatus(row.unit_price,{sources,reviewRequired:!!row.priceReviewRequired,arithmetic:arithmetic.passed}),
-      amount:fieldStatus(row.amount,{sources,reviewRequired:!!row.amountReviewRequired,arithmetic:arithmetic.passed}),
-      serials:fieldStatus(row.serials,{sources,reviewRequired:!!(row.serialConflictReviewRequired||row.serialReviewRequired)})
+      sku:fieldStatus(row.sku,{sources,reviewRequired:(flags&&!!row.sku)||issueFor('sku')}),
+      item_name:fieldStatus(row.item_name,{sources,reviewRequired:issueFor('item_name')||(!clean(row.item_name))}),
+      quantity:fieldStatus(row.quantity,{sources,reviewRequired:!!row.quantityReviewRequired||issueFor('quantity'),arithmetic:arithmetic.passed}),
+      unit_price:fieldStatus(row.unit_price,{sources,reviewRequired:!!row.priceReviewRequired||issueFor('unit_price'),arithmetic:arithmetic.passed}),
+      amount:fieldStatus(row.amount,{sources,reviewRequired:!!row.amountReviewRequired||issueFor('amount'),arithmetic:arithmetic.passed}),
+      serials:fieldStatus(row.serials,{sources,reviewRequired:!!(row.serialConflictReviewRequired||row.serialReviewRequired)||issueFor('serials')})
     };
     const statuses=Object.values(fields).map(x=>x.status);
     return {
       fields,
       arithmetic,
-      status:statuses.includes('review')||statuses.includes('missing')?'review':(statuses.every(x=>x==='verified')?'verified':'supported')
+      status:v41Review||statuses.includes('review')||statuses.includes('missing')?'review':(statuses.every(x=>x==='verified')?'verified':'supported')
     };
   }
-
   function buildEvidenceLedger(parsed={},sources=[]){
     const rows=(parsed.items||[]).map((row,index)=>({index,line:index+1,identity:clean(row.sku||row.model||row.item_name||('row-'+(index+1))),...consensusForRow(row,sources)}));
     const doc=parsed.doc||{};
