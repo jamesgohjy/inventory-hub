@@ -188,15 +188,20 @@
       if(r.labelSeen)labelSeen=true;
       for(const m of r.models||[]){
         const k=compact(m);if(!k)continue;
-        const v=votes.get(k)||{value:m,weight:0,sources:new Set(),regions:0};
+        const v=votes.get(k)||{value:m,weight:0,sources:new Set(),independentSources:new Set(),regions:0};
         const source=clean(r.source||r.kind||'region');
         const sourceWeight=/native/i.test(source)?4:/ocr/i.test(source)?2:3;
-        v.weight+=sourceWeight;v.sources.add(source);v.regions++;votes.set(k,v);
+        v.weight+=sourceWeight;v.sources.add(source);if(source&&source!=='raw')v.independentSources.add(source);v.regions++;votes.set(k,v);
       }
     }
-    const ranked=[...votes.values()].sort((a,b)=>b.weight-a.weight||b.sources.size-a.sources.size||b.regions-a.regions||a.value.localeCompare(b.value));
+    const ranked=[...votes.values()].sort((a,b)=>b.independentSources.size-a.independentSources.size||b.weight-a.weight||b.sources.size-a.sources.size||b.regions-a.regions||a.value.localeCompare(b.value));
     if(!ranked.length)return {value:'',labelSeen,ambiguous:false,ranked};
-    if(ranked[1]&&ranked[0].weight===ranked[1].weight&&ranked[0].sources.size===ranked[1].sources.size){
+    // Independent same-block consensus outranks the primary/raw OCR witness. This handles
+    // insertion/deletion OCR variants without any model-specific replacement table.
+    if(ranked[0].independentSources.size>=2&&(!ranked[1]||ranked[0].independentSources.size>ranked[1].independentSources.size)){
+      return {value:ranked[0].value,labelSeen,ambiguous:false,ranked,reason:'independent-same-block-consensus'};
+    }
+    if(ranked[1]&&ranked[0].independentSources.size===ranked[1].independentSources.size&&ranked[0].weight===ranked[1].weight){
       const current=currentIdentities(row).find(v=>compact(v)===compact(ranked[0].value)||compact(v)===compact(ranked[1].value));
       if(current&&supportedCurrent(row,current,regions))return {value:current,labelSeen,ambiguous:false,ranked,reason:'tie-preserve-supported-current'};
       return {value:'',labelSeen,ambiguous:true,ranked,reason:'conflicting-labelled-identities'};
