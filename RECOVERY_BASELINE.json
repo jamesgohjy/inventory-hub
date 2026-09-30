@@ -1,10 +1,11 @@
 {
-  "schema_version": "v7.03.3.14x",
+  "schema_version": "v7.03.3.15",
   "recovery_baseline": {
-    "version": "v7.03.3.14x",
-    "commit": "a079417dc164e68f878de825022b186afa2f69cb",
-    "promoted_at": "2026-09-25",
-    "policy": "Rollback target is pinned. Do not replace with a moving branch reference."
+    "version": "Parser V4.1.1 / Inventory Hub v7.03.3.15",
+    "commit": "8c0bbbff8ce34ace3929c7f187ffc6c05cd213d0",
+    "branch": "freeze/v4.1.1-production-baseline",
+    "promoted_at": "2026-09-29",
+    "policy": "Rollback target is pinned to the validated V4.1.1 production baseline. Do not replace with a moving branch reference."
   },
   "database": {
     "generation": "v7.03.3.14x",
@@ -16,5 +17,5 @@
       "inventory_hub_v703314x_clear_correction_memory"
     ]
   },
-  "compatibility_note": "Historical 14o RPC/table identifiers remain supported as database contracts; they do not define the recovery baseline."
+  "compatibility_note": "Recovery baseline is Parser V4.1.1. Historical 14o/14v/14x database identifiers remain supported contracts and do not define the application rollback version."
 }
