@@ -24,6 +24,38 @@ assert(V3?.selfTest?.().ok,'V3 self-test failed');
 assert(V4Review?.selfTest?.().ok,'V4 review self-test failed');
 assert(V41?.selfTest?.().ok,'V4.1 shadow self-test failed');
 
+// Regression: source presence alone must not certify structurally weak identifiers.
+{
+  const raw='TAX INVOICE\nca1zr CQ12T Mixer 1 900.00 900.00';
+  const result=V41.recoverRows([{sku:'ca1zr',item_name:'CQ12T Mixer',description:'CQ12T Mixer',quantity:1,unit_price:900,amount:900,provenance:{rawText:'ca1zr CQ12T Mixer 1 900.00 900.00'}}],{raw});
+  assert(result.outputRows[0].sku==='CQ12T','same-row CQ12T did not replace weak OCR identifier ca1zr');
+  assert(!result.outputRows[0].v41ProductionReviewRequired,'fully recovered CQ12T row should not remain blocked');
+}
+{
+  const raw='TAX INVOICE\n88s Single Channel Digital Wireless Handheld Microphone System 1 480.00 480.00';
+  const result=V41.recoverRows([{sku:'88s',item_name:'Single Channel Digital Wireless Handheld Microphone System',description:'Single Channel Digital Wireless Handheld Microphone System',quantity:1,unit_price:480,amount:480,provenance:{rawText:'88s Single Channel Digital Wireless Handheld Microphone System 1 480.00 480.00'}}],{raw});
+  assert(result.outputRows[0].sku==='','weak 88s identifier survived V4.1');
+  assert(result.outputRows[0].v41ProductionReviewRequired===true,'unresolved 88s identity must require review');
+  assert((result.outputRows[0].v41IntegrityIssues||[]).some(x=>x.field==='sku'),'88s review did not preserve field-level integrity evidence');
+}
+{
+  const raw='TAX INVOICE\nNeutrik Outdoor Dual Microphone Wall Receptacle 2 120.00 240.00';
+  const result=V41.recoverRows([{sku:'Neutrik',item_name:'Outdoor Dual Microphone Wall Receptacle',description:'Outdoor Dual Microphone Wall Receptacle',quantity:2,unit_price:120,amount:240,provenance:{rawText:'Neutrik Outdoor Dual Microphone Wall Receptacle 2 120.00 240.00'}}],{raw});
+  assert(result.outputRows[0].sku==='','brand-only Neutrik token survived as SKU/model');
+  assert(result.outputRows[0].v41ProductionReviewRequired===true,'brand-only identity must require review when no model is proven');
+}
+{
+  const raw='TAX INVOICE\nSingle Channel Digital Wireless Handheld Microphone System ol 1 480.00 480.00';
+  const result=V41.recoverRows([{item_name:'Single Channel Digital Wireless Handheld Microphone System ol',description:'Single Channel Digital Wireless Handheld Microphone System ol',quantity:1,unit_price:480,amount:480,provenance:{rawText:'Single Channel Digital Wireless Handheld Microphone System ol 1 480.00 480.00'}}],{raw});
+  assert(result.outputRows[0].item_name==='Single Channel Digital Wireless Handheld Microphone System','trailing OCR fragment was not trimmed from item name');
+  assert(result.outputRows[0].description==='Single Channel Digital Wireless Handheld Microphone System','trailing OCR fragment was not trimmed from description');
+}
+{
+  const raw='TAX INVOICE\n1604DSP Digital Power Amplifier with DSP 1 1200.00 1200.00';
+  const result=V41.recoverRows([{sku:'1604DSP',item_name:'Digital Power Amplifier with DSP',description:'Digital Power Amplifier with DSP',quantity:1,unit_price:1200,amount:1200,provenance:{rawText:'1604DSP Digital Power Amplifier with DSP 1 1200.00 1200.00'}}],{raw});
+  assert(result.outputRows[0].sku==='1604DSP','valid numeric-leading 1604DSP identifier regressed');
+}
+
 function loadExistingSupplierCases(){
   const src=read('tests/parser-v4-unseen-holdout.cjs');
   const marker='const cases=';
