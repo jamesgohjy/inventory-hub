@@ -56,7 +56,14 @@ const suites={
 };
 for(const [name,result] of Object.entries(suites)){
   console.log(name+': '+result.cases.filter(x=>x.pass).length+'/'+result.cases.length+' PASS');
-  if(!result.ok)console.log(name+' failed case details: '+JSON.stringify((result.cases||[]).filter(x=>!x.pass)));
+  if(!result.ok){
+    const failed=(result.cases||[]).filter(x=>!x.pass).map(x=>({
+      id:x.id||x.name,expected:x.expected,
+      finalRows:(x.actual?.items||x.actual?.outputRows||[]).map(r=>({sku:r.sku||r.model||'',item_name:r.item_name||'',quantity:r.quantity,unit_price:r.unit_price,amount:r.amount})),
+      reference_number:x.actual?.doc?.reference_number||'',reason:x.reason||''
+    }));
+    console.log(name+' failed case details: '+JSON.stringify(failed));
+  }
   assert(result.ok,name+' regression suite failed: '+(result.failures||[]).join(', '));
 }
 const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Object.values(suites).reduce((n,r)=>n+r.cases.filter(x=>x.pass).length,0);
