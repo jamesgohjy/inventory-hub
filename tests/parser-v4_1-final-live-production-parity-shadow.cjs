@@ -18,7 +18,7 @@ const V2=globalThis.InventoryHubParserV2VerificationGate;
 const V3=globalThis.InventoryHubParserV3;
 const V4=globalThis.InventoryHubParserV4ReviewBridge;
 const V41=globalThis.InventoryHubParserV41Shadow;
-const runtime=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.14z.js'),'utf8');
+const runtime=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.16.js'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 const norm=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
 const key=r=>String(r.sku||r.model||'').trim().toUpperCase();
