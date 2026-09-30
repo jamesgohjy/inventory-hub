@@ -14,6 +14,9 @@
     try{
       const key=encodeURIComponent(VERSION+'-'+ASSET_REV),v7032=await loadScript('v7032-core.js?v='+key,'V7032Patch');
       await loadScript('v7032-web-verify.js?v='+key,'V7032WebVerify');
+      const documentAuthority=await loadScript('modules/document-authority-v411-recovery1.js?v='+key,'InventoryHubDocumentAuthorityV411Recovery1');
+      const documentAuthorityGate=documentAuthority.selfTest?.();
+      if(!documentAuthorityGate?.ok)throw new Error('V4.1.1 Recovery1 document-authority startup gate failed: '+(documentAuthorityGate?.failures||['self-test unavailable']).join(', '));
       const v7033=await loadScript('v7033-core.js?v='+key,'V7033Patch');
       const gates=[['behavioral',v7033.runRegressionChecks()],['historical',v7033.runHistoricalRegressionChecks()],['quality',v7033.runQualityRegressionChecks14n()],['holdout',v7033.runHoldoutRegressionChecks14n()],['intelligence',v7033.runIntelligenceRegressionChecks14o()],['aerospace',v7033.runAerospaceRegressionChecks14p()],['monetary',v7033.runMonetaryConsensusRegressionChecks14q()],['header-aligned-money',v7033.runHeaderAlignedMoneyRegressionChecks14r()]];
       const failed=gates.filter(([,r])=>!r?.ok).map(([n,r])=>n+': '+(r?.failures||[]).join(', '));if(failed.length)throw new Error('Regression gate failed: '+failed.join(' | '));
