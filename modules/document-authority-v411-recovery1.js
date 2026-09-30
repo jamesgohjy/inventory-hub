@@ -55,10 +55,23 @@
     if(Number.isFinite(p)&&Number.isFinite(a)&&p>=0&&a>=0)return Math.abs(q*p-a)<=Math.max(.08,Math.abs(a)*.01);
     return false;
   }
-  function strongPhysicalRow(row={}){
+  function sourceSupportsPhysicalRow(row={},evidence=''){
+    const source=clean(evidence),sourceCompact=source.toUpperCase().replace(/[^A-Z0-9]+/g,'');
+    if(!source)return false;
+    const sku=clean(row.sku||row.model||'');
+    if(credibleSku(sku)&&sourceCompact.includes(sku.toUpperCase().replace(/[^A-Z0-9]+/g,'')))return true;
+    const primary=clean(row.item_name||row.description||'').toLowerCase();
+    const stop=new Set(['supply','provide','install','installation','with','from','this','that','equipment','system','unit','units','digital','audio','video']);
+    const words=(primary.match(/[a-z0-9]{3,}/g)||[]).filter(w=>!stop.has(w));
+    if(words.length<2)return false;
+    const src=source.toLowerCase(),hits=[...new Set(words)].filter(w=>src.includes(w));
+    return hits.length>=Math.min(2,new Set(words).size);
+  }
+  function strongPhysicalRow(row={},evidence=''){
     const text=rowText(row),primary=clean(row.item_name||row.description||'');
     if(!text||metadataText(text)||isServiceLine(row))return false;
     if(!EQUIPMENT.test(primary||text))return false;
+    if(!sourceSupportsPhysicalRow(row,evidence))return false;
     return economicEvidence(row)||credibleSku(row.sku||row.model||'');
   }
   function textServiceEvidence(evidence=''){
@@ -77,7 +90,7 @@
     const all=[...(rawRows||[]),...(inventoryRows||[])];
     const physical=[],service=[];
     for(const row of all){
-      if(strongPhysicalRow(row)){if(!physical.some(x=>rowText(x)===rowText(row)&&Number(x.amount)===Number(row.amount)))physical.push(row);continue;}
+      if(strongPhysicalRow(row,evidence)){if(!physical.some(x=>rowText(x)===rowText(row)&&Number(x.amount)===Number(row.amount)))physical.push(row);continue;}
       if(isServiceLine(row)){if(!service.some(x=>rowText(x)===rowText(row)&&Number(x.amount)===Number(row.amount)))service.push(row);}
     }
     if(physical.length)return {type:'equipment',equipmentScore:10+physical.length*2,serviceScore:service.length?6+service.length:0,reason:'At least one row has independent row-local physical equipment evidence. Service rows remain excluded.',authority:'physical-row',physicalCount:physical.length,serviceCount:service.length};
@@ -99,11 +112,12 @@
     ]}).type,'equipment');
     expect('supply install physical item',classifyContent({evidence:'TAX INVOICE',rawRows:[{item_name:'Supply & Install Outdoor Dual Microphone Wall Receptacle',quantity:1,unit_price:450,amount:450}]}).type,'equipment');
     expect('address cannot promote invoice',classifyContent({evidence:'TAX INVOICE\n1 Raffles Institution Lane Singapore 575954',inventoryRows:[{item_name:'1 Raffles Institution Lane Singapore 575954',quantity:1,unit_price:10,amount:10}]}).type,'uncertain');
+    expect('invented equipment row cannot promote service invoice',classifyContent({evidence:svcEvidence,inventoryRows:[{sku:'FAKE-100',item_name:'Projector',quantity:1,unit_price:100,amount:100}]}).type,'service');
     for(const title of ['PURCHASE ORDER','DELIVERY ORDER','QUOTATION','PROFORMA INVOICE','PACKING LIST','SERVICE REPORT','SERVICE INVOICE','CREDIT NOTE']){
       expect('prohibited '+title,classifyContent({evidence:title+'\nPT-VW540 Projector 1 804.00 804.00',rawRows:[{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804}]}).type,'noninventory');
     }
     expect('normal equipment tax invoice',classifyContent({evidence:'TAX INVOICE\nPT-VW540 Projector 1 804.00 804.00',rawRows:[{sku:'PT-VW540',item_name:'Projector',quantity:1,unit_price:804,amount:804}]}).type,'equipment');
     return {ok:failures.length===0,version:VERSION,failures};
   }
-  root.InventoryHubDocumentAuthorityV411Recovery1=Object.freeze({VERSION,prohibitedTitle,metadataText,isServiceLine,strongPhysicalRow,classifyContent,selfTest});
+  root.InventoryHubDocumentAuthorityV411Recovery1=Object.freeze({VERSION,prohibitedTitle,metadataText,isServiceLine,sourceSupportsPhysicalRow,strongPhysicalRow,classifyContent,selfTest});
 })(typeof window!=='undefined'?window:globalThis);
