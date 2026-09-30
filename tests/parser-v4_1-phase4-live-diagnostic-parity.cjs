@@ -71,8 +71,12 @@ req('SLXD24SM58',2,null,null);
 req('MS1014',1,null,null);
 const xdp=req('XDP3002',1,null,null);
 assert(norm(xdp.v703314zReplacementModel)==='XDP3001','XDP replacement note lost');
-const neutrik=req('NEUTRIK',1,450,450);
-assert(String(neutrik.item_name||'').trim()==='Outdoor Dual Microphone Wall Receptacle','Neutrik Standard Item Name must be concise and equipment-only: '+JSON.stringify(neutrik));
+const neutrik=items.find(r=>/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(r.item_name||r.description||'')));
+assert(neutrik,'receptacle row missing from final live set');
+assert(Number(neutrik.quantity)===1&&near(neutrik.unit_price,450)&&near(neutrik.amount,450),'receptacle economics mismatch');
+assert(!String(neutrik.sku||neutrik.model||'').trim(),'brand-only Neutrik must be blank at final identity boundary');
+assert(neutrik.v41ProductionReviewRequired===true,'receptacle identity must be review-required');
+assert(String(neutrik.item_name||'').trim()==='Outdoor Dual Microphone Wall Receptacle','receptacle Standard Item Name must be concise and equipment-only: '+JSON.stringify(neutrik));
 assert(!items.some(r=>/new equipment specified|includesracking|\band brackets\b|labelling|tidying|cabling setups/i.test(String(r.item_name||r.description||''))),'work/fragment row survived final set');
 
 const diag=V.buildParserDiagnostics14l({...parsed,items},invoice,{
@@ -85,7 +89,9 @@ const diag=V.buildParserDiagnostics14l({...parsed,items},invoice,{
 assert(diag.final_items.length===7,'diagnostic final_items must be 7, got '+diag.final_items.length);
 assert(diag.filtering.excluded_service_count>=1,'diagnostic must report service/work exclusion');
 assert(diag.final_items.every(x=>!/^No SKU$/i.test(x.sku||'')),'diagnostic must not emit literal No SKU values');
-assert(diag.final_items.some(x=>norm(x.sku)==='NEUTRIK'),'diagnostic missing Neutrik');
+const diagReceptacle=diag.final_items.find(x=>/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(x.item_name||'')));
+assert(diagReceptacle&&!String(diagReceptacle.sku||'').trim(),'diagnostic must show receptacle with blank unresolved SKU/model');
+assert(diagReceptacle.human_review_required===true&&diag.overall_status==='REVIEW','diagnostic must surface receptacle identity as Level 3 review');
 assert(!diag.final_items.some(x=>/new equipment specified|quidoar|includesracking/i.test(String(x.item_name||''))),'diagnostic still exposes degraded live rows');
 assert(audited.randomCharacterFailureCount===0,'V4.1 contamination hard failure');
 
