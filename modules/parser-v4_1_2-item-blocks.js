@@ -132,7 +132,7 @@
       if(match)out.push({...match,source:clean(s?.source||s?.id||s?.label||s?.kind||'source')});
     }
     const seen=new Map();
-    for(const r of out){const k=(r.ordinal??r.index??'x')+'|'+r.text;if(!seen.has(k))seen.set(k,r);}
+    for(const r of out){const k=clean(r.source||r.kind||'region')+'|'+(r.ordinal??r.index??'x')+'|'+r.text;if(!seen.has(k))seen.set(k,r);}
     return [...seen.values()];
   }
   function fallbackRegions(row={},context={}){
