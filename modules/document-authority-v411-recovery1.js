@@ -106,11 +106,11 @@
       {sku:'SALES-INSTALLATION',item_name:'Supply Labour to re-instate back the existing AV',quantity:1,unit_price:3100,amount:3100}
     ]}).type,'service');
     expect('service mentioning projector',classifyContent({evidence:'TAX INVOICE\nProjector relocation and re-installation 1 500.00 500.00',rawRows:[{item_name:'Projector relocation and re-installation',quantity:1,unit_price:500,amount:500}]}).type,'service');
-    expect('mixed equipment invoice',classifyContent({evidence:'TAX INVOICE',rawRows:[
+    expect('mixed equipment invoice',classifyContent({evidence:'TAX INVOICE\nPT-VW540 Panasonic projector 1 804.00 804.00\nInstallation labour 1 200.00 200.00',rawRows:[
       {sku:'PT-VW540',item_name:'Panasonic projector',quantity:1,unit_price:804,amount:804},
       {item_name:'Installation labour',quantity:1,unit_price:200,amount:200}
     ]}).type,'equipment');
-    expect('supply install physical item',classifyContent({evidence:'TAX INVOICE',rawRows:[{item_name:'Supply & Install Outdoor Dual Microphone Wall Receptacle',quantity:1,unit_price:450,amount:450}]}).type,'equipment');
+    expect('supply install physical item',classifyContent({evidence:'TAX INVOICE\nSupply & Install Outdoor Dual Microphone Wall Receptacle 1 450.00 450.00',rawRows:[{item_name:'Supply & Install Outdoor Dual Microphone Wall Receptacle',quantity:1,unit_price:450,amount:450}]}).type,'equipment');
     expect('address cannot promote invoice',classifyContent({evidence:'TAX INVOICE\n1 Raffles Institution Lane Singapore 575954',inventoryRows:[{item_name:'1 Raffles Institution Lane Singapore 575954',quantity:1,unit_price:10,amount:10}]}).type,'uncertain');
     expect('invented equipment row cannot promote service invoice',classifyContent({evidence:svcEvidence,inventoryRows:[{sku:'FAKE-100',item_name:'Projector',quantity:1,unit_price:100,amount:100}]}).type,'service');
     for(const title of ['PURCHASE ORDER','DELIVERY ORDER','QUOTATION','PROFORMA INVOICE','PACKING LIST','SERVICE REPORT','SERVICE INVOICE','CREDIT NOTE']){
