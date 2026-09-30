@@ -197,7 +197,7 @@ const intel14oStart=runtime.indexOf('(function v703314oInstallParserIntelligence
 assert(intel14oExecutableCalls===1&&intel14oBlock.includes('function renderQualityDashboard14o()'),'Retired 14o quality renderer must have no executable call sites');
 assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
 assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
-assert(app.includes("RELEASE.assetRevision||'v703316-identifier-integrity-r3'"),'Active v7.03.3.16 loader must carry an explicit cache-busting asset revision');
+assert(app.includes("RELEASE.assetRevision||'v703316-v412-item-block-evidence-r1'"),'Active V4.1.2 loader must carry an explicit cache-busting asset revision');
 assert(!runtime.includes('out=applySupplierProfile14o(out,raw);out=applyCorrectionMemory14o(out,raw)'),'Retired Correction Memory must not mutate parsed output');
 assert(!runtime.includes('if(corrections.length)await persistCorrectionMemory14o(corrections)'),'Retired Correction Memory must not persist new corrections');
 assert(!runtime.includes('<strong>Correction Memory</strong>'),'Retired Correction Memory UI must not render');
@@ -323,7 +323,7 @@ assert(/components\.css\?v=7\.03\.3\.16-r\d+/.test(index),'Reusable component st
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(app.includes("v703316-identifier-integrity-r3"),'Active v7.03.3.16 cache-busting asset revision marker missing');
+assert(app.includes("v703316-v412-item-block-evidence-r1"),'Active V4.1.2 cache-busting asset revision marker missing');
 assert(runtime.includes("const RELEASE=window.INVENTORY_RELEASE||{}")&&runtime.includes("RELEASE_CURRENT_NOTES=Array.isArray(RELEASE.currentNotes)?RELEASE.currentNotes:[]"),'Direct runtime Patch Notes are not manifest-driven');
 assert(releaseManifest.includes('Evidence Ledger records positive source support')&&releaseManifest.includes('Name-only Master Item matching can no longer auto-merge')&&releaseManifest.includes('Exception-only review workflow with field-level user-facing confidence states.'),'v7.03.3.16 release manifest Current/Upcoming notes are incomplete');
 assert(index.includes('Evidence Ledger records positive source support')&&index.includes('Name-only Master Item matching can no longer auto-merge')&&index.includes('Exception-only review workflow with field-level user-facing confidence states.'),'Static Patch Notes fallback is not synchronized with v7.03.3.16 manifest');

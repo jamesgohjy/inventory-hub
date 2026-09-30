@@ -1,6 +1,8 @@
 const fs=require('fs');
 require('../modules/parser-v4_1-shadow.js');
+require('../modules/parser-v4_1_2-item-blocks.js');
 const V41=globalThis.InventoryHubParserV41Shadow;
+const V412=globalThis.InventoryHubParserV412;
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 
 const app=fs.readFileSync(require('path').join(__dirname,'..','app.js'),'utf8');
@@ -11,6 +13,8 @@ assert(app.includes("loadScript('modules/parser-v4_1-shadow.js?v='+key,'Inventor
   'production loader does not load V4.1');
 assert(app.includes('Parser V4.1 evidence-integrity startup gate failed')&&app.includes('v7.03.3.16 productivity/accuracy gate failed'),
   'V4.1 startup self-test gate missing');
+assert(app.includes("loadScript('modules/parser-v4_1_2-item-blocks.js?v='+key,'InventoryHubParserV412')"),
+  'production loader does not load V4.1.2');
 assert(runtime.includes('function applyParserV41ProductionIntegrity14z'),
   'production V4.1 integrity wrapper missing');
 assert(runtime.includes('state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);state.parsed=v703316EnhanceParsed(state.parsed);'),
@@ -19,12 +23,14 @@ assert(runtime.includes("reviewRequired:integrityStatus!=='pass'")&&runtime.incl
   'V4.1 production report does not fail closed on review/unresolved evidence');
 assert(runtime.includes('InventoryHubCanonicalParser.fromPipeline(finalParsed,{raw:sourceText})'),
   'V4.1 production result is not re-canonicalized before Review/save authority');
-assert(app.includes("v703316-identifier-integrity-r3"),'v7.03.3.16 identifier-integrity asset revision missing');
-assert(index.includes('app.js?v=7.03.3.16-r3'),
+assert(runtime.includes('v412.apply(')&&runtime.includes('item-block-recovery-before-validation')===false,
+  'V4.1.2 is not applied at the production Review boundary');
+assert(index.includes('app.js?v=7.03.3.16-r4'),
   'v7.03.3.16 browser cache-bust version was not advanced');
 
 const self=V41.selfTest();
 assert(self?.ok,'V4.1 self-test failed: '+JSON.stringify(self?.failures||[]));
+assert(V412.selfTest()?.ok,'V4.1.2 self-test failed');
 
 const raw='TAX INVOICE\nAVS-320 Projector controller 2 350.00 700.00';
 const result=V41.recoverRows([{

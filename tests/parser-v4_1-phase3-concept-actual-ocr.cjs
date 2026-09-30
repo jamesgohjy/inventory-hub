@@ -1,6 +1,8 @@
 const V=require('../v7033-core.js');
 require('../modules/parser-v4_1-shadow.js');
+require('../modules/parser-v4_1_2-item-blocks.js');
 const V41=globalThis.InventoryHubParserV41Shadow;
+const V412=globalThis.InventoryHubParserV412;
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 const norm=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
 const key=r=>norm([r.sku,r.model,r.item_name,r.description].filter(Boolean).join(' '));
@@ -155,7 +157,13 @@ else{
   if(finalReceptacle.v41ProductionReviewRequired!==true)failures.push('brand-only receptacle identity not routed to review');
 }
 
-const resultRows=audit.outputRows.map(r=>({
+const final=V412.apply(audit.outputRows,{raw:ocr3,sources:evidence});
+const finalRows=final.outputRows;
+const expectedNames={CQ12T:'Digital Mixer','1604DSP':'Digital Power Amplifier with DSP','ZX1I-90':'Passive Loudspeaker','SLXD24/SM58':'Single Channel Digital Wireless Handheld Microphone System','MS101-4':'Monitor Speaker','XDP-3002':'Dual CD/MP3 Player'};
+for(const [sku,name] of Object.entries(expectedNames)){const r=finalRows.find(x=>String(x.sku||'')===sku);if(!r||r.item_name!==name)failures.push('V4.1.2 canonical Review mismatch '+sku+'='+JSON.stringify(r?.item_name));}
+const finalReceptacleV412=finalRows.find(r=>/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(r.item_name||r.description||'')));
+if(!finalReceptacleV412||finalReceptacleV412.identity_status!=='needs_attention'||finalReceptacleV412.equipment_status!=='verified')failures.push('V4.1.2 Needs Attention status split missing');
+const resultRows=finalRows.map(r=>({
  sku:r.sku||r.model||'',
  item:r.item_name||r.description||'',
  qty:r.quantity,

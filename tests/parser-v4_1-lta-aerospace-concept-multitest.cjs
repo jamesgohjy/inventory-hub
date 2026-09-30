@@ -1,8 +1,8 @@
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 const AV=require('../parser-v7-core.js'); globalThis.AVParserV7=AV;
 const V=require('../v7033-core.js'); V.installParserPatch();
-for(const p of ['../modules/parser-v2/evidence-model.js','../modules/parser-v2/table-detector.js','../modules/parser-v2/numbered-schedule.js','../modules/parser-v2/verification-gate.js','../modules/parser-v3/engine.js','../modules/parser-v4-review-bridge.js','../modules/parser-v4_1-shadow.js']) require(p);
-const V2=globalThis.InventoryHubParserV2VerificationGate,V3=globalThis.InventoryHubParserV3,V4=globalThis.InventoryHubParserV4ReviewBridge,V41=globalThis.InventoryHubParserV41Shadow;
+for(const p of ['../modules/parser-v2/evidence-model.js','../modules/parser-v2/table-detector.js','../modules/parser-v2/numbered-schedule.js','../modules/parser-v2/verification-gate.js','../modules/parser-v3/engine.js','../modules/parser-v4-review-bridge.js','../modules/parser-v4_1-shadow.js','../modules/parser-v4_1_2-item-blocks.js']) require(p);
+const V2=globalThis.InventoryHubParserV2VerificationGate,V3=globalThis.InventoryHubParserV3,V4=globalThis.InventoryHubParserV4ReviewBridge,V41=globalThis.InventoryHubParserV41Shadow,V412=globalThis.InventoryHubParserV412;
 const norm=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
 const near=(a,b)=>a!=null&&Math.abs(Number(a)-Number(b))<=.06;
 async function pipeline(name,pages,supplier){
@@ -14,7 +14,8 @@ async function pipeline(name,pages,supplier){
  const review=V4.materialize(v3.parsed,enhanced.items||[]);
  const normalized=V.applyParsedFixes(review,raw,evidence);
  const integrity=V41.recoverRows(normalized.items||[],{raw,sources:evidence,layout:[]});
- return {auth,raw,items:integrity.outputRows||[],integrity};
+ const v412=V412.apply(integrity.outputRows||[],{raw,sources:evidence});
+ return {auth,raw,items:v412.outputRows||[],integrity,v412};
 }
 const has=(rows,id)=>{const n=norm(id);return rows.find(r=>norm(r.sku||r.model||'')===n)||rows.find(r=>norm([r.item_name,r.description].filter(Boolean).join(' ')).split(/(?=[A-Z])/).join('').includes(n));};
 (async()=>{
@@ -93,11 +94,14 @@ Model: Neutrik`;
  const cp=['PURCHASE ORDER\nPO Number PO2024',ci,'TAX INVOICE\nDescription Qty Unit Price Amount\nSubtotal 16,500.00\nGST 1,485.00\nInvoice Total 17,985.00','DELIVERY ORDER\nModel Allen & Heath CQ12T','DELIVERY ORDER\nSystem tuning','QUOTATION\nQuotation Validity 90 days'];
  const c=await pipeline('CONCEPT',cp,'Concept Systems Technologies Pte Ltd');
  let cf=[];for(const id of ['CQ12T','1604DSP','ZX1I-90','SLXD24/SM58','MS101-4','XDP-3002'])if(!has(c.items,id))cf.push('missing '+id);
+ const expectedNames={CQ12T:'Digital Mixer','1604DSP':'Digital Power Amplifier with DSP','ZX1I-90':'Passive Loudspeaker','SLXD24/SM58':'Single Channel Digital Wireless Handheld Microphone System','MS101-4':'Monitor Speaker','XDP-3002':'Dual CD/MP3 Player'};
+ for(const [id,name] of Object.entries(expectedNames)){const r=has(c.items,id);if(r&&r.item_name!==name)cf.push(id+' canonical name '+JSON.stringify(r.item_name));}
  const receptacle=c.items.find(r=>/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(r.item_name||r.description||'')));
  if(!receptacle)cf.push('missing wall receptacle');
  else{
    if(String(receptacle.sku||receptacle.model||'').trim())cf.push('brand-only Neutrik survived as identity');
    if(receptacle.v41ProductionReviewRequired!==true)cf.push('receptacle identity not review-gated');
+   if(receptacle.identity_status!=='needs_attention'||receptacle.equipment_status!=='verified')cf.push('receptacle status split incorrect');
    if(Number(receptacle.quantity)!==1||!near(receptacle.unit_price,450)||!near(receptacle.amount,450))cf.push('receptacle economics');
  }
  if(c.items.length!==7)cf.push('rows '+c.items.length+'/7');if(c.auth.decisions.map(x=>!!x.allowed).join(',')!=='false,true,true,false,false,false')cf.push('authority');
