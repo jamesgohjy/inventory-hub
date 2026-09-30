@@ -672,9 +672,22 @@
     const genericScope=/\b(?:the\s+)?new\s+equipment\s+specified\s+in\s+(?:section|sec)\b/i.test(primary)
       ||/includes?\s*(?:racking|mounting|cabling|labelling|labeling|tidying)\b/i.test(primary)
       ||/\b(?:scope\s+of\s+work|system\s+tuning|knowledge\s+transfer|testing\s+and\s+commissioning)\b/i.test(primary);
+    const bundledPhysical=/^(?:supply|provide)\s*(?:&|and)?\s*(?:install|installation)?\b/i.test(primary)
+      &&V703312J_EQUIPMENT_RE.test(primary)
+      &&!/\b(?:cabling|wiring|mounting\s+kits?|labelling|labeling|tidying|training|commissioning|system\s+tuning)\b/i.test(primary);
+    if(bundledPhysical&&!genericScope)return false;
     if(!V703312J_SERVICE_ROW_RE.test(text)&&!genericScope)return false;
-    // Keep a bundled equipment row only when its primary identity is equipment, not a work action.
     return !v703314kHasStrongEquipmentIdentity(row);
+  }
+  function v411r1LooksLikeMetadataText(value=''){
+    const s=clean(value);if(!s)return true;
+    if(/\b(?:invoice\s*(?:no|number|date)?|tax\s+invoice|reference|order\s+ref|p\/?o\s*(?:no|number)?|purchase\s+order|delivery\s+order|quotation|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|gst\s*(?:reg|registration)|uen|company\s*(?:reg|registration)|telephone|tel\.?|fax|e-?mail|email|website|www\.|payment\s+due|page\s+\d+|subtotal|amount\s+due|grand\s+total)\b/i.test(s))return true;
+    if(/\b(?:pte\.?\s+ltd\.?|private\s+limited|limited|ltd\.?|llp|llc|inc\.?|corporation|corp\.?)\b/i.test(s))return true;
+    if(/\bsingapore\s*\d{5,6}\b/i.test(s)||/#\s*\d{1,3}\s*[-/]\s*\d{1,5}\b/.test(s))return true;
+    if(/\b\d{1,4}\s+[A-Za-z][A-Za-z0-9 .'-]{1,70}\s+(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|close|way|walk|place|plaza|boulevard|terrace|industrial\s+park|centre|center)\b/i.test(s))return true;
+    if(/\b(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|industrial\s+park)\b[^\n]{0,40}\b\d{5,6}\b/i.test(s))return true;
+    if(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(s))return true;
+    return false;
   }
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
@@ -736,7 +749,7 @@
     const body=clean(String(description||'').replace(/^[\[\]{}()|,;:.\-]+/,'').replace(/[\[\]{}|]+/g,' ').replace(/\s+/g,' '));
     if(!body)return null;
     const candidate={sku:'',item_name:body,description:body,category:v703312jCategory(body),unit:'pcs',quantity:Number(qty),unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:meta.source||'',v703312kSourceLine:meta.line||''};
-    if(!(candidate.quantity>0)||v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))return null;
+    if(!(candidate.quantity>0)||v411r1LooksLikeMetadataText(body)||v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))return null;
     const models=modelTokens(body);if(models.length===1)candidate.sku=models[0];
     if(unitPrice!==null&&amount!==null){
       const p=Number(unitPrice),a=Number(amount),q=Number(candidate.quantity);
