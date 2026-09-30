@@ -435,6 +435,16 @@
     if(currentCredible&&localEvidence&&V703312J_EQUIPMENT_RE.test(localEvidence)){
       return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-current-unconfirmed',score:4,reason:'Credible current identity preserved because the same item block contains no contradictory model; independent identity confirmation is still required.'};
     }
+    if(currentCredible){
+      const targetWords=uniq(contentWords([row.item_name,row.description].filter(Boolean).join(' '))).slice(0,8);
+      const semanticLine=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).find(line=>{
+        const n=norm(line),hits=targetWords.filter(w=>n.includes(w)).length;
+        return hits>=Math.min(2,targetWords.length)&&V703312J_EQUIPMENT_RE.test(line)&&!v411r1LooksLikeMetadataText(line);
+      })||'';
+      if(semanticLine){
+        return {brand:'',model:current,changed:false,evidenceLine:semanticLine,source:'row-current-unconfirmed',score:4,reason:'Credible current identity preserved only as a reviewable fallback because the row description is locally evidenced and no same-row model contradicts it.'};
+      }
+    }
     return {brand:'',model:'',changed:!!current,evidenceLine:localEvidence,source:'unverified',score:0,reason:'No trustworthy same-item model/SKU evidence was found.'};
   }
 
