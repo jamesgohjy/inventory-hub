@@ -3070,20 +3070,26 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     recoveredEquipmentCount:authoritativeRecovered.length
   };
 
+  const hardCount=Number(result.randomCharacterFailureCount||0);
+  const unresolvedCount=Number(result.unresolvedRecoveryCount||0);
+  const reviewCount=Number(result.reviewIssueCount||0);
+  const integrityStatus=hardCount>0?'fail':((unresolvedCount>0||reviewCount>0)?'review':'pass');
   const report={
     version:api.VERSION||'4.1',
     mode:'production-enforced',
-    status:Number(result.randomCharacterFailureCount||0)===0?'pass':'fail',
+    status:integrityStatus,
+    reviewRequired:integrityStatus!=='pass',
+    readyForProduction:integrityStatus==='pass',
     inputCount:Number(result.inputCount||0),
     outputCount:finalItems.length,
     targetedRecoveryCount:Number(result.targetedRecoveryCount||0),
-    unresolvedRecoveryCount:Number(result.unresolvedRecoveryCount||0),
-    randomCharacterFailureCount:Number(result.randomCharacterFailureCount||0),
-    reviewIssueCount:Number(result.reviewIssueCount||0)
+    unresolvedRecoveryCount:unresolvedCount,
+    randomCharacterFailureCount:hardCount,
+    reviewIssueCount:reviewCount
   };
   finalParsed.v41ProductionIntegrity=report;
   finalParsed.parseEvidence={...(finalParsed.parseEvidence||{}),v41ProductionIntegrity:report};
-  return finalParsed;
+  return window.InventoryHubCanonicalParser?.fromPipeline?window.InventoryHubCanonicalParser.fromPipeline(finalParsed,{raw:sourceText}):finalParsed;
 }
 
 function parserV3UnresolvedConflicts14y(){
