@@ -143,6 +143,13 @@
   }
 
   const DRAFT_PREFIX='inventory-hub-import-draft-v703316:';
+  function revisionScopedDraftIdentity(identity='default',parserRevision='unknown-parser'){
+    return clean(identity||'default')+'|parser:'+clean(parserRevision||'unknown-parser');
+  }
+  function draftCompatible(draft,parserRevision=''){
+    const payload=draft?.payload;
+    return !!(payload&&clean(payload.parserRevision)&&clean(payload.parserRevision)===clean(parserRevision));
+  }
   function draftKey(identity='default'){return DRAFT_PREFIX+compact(identity||'default').slice(0,120);}
   function saveDraft(identity,payload,storage){
     const s=storage||globalThis.localStorage;if(!s)return false;
@@ -169,8 +176,13 @@
     if(!dual.evidenceLedger?.rows?.length)failures.push('evidence ledger missing');
     const memory={v:{},setItem(k,v){this.v[k]=v},getItem(k){return this.v[k]||null},removeItem(k){delete this.v[k]}};
     saveDraft('INV-1',{x:1},memory);if(loadDraft('INV-1',memory)?.payload?.x!==1)failures.push('draft save/load failed');clearDraft('INV-1',memory);if(loadDraft('INV-1',memory)!==null)failures.push('draft clear failed');
+    const r2=revisionScopedDraftIdentity('actor|concept.pdf','v412-r2'),r4=revisionScopedDraftIdentity('actor|concept.pdf','v412-r4');
+    saveDraft(r2,{parserRevision:'v412-r2',items:[{sku:'ZX11-90',item_name:'Digital Mixer'}],doc:{}},memory);
+    if(loadDraft(r4,memory)!==null)failures.push('draft identity must isolate parser revisions');
+    if(!draftCompatible(loadDraft(r2,memory),'v412-r2'))failures.push('same-revision draft compatibility failed');
+    if(draftCompatible(loadDraft(r2,memory),'v412-r4'))failures.push('cross-revision draft must be incompatible');
     return {ok:!failures.length,failures};
   }
 
-  return {VERSION,buildEvidenceLedger,applyDualExtractionConsensus,safeMasterMatch,importSummary,saveDraft,loadDraft,clearDraft,selfTest};
+  return {VERSION,buildEvidenceLedger,applyDualExtractionConsensus,safeMasterMatch,importSummary,revisionScopedDraftIdentity,draftCompatible,saveDraft,loadDraft,clearDraft,selfTest};
 });
