@@ -167,7 +167,7 @@ function v703316DraftBaseIdentity(file=state.file){
   return actor+'|'+documentKey;
 }
 function v703316DraftIdentity(file=state.file){
-  return v703316DraftBaseIdentity(file)+'|parser:'+v703316ParserRevision();
+  return V703316.revisionScopedDraftIdentity(v703316DraftBaseIdentity(file),v703316ParserRevision());
 }
 function v703316SaveDraft(){
   if(!state.parsed||!state.file)return;
@@ -181,7 +181,7 @@ function v703316ScheduleDraftSave(){
 function v703316RestoreDraft(){
   const draft=V703316.loadDraft(v703316DraftIdentity());
   const payload=draft?.payload;if(!payload?.doc||!Array.isArray(payload?.items))return false;
-  if(String(payload.parserRevision||'')!==v703316ParserRevision()){
+  if(!V703316.draftCompatible(draft,v703316ParserRevision())){
     console.info('Ignoring incompatible import draft from parser revision',payload.parserRevision||'legacy');
     return false;
   }
