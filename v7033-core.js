@@ -367,36 +367,96 @@
     const n=Number(value);if(!Number.isFinite(n))return [];
     return uniq([String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})]);
   }
+  function v411r1NumberedItemBlocks(raw=''){
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+    const starts=[];
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.)\-:]?\s+(.+)$/);
+      if(!m)continue;
+      const ordinal=Number(m[1]);if(!(ordinal>=1&&ordinal<=99))continue;
+      starts.push({ordinal,index:i});
+    }
+    const blocks=[];
+    for(let i=0;i<starts.length;i++){
+      const st=starts[i],next=starts[i+1]?.index??lines.length;
+      const blockLines=lines.slice(st.index,next);
+      if(blockLines.length)blocks.push({ordinal:st.ordinal,index:st.index,lines:blockLines,text:blockLines.join('\n')});
+    }
+    return blocks;
+  }
   function v411r1RowLocalEvidence(row={},raw=''){
     const direct=clean(row.v703315StackedSourceLine||row.v703312kSourceLine||row.v7Provenance?.sku?.sourceText||row.provenance?.sku?.sourceText||row.raw_text||row.rawText||row.source_text||row.sourceText||'');
     if(direct&&direct.length>=8)return direct;
-    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+
+    const source=String(raw||'');
+    const lines=source.replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
     if(!lines.length)return '';
+
     const current=clean(row.sku||row.model||''),currentKey=compact(current);
-    const targetWords=uniq(contentWords([row.item_name,row.description].filter(Boolean).join(' '))).slice(0,10);
+    const targetWords=uniq(contentWords([row.item_name,row.description].filter(Boolean).join(' '))).filter(w=>w.length>=3).slice(0,12);
     const type=equipmentType([row.item_name,row.description].filter(Boolean).join(' '));
     const amountForms=v411r1NumericForms(row.amount),priceForms=v411r1NumericForms(row.unit_price);
     const q=Number(row.quantity);
+
+    const scoreRegion=(text,ordinal=null)=>{
+      const key=compact(text),n=norm(text);
+      let score=0,anchors=0;
+      const idHit=!!(currentKey&&key.includes(currentKey));
+      const amountHit=amountForms.some(x=>String(text).includes(x));
+      const priceHit=priceForms.some(x=>String(text).includes(x));
+      if(idHit){score+=40;anchors+=3;}
+      if(amountHit){score+=24;anchors+=2;}
+      if(priceHit){score+=20;anchors+=2;}
+      if(amountHit&&priceHit){score+=18;anchors+=2;}
+      if(Number.isFinite(q)&&q>0){
+        const qRe=new RegExp('(?:^|\\D)'+String(q).replace(/[.*+?^$()|[\]{}\\]/g,'\\$&')+'(?:\\.00)?(?:\\D|$)');
+        if(qRe.test(text)){score+=4;anchors++;}
+      }
+      let hits=0;
+      for(const w of targetWords)if(n.includes(w)){hits++;score+=3;}
+      if(hits>=2){score+=Math.min(10,hits*2);anchors+=2;}
+      const regionType=equipmentType(text);
+      if(type&&regionType){
+        if(type===regionType){score+=12;anchors+=2;}
+        else score-=8;
+      }
+      if(v411r1LooksLikeMetadataText(text)&&!V703312J_EQUIPMENT_RE.test(text))score-=30;
+      return {score,anchors,idHit,amountHit,priceHit,hits,type:regionType,ordinal};
+    };
+
+    // Primary path: respect invoice row boundaries. A model printed in row N must never
+    // satisfy row N+1 merely because it is nearby on the page.
+    const blocks=v411r1NumberedItemBlocks(source);
+    if(blocks.length){
+      const ranked=blocks.map(b=>({...b,...scoreRegion(b.text,b.ordinal)}))
+        .sort((a,b)=>b.score-a.score||b.anchors-a.anchors||b.hits-a.hits||a.index-b.index);
+      const top=ranked[0],runner=ranked[1];
+      if(top&&top.score>=12&&top.anchors>=2){
+        // Economics or current identity is a hard local anchor. Semantic-only ties remain
+        // unresolved rather than crossing into a neighboring item block.
+        const hardAnchor=top.idHit||(top.amountHit&&top.priceHit);
+        if(hardAnchor||!runner||top.score-runner.score>=8)return top.text;
+      }
+    }
+
+    // Fallback for unnumbered invoices: use line windows, but stop at numbered row
+    // boundaries if encountered. This path is deliberately weaker than block matching.
     const scored=[];
     for(let i=0;i<lines.length;i++){
-      const lo=Math.max(0,i-2),hi=Math.min(lines.length,i+4),window=lines.slice(lo,hi).join('\n'),key=compact(window),n=norm(window);
-      let score=0,anchors=0;
-      if(currentKey&&key.includes(currentKey)){score+=26;anchors+=2;}
-      if(amountForms.some(x=>window.includes(x))){score+=15;anchors+=2;}
-      if(priceForms.some(x=>window.includes(x))){score+=12;anchors+=2;}
-      if(Number.isFinite(q)&&q>0&&new RegExp('(?:^|\\D)'+String(q).replace(/[.*+?^$()|[\]{}\\]/g,'\\$&')+'(?:\\.00)?(?:\\D|$)').test(window)){score+=3;}
-      let hits=0;for(const w of targetWords)if(n.includes(w)){hits++;score+=3;}
-      if(hits>=2)anchors++;
-      const wt=equipmentType(window);if(type&&wt&&type===wt){score+=6;anchors++;}
-      if(v411r1LooksLikeMetadataText(window)&&!V703312J_EQUIPMENT_RE.test(window))score-=25;
-      if(score>0)scored.push({score,anchors,text:window,index:i});
+      let lo=i,hi=i+1;
+      while(lo>0&&i-lo<2&&!/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/.test(lines[lo-1]))lo--;
+      while(hi<lines.length&&hi-i<4&&!/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/.test(lines[hi]))hi++;
+      const window=lines.slice(lo,hi).join('\n');
+      const s=scoreRegion(window,null);
+      if(s.score>0)scored.push({...s,text:window,index:i});
     }
-    scored.sort((a,b)=>b.score-a.score||b.anchors-a.anchors||a.index-b.index);
+    scored.sort((a,b)=>b.score-a.score||b.anchors-a.anchors||b.hits-a.hits||a.index-b.index);
     const top=scored[0],runner=scored[1];
-    if(!top||top.score<9||top.anchors<1)return '';
-    if(runner&&top.score-runner.score<3&&top.anchors<2)return '';
+    if(!top||top.score<12||top.anchors<2)return '';
+    if(runner&&top.score-runner.score<8&&!top.idHit&&!(top.amountHit&&top.priceHit))return '';
     return top.text;
   }
+
   function resolveInvoiceIdentity(row={},raw=''){
     const current=clean(row.sku||row.model||'');
     const localEvidence=v411r1RowLocalEvidence(row,raw);
