@@ -455,6 +455,14 @@
       ...after.reviewIssues.map(x=>({field:x.field,code:x.code||'evidence-review',reason:(x.reasons||[]).join(', '),value:x.value||''}))
     ];
     if(integrityIssues.length)safe.v41IntegrityIssues=integrityIssues;else delete safe.v41IntegrityIssues;
+    if(integrityIssues.length){
+      const fields={...(safe.v7033ReviewFields||{})};
+      for(const issue of integrityIssues){
+        const field=issue.field==='model'?'sku':issue.field;if(!field)continue;
+        fields[field]={status:'review',reason:'Evidence Integrity: '+clean(issue.code||issue.reason||'field evidence requires confirmation')};
+      }
+      safe.v7033ReviewFields=fields;
+    }
     if(recoveries.length)safe.v41TargetedRecoveryApplied=true;
     if(integrityIssues.length){safe.v41ShadowReviewRequired=true;safe.v41ProductionReviewRequired=true;}
     return {row:safe,before,after,recoveries,unresolved,ok:after.hardFailures.length===0&&after.reviewIssues.length===0&&unresolved.length===0};
