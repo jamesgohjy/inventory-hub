@@ -195,6 +195,26 @@
     const minHits=tokens.length===1?1:2,supported=best>=0.67&&Math.ceil(best*tokens.length)>=minHits;
     return {supported,mode:supported?'same-region-token-coverage':'insufficient-region-coverage',coverage:best};
   }
+  function identifierRisk(value='',field='',texts=[]){
+    if(field!=='sku'&&field!=='model')return {risky:false,reasons:[]};
+    const v=clean(value),reasons=[];if(!v)return {risky:false,reasons};
+    const windows=(texts||[]).flatMap(lineWindows);
+    const labelled=windows.some(w=>/\b(?:model(?:\s*(?:no\.?|number))?|sku|product\s*(?:no\.?|number)|part\s*(?:no\.?|number)|item\s*code)\b/i.test(w)&&compact(w).includes(compact(v)));
+    const mixed=/[A-Za-z]/.test(v)&&/\d/.test(v);
+    if(!labelled&&mixed&&v===v.toLowerCase()&&!/[-/+._]/.test(v)&&v.length<=8)reasons.push('lowercase-mixed-ocr-identifier');
+    if(!labelled&&/^\d{2,}[A-Za-z]{1,2}$/i.test(v)&&v.length<=5)reasons.push('short-numeric-leading-identifier');
+    if(!labelled&&/^[A-Za-z]{3,24}$/.test(v))reasons.push('untyped-alpha-identifier');
+    return {risky:reasons.length>0,reasons,labelled};
+  }
+  function trailingTextNoise(value='',field=''){
+    if(field!=='item_name'&&field!=='description')return null;
+    const v=clean(value),parts=v.split(/\s+/).filter(Boolean);if(parts.length<3)return null;
+    const last=parts[parts.length-1],lower=last.toLowerCase();
+    if(!/^[a-z]{1,2}$/.test(last)||STOP.has(lower))return null;
+    const trimmed=clean(parts.slice(0,-1).join(' '));
+    if(!EQUIPMENT_RE.test(trimmed))return null;
+    return {token:last,trimmed};
+  }
   function randomSignature(value='',field=''){
     const v=clean(value);if(!v)return {random:false,reasons:[]};
     const reasons=[];if(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(v))reasons.push('invalid-control-or-replacement');
@@ -220,6 +240,7 @@
   }
   function inspectField(row,field,value,texts){
     const support=sourceSupport(value,field,texts),fragments=unsupportedRandomFragments(value,field,texts);
+    const explicit=explicitEvidence(row,field,value),idRisk=identifierRisk(value,field,texts),tail=trailingTextNoise(value,field);
     if(fragments.length&&!explicitEvidence(row,field,value))return {field,value:clean(value),status:'fail',severity:'hard',code:'random-fragment-contamination',support,reasons:fragments.map(x=>'unsupported-random-fragment:'+x)};
     if(support.supported)return {field,value:clean(value),status:'pass',support};
     if(explicitEvidence(row,field,value))return {field,value:clean(value),status:'pass',support:{...support,mode:'explicit-verified-evidence'}};
