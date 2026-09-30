@@ -319,7 +319,7 @@ assert(runtime.includes('bridge?.confirmHumanReview'),'Human review must resolve
 const v4ReviewCtx={console,Date,JSON,Math,Number,String,Array,Object,Set,Map,RegExp};v4ReviewCtx.globalThis=v4ReviewCtx;v4ReviewCtx.window=v4ReviewCtx;vm.createContext(v4ReviewCtx);vm.runInContext(parserV4Review,v4ReviewCtx,{filename:'modules/parser-v4-review-bridge.js'});assert(v4ReviewCtx.InventoryHubParserV4ReviewBridge?.selfTest?.().ok,'Parser V4 live-review parity self-test failed');
 console.log('parser-v4-live-review-parity: pending candidates remain visible and Input count is preserved PASS');
 assert(!app.includes('modules/backup-verification-ui.js'),'Backup Verification Admin must not be loaded into Automation Centre');
-assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component stylesheet is not loaded');
+assert(/components\.css\?v=7\.03\.3\.16-r\d+/.test(index),'Reusable component stylesheet is not loaded');
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
