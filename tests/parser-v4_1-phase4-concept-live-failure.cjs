@@ -74,15 +74,16 @@ req('SLXD24SM58',2,null,null);
 req('MS1014',1,null,null);
 const xdp=req('XDP3002',1,null,null);
 assert(norm(xdp.v703314zReplacementModel)==='XDP3001','XDP replacement evidence lost');
-const neutrik=req('NEUTRIK',1,450,450);
-assert(norm(neutrik.sku||neutrik.model)==='NEUTRIK','Neutrik model not restored');
-assert(/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(neutrik.item_name||neutrik.description||'')),
-  'wall receptacle Standard Item Name not repaired from authoritative evidence: '+JSON.stringify(neutrik));
+const neutrik=rows.find(r=>/outdoor\s+dual\s+microphone\s+wall\s+receptacle/i.test(String(r.item_name||r.description||'')));
+assert(neutrik,'wall receptacle row missing after V4.1 recovery');
+assert(Number(neutrik.quantity)===1&&near(neutrik.unit_price,450)&&near(neutrik.amount,450),'wall receptacle economics mismatch');
+assert(!String(neutrik.sku||neutrik.model||'').trim(),'brand-only Neutrik must not survive as SKU/model');
+assert(neutrik.v41ProductionReviewRequired===true,'brand-only receptacle identity must require review');
 
 assert(audited.randomCharacterFailureCount===0,'random-character hard failure survived');
 
 console.log('PHASE4 CONCEPT LIVE FAILURE REPRODUCTION: PASS');
 console.log('PHASE4 CONCEPT LIVE SERVICE EXCLUSION: PASS');
 console.log('PHASE4 CONCEPT LIVE AUTHORITATIVE RECONCILIATION: PASS rows='+rows.length+'/7');
-console.log('PHASE4 CONCEPT LIVE NEUTRIK REPAIR: PASS sku='+neutrik.sku+' item='+neutrik.item_name+' unit='+neutrik.unit_price+' amount='+neutrik.amount);
+console.log('PHASE4 CONCEPT LIVE RECEPTACLE QUARANTINE: PASS sku='+String(neutrik.sku||'')+' item='+neutrik.item_name+' unit='+neutrik.unit_price+' amount='+neutrik.amount);
 console.log('PHASE4 CONCEPT LIVE SUMMARY: PASS');
