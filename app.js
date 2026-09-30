@@ -4,7 +4,7 @@
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
   const RELEASE=window.INVENTORY_RELEASE||{};
-  const VERSION=RELEASE.appVersion||'7.03.3.16',ASSET_REV=RELEASE.assetRevision||'v703316-v412-item-block-evidence-r1';
+  const VERSION=RELEASE.appVersion||'7.03.3.16',ASSET_REV=RELEASE.assetRevision||'v703316-v412-item-block-evidence-r2';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
