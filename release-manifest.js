@@ -4,9 +4,9 @@
     appVersion:'7.03.3.16',
     parserVersion:'V4.1.2',
     runtimeFile:'runtime-v7.03.3.16.js',
-    assetRevision:'v703316-v412-item-block-evidence-r2',
+    assetRevision:'v703316-v412-item-block-evidence-r3',
     currentNotes:[
-      'Parser V4.1.2 preserves valid source-supported identities, promotes stronger same-item labelled models, and quarantines only unresolved identities.',
+      'Parser V4.1.2 R3 uniquely assigns rows to invoice item blocks, prevents cross-row name contamination, preserves valid identities, and uses independent same-block OCR consensus.',
       'Evidence Ledger records positive source support for parsed header and line-item fields.',
       'Dual extraction consensus compares independent native-PDF and OCR evidence when both are available.',
       'Name-only Master Item matching can no longer auto-merge records without stable SKU/model identity.',
