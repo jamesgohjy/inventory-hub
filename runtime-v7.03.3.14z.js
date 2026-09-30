@@ -997,7 +997,9 @@ function isNonInventoryServiceLine(x={}){
   const workPhrase=/\b(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing|ed)|re-?instat(?:e|ement|ing)|relocat(?:e|ion|ing)|remov(?:e|al)|installation|testing|commissioning|programming)\s*(?:work|works|service|services|job|labou?r)\b/i.test(text);
   const actionChain=/\b(?:repair(?:ing|ed)?|dismount(?:ing)?|dismantl(?:e|ing|ed)|remove|relocate|reinstate|install(?:ation|ing|ed)?|test(?:ing|ed)?|commission(?:ing|ed)?|programming|setup|configuration)\b/i.test(text);
   const installBundle=/\b(?:installation|testing|commissioning|programming)\s*(?:and|&|\/|,)+\s*(?:services?|testing|commissioning|programming)\b/i.test(text);
-  return deliveryOnly||serviceSku||strongStart||labourPhrase||workPhrase||actionChain||installBundle;
+  const bundledPhysical=/^(?:supply|provide)\s*(?:&|and)?\s*(?:install|installation)?\b/i.test(text)&&physical&&!/\b(?:cabling|wiring|mounting\s+kits?|labelling|labeling|tidying|training|commissioning|system\s+tuning)\b/i.test(text);
+  if(bundledPhysical&&!deliveryOnly&&!serviceSku&&!labourPhrase&&!workPhrase&&!installBundle)return false;
+  return deliveryOnly||serviceSku||strongStart||labourPhrase||workPhrase||(actionChain&&!physical)||installBundle;
 }
 
 function isExcludedInventoryAccessoryLine(x={}){
@@ -1813,7 +1815,7 @@ function v714yLooksLikeInvoiceMetadata(value=''){
   if(!s)return true;
   const header=/\b(?:invoice\s*(?:no|number|date)?|tax\s+invoice|reference\s*(?:no|number)?|ref\.?\s*(?:no|number)?|p\/?o\s*(?:no|number)?|purchase\s+order|delivery\s+order|quotation|customer(?:\s+code|\s+copy)?|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|terms|salesman|gst\s*(?:reg|registration)|uen|company\s*(?:reg|registration)|co\.?\s*reg|telephone|tel\.?|fax\.?|e-?mail|email|website|www\.|postal(?:\s+code)?|page\s+\d+|sub\s*total|subtotal|amount\s+due|grand\s+total|total\s+amount)\b/i;
   const company=/\b(?:pte\.?\s*ltd\.?|private\s+limited|limited|ltd\.?|llp|llc|inc\.?|corporation|corp\.?)\b/i;
-  const address=/(?:\b(?:blk|block)\s*\d+[a-z]?\b|#\s*\d{1,3}\s*[-/]\s*\d{1,5}\b|\bsingapore\s*\d{5,6}\b|\b\d{1,4}\s*[a-z][a-z0-9 .'-]{1,55}\s*(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|lane|crescent|close|way|walk|place|plaza|boulevard|terrace|industrial\s+park)\b)/i;
+  const address=/(?:\b(?:blk|block)\s*\d+[a-z]?\b|#\s*\d{1,3}\s*[-/]\s*\d{1,5}\b|\bsingapore\s*\d{5,6}\b|\b\d{1,4}\s*[a-z][a-z0-9 .'-]{1,70}\s*(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|close|way|walk|place|plaza|boulevard|terrace|industrial\s+park|centre|center)\b|\b(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|industrial\s+park)\b[^\n]{0,40}\b\d{5,6}\b)/i;
   const dateLabel=/\b(?:invoice\s+date|document\s+date|delivery\s+date|date)\s*[:#.-]/i;
   const dateValue=/^(?:\d{1,2}[\/.-]\d{1,2}[\/.-](?:\d{2}|\d{4})|\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}|\d{1,2}\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4})$/i;
   const service=/^(?:installation|installing|installed|labou?r|services?|professional\s+services?|repair(?:ing|ed)?|delivery|freight|transport|courier|commissioning|testing|programming|dismantl(?:e|ing|ed)|dismount(?:ing|ed)?|remove|removal|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|setup|configuration)\b/i;
