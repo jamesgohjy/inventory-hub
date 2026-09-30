@@ -3557,8 +3557,17 @@ $('saveImportBtn').onclick=async()=>{if(state.importSaving)return;if(CFG.mode===
 $('saveImportBtn').addEventListener('click',e=>{
   if(!state.parsed)return;
   try{collectParsed();}catch(collectErr){console.warn('V7.03 could not collect current review fields',collectErr);}
-  const docType=detectImportDocumentType(state.parsed.raw||state.parsed.rawText||'');
+  const sourceEvidence=state.parsed.raw||state.parsed.rawText||'';
+  const docType=detectImportDocumentType(sourceEvidence);
   if(docType.type!=='invoice'){e.preventDefault();e.stopImmediatePropagation();toast(docType.type==='delivery_order'?'Only invoices can be imported. Delivery Orders are blocked.':'Only verified invoices can be saved.');return;}
+  const recoveryAuthority=window.InventoryHubDocumentAuthorityV411Recovery1?.classifyContent?.({evidence:sourceEvidence,rawRows:[],inventoryRows:state.parsed.items||[]});
+  if(recoveryAuthority&&recoveryAuthority.type!=='equipment'){
+    e.preventDefault();e.stopImmediatePropagation();
+    state.parsed.invoiceClassification=recoveryAuthority;
+    renderImportEligibility();
+    toast(recoveryAuthority.type==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':recoveryAuthority.type==='noninventory'?'This document type cannot be imported into Inventory.':'Physical equipment evidence could not be proven from the source invoice. Save has been stopped for safety.');
+    return;
+  }
   const detected=state.parsed.invoiceClassification?.type||'uncertain';
   const effective=detected==='uncertain'?(state.importClassificationChoice||'uncertain'):detected;
   if(effective!=='equipment'){e.preventDefault();e.stopImmediatePropagation();renderImportEligibility();toast(effective==='service'?'Equipment invoices only. Service-work invoices cannot be imported.':effective==='noninventory'?'No tracked equipment found. Excluded accessory-only invoices cannot be imported.':'Confirm whether this is an Equipment invoice or Service invoice before saving.');return;}
