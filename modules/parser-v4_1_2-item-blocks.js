@@ -6,7 +6,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.2-item-block-evidence-r3';
+  const VERSION='4.1.2-item-block-evidence-r4';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
   const compact=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const words=v=>clean(v).toLowerCase().match(/[a-z0-9]{3,}/g)||[];
