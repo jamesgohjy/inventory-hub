@@ -463,6 +463,16 @@
     const localIdentityEvidence=String(localEvidence||'').replace(/\s+\|\s+/g,'\n');
     const currentCredible=credibleSku(current,localIdentityEvidence||current);
     const currentSupported=!!(currentCredible&&localIdentityEvidence&&compact(localIdentityEvidence).includes(compact(current)));
+    // Description-first stacked recovery already isolates one item's identity line.
+    // Use the first credible mixed alphanumeric model token from that local line only;
+    // later tokens may be capsule/frequency/component identifiers (e.g. SM58, G66).
+    if(row.v703315StackedRecovery===true){
+      const stackedModels=modelTokens(localIdentityEvidence);
+      if(stackedModels.length){
+        const model=stackedModels[0];
+        return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-stacked',score:11,reason:'First credible model token from the isolated stacked item identity line.'};
+      }
+    }
     const explicit=(typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(localIdentityEvidence):[]).filter(x=>clean(x.model));
     const explicitGroups=new Map();
     for(const e of explicit){const k=compact(e.model);if(!k)continue;if(!explicitGroups.has(k))explicitGroups.set(k,{model:e.model,line:e.line,count:0});explicitGroups.get(k).count++;}
