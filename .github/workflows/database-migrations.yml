@@ -6,14 +6,16 @@ on:
     paths:
       - "supabase-v7-03-3-14d-master-item-merge.sql"
       - "supabase-v7-03-3-14v-canonical-save.sql"
-      - "supabase-v7-03-3-14x-data-health-resolution.sql"\n      - "supabase-v7-03-3-16-safe-empty-sku.sql"
+      - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - "supabase-v7-03-3-16-safe-empty-sku.sql"
       - ".github/workflows/database-migrations.yml"
   pull_request:
     types: [closed]
     paths:
       - "supabase-v7-03-3-14d-master-item-merge.sql"
       - "supabase-v7-03-3-14v-canonical-save.sql"
-      - "supabase-v7-03-3-14x-data-health-resolution.sql"\n      - "supabase-v7-03-3-16-safe-empty-sku.sql"
+      - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - "supabase-v7-03-3-16-safe-empty-sku.sql"
       - ".github/workflows/database-migrations.yml"
   workflow_dispatch:
 
@@ -48,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in             supabase-v7-03-3-14d-master-item-merge.sql             supabase-v7-03-3-14v-canonical-save.sql             supabase-v7-03-3-14x-data-health-resolution.sql
+          for file in             supabase-v7-03-3-14d-master-item-merge.sql             supabase-v7-03-3-14v-canonical-save.sql             supabase-v7-03-3-14x-data-health-resolution.sql             supabase-v7-03-3-16-safe-empty-sku.sql
           do
             echo "Applying $file"
             jq -n --rawfile query "$file" '{query:$query,read_only:false}' > /tmp/query.json
