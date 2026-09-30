@@ -230,9 +230,11 @@
     if(paymentTerms)structureScore+=1;
     if(currency)structureScore+=1;
 
-    // Explicit prohibited document titles outrank any incidental Invoice/Tax Invoice text.
-    // P/O No., D/O No. and reference fields are not titles and therefore do not trigger this gate.
-    if(nonInvoiceTitles.length){
+    // Explicit prohibited document titles outrank incidental invoice-like fields.
+    // A genuine Invoice/Tax Invoice may legitimately contain "Delivery Order Number" or
+    // "Purchase Order Number" as a reference field; those two reference forms alone are not titles.
+    const referenceOnlyNonInvoice=nonInvoiceTitles.length>0&&nonInvoiceTitles.every(x=>/^(?:DELIVERY\s+ORDER|PURCHASE\s+ORDER)\s+(?:NO|NUMBER|#)\b/i.test(x));
+    if(nonInvoiceTitles.length&&!(referenceOnlyNonInvoice&&(strongTax||strongInvoice))){
       return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
     }
     // Document authority is then resolved for genuine Invoice/Tax Invoice pages.
