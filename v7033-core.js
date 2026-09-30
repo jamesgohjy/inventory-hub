@@ -861,7 +861,13 @@
   function v703312kEvidenceTexts(raw='',evidenceSources=[]){
     const list=[{source:'primary',text:String(raw||'')},...(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}))];
     const out=[],seen=new Set();
-    for(const x of list){const key=x.text.replace(/\s+/g,' ').trim().slice(0,5000);if(!key||seen.has(key))continue;seen.add(key);out.push(x);}
+    for(const x of list){
+      const normalizedText=x.text.replace(/\s+/g,' ').trim().slice(0,5000);
+      const sourceKey=clean(x.source||'unknown').toLowerCase();
+      const key=sourceKey+'|'+normalizedText;
+      if(!normalizedText||seen.has(key))continue;
+      seen.add(key);out.push(x);
+    }
     return out;
   }
   function v703312kBuildCandidate(description='',qty=null,unitPrice=null,amount=null,meta={}){
