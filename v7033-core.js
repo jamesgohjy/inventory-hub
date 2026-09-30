@@ -363,44 +363,73 @@
     }
     return out.sort((a,b)=>b.score-a.score||a.index-b.index);
   }
+  function v411r1NumericForms(value){
+    const n=Number(value);if(!Number.isFinite(n))return [];
+    return uniq([String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})]);
+  }
+  function v411r1RowLocalEvidence(row={},raw=''){
+    const direct=clean(row.v703315StackedSourceLine||row.v703312kSourceLine||row.v7Provenance?.sku?.sourceText||row.provenance?.sku?.sourceText||row.raw_text||row.rawText||row.source_text||row.sourceText||'');
+    if(direct&&direct.length>=8)return direct;
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+    if(!lines.length)return '';
+    const current=clean(row.sku||row.model||''),currentKey=compact(current);
+    const targetWords=uniq(contentWords([row.item_name,row.description].filter(Boolean).join(' '))).slice(0,10);
+    const type=equipmentType([row.item_name,row.description].filter(Boolean).join(' '));
+    const amountForms=v411r1NumericForms(row.amount),priceForms=v411r1NumericForms(row.unit_price);
+    const q=Number(row.quantity);
+    const scored=[];
+    for(let i=0;i<lines.length;i++){
+      const lo=Math.max(0,i-2),hi=Math.min(lines.length,i+4),window=lines.slice(lo,hi).join(' | '),key=compact(window),n=norm(window);
+      let score=0,anchors=0;
+      if(currentKey&&key.includes(currentKey)){score+=26;anchors+=2;}
+      if(amountForms.some(x=>window.includes(x))){score+=15;anchors+=2;}
+      if(priceForms.some(x=>window.includes(x))){score+=12;anchors+=2;}
+      if(Number.isFinite(q)&&q>0&&new RegExp('(?:^|\\D)'+String(q).replace(/[.*+?^$()|[\]{}\\]/g,'\\$&')+'(?:\\.00)?(?:\\D|$)').test(window)){score+=3;}
+      let hits=0;for(const w of targetWords)if(n.includes(w)){hits++;score+=3;}
+      if(hits>=2)anchors++;
+      const wt=equipmentType(window);if(type&&wt&&type===wt){score+=6;anchors++;}
+      if(v411r1LooksLikeMetadataText(window)&&!V703312J_EQUIPMENT_RE.test(window))score-=25;
+      if(score>0)scored.push({score,anchors,text:window,index:i});
+    }
+    scored.sort((a,b)=>b.score-a.score||b.anchors-a.anchors||a.index-b.index);
+    const top=scored[0],runner=scored[1];
+    if(!top||top.score<9||top.anchors<1)return '';
+    if(runner&&top.score-runner.score<3&&top.anchors<2)return '';
+    return top.text;
+  }
   function resolveInvoiceIdentity(row={},raw=''){
-    const current=clean(row.sku||'');
-    const currentLine=String(raw||'').split(/\r?\n/).find(l=>compact(l).includes(compact(current)))||'';
-    const currentCredible=credibleSku(current,currentLine);
-    const currentSupported=currentCredible&&String(raw||'').toUpperCase().includes(current.toUpperCase());
-    const localEvidence=clean(row.v703315StackedSourceLine||row.v703312kSourceLine||row.v7Provenance?.sku?.sourceText||row.provenance?.sku?.sourceText||row.raw_text||row.rawText||row.source_text||row.sourceText||'');
-    const localModels=modelTokens(localEvidence);
-    // A deterministic description-first stacked row owns its local identity. Do not let
-    // a later model elsewhere on the invoice overwrite the first model printed in this row.
-    if(row.v703315StackedRecovery===true&&localModels.length){
-      const model=localModels[0];
-      return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-stacked',score:10,reason:'Row-local stacked invoice evidence outranks invoice-wide model candidates.'};
-    }
-    // Outside stacked recovery, one unambiguous row-local model can safely outrank an
-    // unsupported/global candidate without changing multi-model rows.
-    if(localModels.length===1&&(!currentCredible||!currentSupported)){
-      const model=localModels[0];
-      return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-explicit',score:9,reason:'Unambiguous row-local model evidence outranks unsupported invoice-wide candidates.'};
-    }
-    const candidates=productIdentityCandidates(raw,row);
-    const top=candidates[0]||null;
-
-    // Never let an unrelated model elsewhere on the invoice overwrite a credible model that is directly printed.
-    if(currentCredible&&currentSupported&&!looksLikeDimensionOrSpec(current,currentLine)){
-      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:5,reason:'Current model is directly printed on the invoice.'};
-    }
-    // Global Product No/Model/SKU evidence may correct a row only when it is relevant to that row.
-    if(top&&top.relevant&&top.score>=12){
-      if(!currentCredible||!currentSupported||looksLikeDimensionOrSpec(current,currentLine)||compact(current)!==compact(top.model)){
-        return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Relevant labelled product identity evidence outranks unsupported row text.'};
+    const current=clean(row.sku||row.model||'');
+    const localEvidence=v411r1RowLocalEvidence(row,raw);
+    const currentCredible=credibleSku(current,localEvidence||current);
+    const currentSupported=!!(currentCredible&&localEvidence&&compact(localEvidence).includes(compact(current)));
+    const explicit=(typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(localEvidence):[]).filter(x=>clean(x.model));
+    const explicitGroups=new Map();
+    for(const e of explicit){const k=compact(e.model);if(!k)continue;if(!explicitGroups.has(k))explicitGroups.set(k,{model:e.model,line:e.line,count:0});explicitGroups.get(k).count++;}
+    const explicitRanked=[...explicitGroups.values()].sort((a,b)=>b.count-a.count);
+    if(explicitRanked.length===1){
+      const model=explicitRanked[0].model;
+      if(credibleSku(model,explicitRanked[0].line||localEvidence)){
+        const localCandidates=productIdentityCandidates(localEvidence,row),same=localCandidates.find(x=>compact(x.model)===compact(model));
+        return {brand:same?.brand||'',model,changed:compact(current)!==compact(model),evidenceLine:explicitRanked[0].line||localEvidence,source:'row-local-explicit',score:12,reason:'Explicit Model/SKU evidence from the same item block.'};
       }
     }
-    // Strong unlabelled brand+model evidence can correct an unsupported OCR model only with row relevance.
-    if(top&&top.relevant&&top.score>=7&&(!currentCredible||!currentSupported)){
-      return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Unsupported parsed model replaced by stronger relevant invoice evidence.'};
+    if(explicitRanked.length>1){
+      if(currentSupported&&explicitGroups.has(compact(current)))return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-local-current',score:8,reason:'Current model is supported inside a conflicting local item block; keep it for review.'};
+      return {brand:'',model:'',changed:!!current,evidenceLine:localEvidence,source:'row-local-conflict',score:0,reason:'Conflicting model/SKU evidence exists inside the same item block.'};
     }
-    return {brand:'',model:currentCredible?current:'',changed:false,evidenceLine:currentLine,source:currentSupported?'invoice-text':'unverified',score:currentSupported?5:0,reason:currentSupported?'Current model is printed on the invoice.':'No verified relevant model was found.'};
+    if(currentSupported&&!looksLikeDimensionOrSpec(current,localEvidence)){
+      return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-local-current',score:8,reason:'Current model is directly supported by the same item block.'};
+    }
+    const localCandidates=productIdentityCandidates(localEvidence,row).filter(x=>x.relevant&&credibleSku(x.model,x.line));
+    if(localCandidates.length){
+      const top=localCandidates[0],runner=localCandidates[1];
+      if(!runner||top.score-runner.score>=3||compact(top.model)===compact(runner.model)){
+        return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:'row-local-model',score:Math.max(7,top.score),reason:'Unambiguous model evidence recovered from the same item block.'};
+      }
+    }
+    return {brand:'',model:'',changed:!!current,evidenceLine:localEvidence,source:'unverified',score:0,reason:'No trustworthy same-item model/SKU evidence was found.'};
   }
+
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
