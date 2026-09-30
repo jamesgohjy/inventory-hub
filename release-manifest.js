@@ -4,7 +4,7 @@
     appVersion:'7.03.3.16',
     parserVersion:'V4.1.1',
     runtimeFile:'runtime-v7.03.3.16.js',
-    assetRevision:'v703316-productivity-accuracy-r1',
+    assetRevision:'v703316-concept-wrapped-economics-r2',
     currentNotes:[
       'Evidence Ledger records positive source support for parsed header and line-item fields.',
       'Dual extraction consensus compares independent native-PDF and OCR evidence when both are available.',

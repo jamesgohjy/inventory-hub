@@ -2055,6 +2055,26 @@
     return (clean(line).replace(/[$€£¥]/g,' ').match(/(?:\d{1,3}(?:,\d{3})*|\d+)[.]\d{2}/g)||[])
       .map(v=>Number(v.replace(/,/g,''))).filter(Number.isFinite);
   }
+  function v703316ResolveWrappedEconomics(block=[],q=null){
+    const qty=Number(q);
+    if(!Number.isInteger(qty)||qty<=0||qty>999)return {ok:false,conflict:false,reason:'Quantity is not reliable enough for wrapped-row economic recovery.'};
+    const totalLine=/^(?:SUB\s*TOTAL|SUBTOTAL|GST\b|VAT\b|TAX\b|TOTAL\b|GRAND\s+TOTAL|AMOUNT\s+DUE|BALANCE\s+DUE)/i,tokens=[];
+    for(let i=0;i<(block||[]).length;i++){
+      const line=clean(block[i]);if(!line||totalLine.test(line))continue;
+      for(const value of v703314aaMoneyTokens(line))tokens.push({value,lineIndex:i,line});
+    }
+    const matches=new Map();
+    for(let i=0;i<tokens.length;i++)for(let j=i+1;j<tokens.length;j++){
+      const p=Number(tokens[i].value),a=Number(tokens[j].value);
+      if(!Number.isFinite(p)||!Number.isFinite(a)||p<0||a<0)continue;
+      if(Math.abs(qty*p-a)>Math.max(.08,Math.abs(a)*.002))continue;
+      const signature=p.toFixed(2)+'|'+a.toFixed(2);
+      if(!matches.has(signature))matches.set(signature,{unit_price:p,amount:a,evidence:[tokens[i],tokens[j]]});
+    }
+    if(matches.size===1)return {ok:true,conflict:false,...[...matches.values()][0]};
+    if(matches.size>1)return {ok:false,conflict:true,reason:'Multiple arithmetic-consistent price/amount pairs exist inside the same OCR row block.'};
+    return {ok:false,conflict:false,reason:'No arithmetic-consistent Qty × Unit Price = Amount pair was found inside the row block.'};
+  }
   function v703314aaOrdinalStart(line=''){
     const s=clean(line).replace(/^[|]+\s*/,'').replace(/\s*[|]+/g,' ');
     const m=s.match(/^(\d{1,2})\s+(.+)$/);if(!m)return null;
@@ -2097,8 +2117,9 @@
       const probe={sku,model:sku,item_name:description,description,quantity:q,unit_price:null,amount:null};
       const tracked=v703312jIsTrackedEquipment(probe)||equipmentType(description)||equipmentType(modelText);
       if(!tracked||v703312jIsServiceRow(probe)||v703312jIsAccessoryRow(probe))continue;
-      const money=v703314aaMoneyTokens(start.body),p=money.length>=2?money[money.length-2]:null,a=money.length>=2?money[money.length-1]:null;
-      const economic=Number.isFinite(p)&&Number.isFinite(a)&&Math.abs(q*p-a)<=Math.max(.08,Math.abs(a)*.002);
+      const wrappedEconomics=v703316ResolveWrappedEconomics(block,q);
+      const p=wrappedEconomics.ok?wrappedEconomics.unit_price:null,a=wrappedEconomics.ok?wrappedEconomics.amount:null;
+      const economic=wrappedEconomics.ok;
       const row={
         ...probe,
         unit_price:economic?p:null,
@@ -2109,7 +2130,7 @@
         v703314zPrintedModel:modelText,
         v703314zInvoiceWrappedRow:true,
         v703314zOrdinal:start.ordinal,
-        v703312LineEvidence:{economic,sourceLine:start.i+1,modelLine:start.i+modelIndex+1}
+        v703312LineEvidence:{economic,sourceLine:start.i+1,modelLine:start.i+modelIndex+1,wrappedEconomicEvidence:wrappedEconomics.evidence||[],wrappedEconomicConflict:!!wrappedEconomics.conflict,wrappedEconomicReason:wrappedEconomics.reason||''}
       };
       if(replacement&&compact(replacement)!==compact(sku)){
         row.v703314zReplacementModel=replacement;
@@ -2179,6 +2200,10 @@
     check('targeted table OCR recovers three physical rows',rows.length,3);
     check('targeted table OCR excludes installation',rows.some(x=>/installation/i.test(v703312jRowText(x))),false);
     check('recovered rows preserve economic evidence',rows.every(x=>x.v703312LineEvidence?.economic===true),true);
+    const wrappedEconomicRows=v703314pRecoverEquipmentRows('1 Wireless handheld microphone 2\nMODEL: TEST-WM200\n350.00\n700.00','recovery-wrapped-economic-regression');
+    check('wrapped OCR row recovers arithmetic-consistent economic values',wrappedEconomicRows.some(x=>Number(x.quantity)===2&&Number(x.unit_price)===350&&Number(x.amount)===700),true);
+    const conflictingEconomicRows=v703314pRecoverEquipmentRows('1 Wireless handheld microphone 1\nMODEL: TEST-WM201\n350.00 350.00\n500.00 500.00','recovery-wrapped-economic-conflict');
+    check('ambiguous wrapped economics fail closed instead of guessing',conflictingEconomicRows.some(x=>x.sku==='TEST-WM201'&&x.unit_price==null&&x.amount==null&&x.needsReview===true),true);
     return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
 
