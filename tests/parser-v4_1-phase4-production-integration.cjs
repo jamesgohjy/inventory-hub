@@ -15,8 +15,12 @@ assert(runtime.includes('function applyParserV41ProductionIntegrity14z'),
   'production V4.1 integrity wrapper missing');
 assert(runtime.includes('state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);state.parsed=v703316EnhanceParsed(state.parsed);'),
   'V4.1 is not enforced before the v7.03.3.16 evidence ledger and Review');
-assert(app.includes("v703316-productivity-accuracy-r1"),'v7.03.3.16 asset revision missing');
-assert(index.includes('app.js?v=7.03.3.16-r1'),
+assert(runtime.includes("reviewRequired:integrityStatus!=='pass'")&&runtime.includes("readyForProduction:integrityStatus==='pass'"),
+  'V4.1 production report does not fail closed on review/unresolved evidence');
+assert(runtime.includes('InventoryHubCanonicalParser.fromPipeline(finalParsed,{raw:sourceText})'),
+  'V4.1 production result is not re-canonicalized before Review/save authority');
+assert(app.includes("v703316-identifier-integrity-r3"),'v7.03.3.16 identifier-integrity asset revision missing');
+assert(index.includes('app.js?v=7.03.3.16-r3'),
   'v7.03.3.16 browser cache-bust version was not advanced');
 
 const self=V41.selfTest();
