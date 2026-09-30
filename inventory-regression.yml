@@ -1,0 +1,110 @@
+name: Inventory Hub Regression Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "v7033-core.js"
+      - "parser-v7-core.js"
+      - "runtime-v7.03.3.*.js"
+      - "modules/**"
+      - "scripts/**"
+      - "index.html"
+      - "tests/**"
+      - "supabase-v7-03-3-14o-parser-intelligence.sql"
+      - "supabase-v7-03-3-14d-master-item-merge.sql"
+      - "supabase-v7-03-3-14v-canonical-save.sql"
+      - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - "supabase-v7-03-3-16-safe-empty-sku.sql"
+      - ".github/workflows/database-migrations.yml"
+      - "supabase-v7-03-3-14t-backup-verification.sql"
+      - "BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md"
+      - ".github/workflows/inventory-regression.yml"
+      - ".github/workflows/backup-verification.yml"
+  pull_request:
+    paths:
+      - "app.js"
+      - "v7033-core.js"
+      - "parser-v7-core.js"
+      - "runtime-v7.03.3.*.js"
+      - "modules/**"
+      - "scripts/**"
+      - "index.html"
+      - "tests/**"
+      - "supabase-v7-03-3-14o-parser-intelligence.sql"
+      - "supabase-v7-03-3-14d-master-item-merge.sql"
+      - "supabase-v7-03-3-14v-canonical-save.sql"
+      - "supabase-v7-03-3-14x-data-health-resolution.sql"
+      - "supabase-v7-03-3-16-safe-empty-sku.sql"
+      - ".github/workflows/database-migrations.yml"
+      - "supabase-v7-03-3-14t-backup-verification.sql"
+      - "BACKUP_VERIFICATION_SETUP-v7.03.3.14t.md"
+      - ".github/workflows/inventory-regression.yml"
+      - ".github/workflows/backup-verification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax-check direct runtime and backup verifier
+        run: |
+          node --check app.js
+          ACTIVE_RUNTIME="$(node -e "const fs=require('fs'),vm=require('vm');const ctx={};ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync('release-manifest.js','utf8'),ctx);process.stdout.write(ctx.INVENTORY_RELEASE.runtimeFile);")"
+          echo "Syntax-checking active runtime: $ACTIVE_RUNTIME"
+          node --check "$ACTIVE_RUNTIME"
+          node --check modules/parser-evidence-engine.js
+          node --check modules/parser-v2/evidence-model.js
+          node --check modules/parser-v2/header-resolver.js
+          node --check modules/parser-v2/table-detector.js
+          node --check modules/parser-v2/row-builder.js
+          node --check modules/parser-v2/row-accounting.js
+          node --check modules/parser-v2/numbered-schedule.js
+          node --check modules/parser-v2/engine.js
+          node --check modules/parser-v2/verification-gate.js
+          node --check modules/parser-v3/engine.js
+          node --check modules/parser-v4-review-bridge.js
+          node --check modules/parser-v4_1-shadow.js
+          node --check modules/productivity-accuracy-v703316.js
+          node --check release-manifest.js
+          node --check modules/parser-table.js
+          node --check modules/grouped-company-ui.js
+          node --check modules/backup-verification-ui.js
+          node --check scripts/verify-backups.mjs
+      - name: Run parser, module, backup and release regression gates
+        run: |
+          node tests/run-regression.cjs
+          node tests/productivity-accuracy-v703316.cjs
+          node tests/parser-v4-unseen-holdout.cjs
+          node tests/parser-v4-concept-sanitized.cjs
+          node tests/parser-v4-serial-evidence.cjs
+          node tests/parser-v4_1-random-character-shadow.cjs
+          node tests/parser-v4_1-targeted-recovery.cjs
+          node tests/parser-v4_1-phase1-fair-raw-input.cjs
+          node tests/parser-v4_1-phase2-ocr-stress-safe.cjs
+          node tests/parser-v4_1-phase3-e2e-authority.cjs
+          node tests/parser-v4_1-phase3-concept-actual-ocr.cjs
+          node tests/parser-v4_1_2-canonical-concept-gate.cjs
+          node tests/parser-v4_1-phase4-production-integration.cjs
+          node tests/parser-v4_1-phase4-concept-live-failure.cjs
+          node tests/parser-v4_1-phase4-live-diagnostic-parity.cjs
+          node tests/parser-v4_1-phase4-cross-ocr-dedupe.cjs
+          node tests/parser-v4_1-phase4-generalized-unseen-ocr.cjs
+          node tests/parser-v4_1-phase4-row-local-model-evidence.cjs
+          node tests/parser-v4_1-phase4-nearby-model-evidence.cjs
+          node tests/parser-v4_1-phase4-identity-quality-r7.cjs
+          node tests/parser-v4_1-stacked-row-local-identity-shadow.cjs
+          node tests/parser-v4_1-stacked-row-preprod-parity.cjs
+          node tests/parser-v4_1-final-live-production-parity-shadow.cjs
+          node tests/parser-v4_1-lta-aerospace-concept-multitest.cjs
+          node tests/v703315-smart-consolidation.cjs
+          node tests/merge-dialog-close-regression.cjs
+          node tests/recent-inventory-futuristic-artwork.cjs

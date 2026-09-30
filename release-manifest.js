@@ -2,9 +2,9 @@
   'use strict';
   const release=Object.freeze({
     appVersion:'7.03.3.16',
-    parserVersion:'V4.1.1',
+    parserVersion:'V4.1.2',
     runtimeFile:'runtime-v7.03.3.16.js',
-    assetRevision:'v703316-identifier-integrity-r3',
+    assetRevision:'v703316-v412-item-block-evidence-r1',
     currentNotes:[
       'Evidence Integrity now rejects structurally weak OCR identifiers, recovers stronger same-row models, and blocks unresolved rows from saving.',
       'Evidence Ledger records positive source support for parsed header and line-item fields.',

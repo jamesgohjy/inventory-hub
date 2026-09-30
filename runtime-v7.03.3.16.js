@@ -3049,7 +3049,9 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   // fragments to become authoritative merely because they arrived first.
   const normalized=patch?.applyParsedFixes?patch.applyParsedFixes(parsed,sourceText,sources):parsed;
   const result=api.recoverRows(normalized?.items||[],{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
-  const finalItems=Array.isArray(result.outputRows)?result.outputRows:(normalized?.items||[]);
+  const v412=window.InventoryHubParserV412;
+  const v412Result=v412?.apply? v412.apply(Array.isArray(result.outputRows)?result.outputRows:(normalized?.items||[]),{raw:sourceText,sources}):null;
+  const finalItems=Array.isArray(v412Result?.outputRows)?v412Result.outputRows:(Array.isArray(result.outputRows)?result.outputRows:(normalized?.items||[]));
   const finalParsed={...normalized,items:finalItems};
 
   const authoritativeRecovered=patch?.v703312jRecoverNumberedEquipmentRows?patch.v703312jRecoverNumberedEquipmentRows(sourceText,sources):[];
@@ -3075,7 +3077,7 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   const reviewCount=Number(result.reviewIssueCount||0);
   const integrityStatus=hardCount>0?'fail':((unresolvedCount>0||reviewCount>0)?'review':'pass');
   const report={
-    version:api.VERSION||'4.1',
+    version:v412?.VERSION||api.VERSION||'4.1',
     mode:'production-enforced',
     status:integrityStatus,
     reviewRequired:integrityStatus!=='pass',
