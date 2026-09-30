@@ -170,7 +170,7 @@
     const headingPhrases=[...normalizedHeading,...adjacentPhrases(normalizedHeading,3)];
     const earlyPhrases=[...normalizedEarly,...adjacentPhrases(normalizedEarly,3)];
 
-    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|INSTALLATION\s+REPORT|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
+    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|SERVICE\s+INVOICE|INSTALLATION\s+REPORT|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
     const nonInvoiceTitles=[...new Set(earlyPhrases.filter(x=>nonInvoiceRe.test(x)))];
 
     // A heading can be merged into surrounding header text by PDF extraction. Accept TAX INVOICE
@@ -230,20 +230,18 @@
     if(paymentTerms)structureScore+=1;
     if(currency)structureScore+=1;
 
-    // Document authority is resolved before equipment extraction. An explicit Invoice/Tax Invoice
-    // title remains authoritative even when its header contains PO/DO reference fields.
+    // Explicit prohibited document titles outrank any incidental Invoice/Tax Invoice text.
+    // P/O No., D/O No. and reference fields are not titles and therefore do not trigger this gate.
+    if(nonInvoiceTitles.length){
+      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
+    }
+    // Document authority is then resolved for genuine Invoice/Tax Invoice pages.
     if(strongTax){
       return {allowed:true,disposition:'accept',type:'tax_invoice',reason:'TAX INVOICE heading phrase plus invoice evidence.',reviewRequired:false,score:12+structureScore,evidence};
     }
     if(strongInvoice&&(invoiceNo||invoiceDate||itemTable||totals||billTo)){
       return {allowed:true,disposition:'accept',type:'invoice',reason:'Invoice heading phrase with supporting invoice structure.',reviewRequired:false,score:10+structureScore,evidence};
     }
-    // A PO/quotation/delivery page that merely repeats invoice numbers, models or equipment
-    // remains ineligible. Invoice-like body structure cannot promote a prohibited document type.
-    if(nonInvoiceTitles.length){
-      return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
-    }
-
     if(fuzzyHead&&structureScore>=4){
       return {allowed:true,disposition:'review',type:'invoice_review',reason:'OCR-tolerant Invoice/Tax Invoice heading with supporting invoice structure.',reviewRequired:true,score:6+structureScore,evidence};
     }
