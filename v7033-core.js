@@ -1694,19 +1694,38 @@
     const sources=v703312kEvidenceTexts(raw,evidenceSources);
     const direct=field==='sku'||field==='serials',target=direct?compact(value):norm(String(value));
     const numericField=['quantity','unit_price','amount'].includes(field);
+    const desired=numericField?Number(value):null;
+    const numericTokens=line=>{
+      const out=[];
+      for(const m of String(line||'').matchAll(/(?:^|[^A-Za-z0-9])(-?\d[\d,]*(?:\.\d+)?)(?=$|[^A-Za-z0-9])/g)){
+        const n=Number(String(m[1]).replace(/,/g,''));if(Number.isFinite(n))out.push(n);
+      }
+      return out;
+    };
     for(const ev of sources){
       const lines=String(ev.text||'').replace(/\r/g,'').split('\n');
       let candidateIndexes=lines.map((_,i)=>i);
       if(numericField){
-        const skuKey=compact(row.sku||''),nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4).slice(0,4),anchors=[];
-        for(let i=0;i<lines.length;i++){const c=compact(lines[i]),n=norm(lines[i]);if((skuKey&&c.includes(skuKey))||(!skuKey&&nameWords.length>=2&&nameWords.filter(w=>n.includes(w)).length>=2))anchors.push(i);}
-        if(anchors.length){const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);candidateIndexes=[...set].sort((a,b)=>a-b);}
+        const skuKey=compact(row.sku||row.model||'');
+        const nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4&&!/^\d/.test(w)).slice(0,6),anchors=[];
+        for(let i=0;i<lines.length;i++){
+          const cc=compact(lines[i]),nn=norm(lines[i]);
+          const skuHit=!!skuKey&&cc.includes(skuKey);
+          const wordHits=nameWords.filter(w=>nn.includes(w)).length;
+          if(skuHit||(!skuKey&&nameWords.length>=2&&wordHits>=2))anchors.push(i);
+        }
+        // Fail closed: a numeric value with no row-local identity anchor is not evidence.
+        if(!anchors.length)continue;
+        const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);
+        candidateIndexes=[...set].sort((a,b)=>a-b);
       }
       for(const i of candidateIndexes){
-        const line=clean(lines[i]);if(!line)continue;const hay=direct?compact(line):norm(line);
-        let matched=!!target&&hay.includes(target);
-        if(!matched&&['quantity','unit_price','amount','subtotal','gst','total_amount'].includes(field)&&Number.isFinite(Number(value))){
-          const n=Number(value),forms=[String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})].map(x=>norm(x));matched=forms.some(x=>x&&hay.includes(x));
+        const line=clean(lines[i]);if(!line)continue;
+        const hay=direct?compact(line):norm(line);
+        let matched=!numericField&&!!target&&hay.includes(target);
+        if(numericField&&Number.isFinite(desired)){
+          const vals=numericTokens(line),tol=field==='quantity'?1e-9:Math.max(.005,Math.abs(desired)*1e-6);
+          matched=vals.some(n=>Math.abs(n-desired)<=tol);
         }
         if(matched)return {found:true,source:ev.source||'evidence',page:ev.page??null,line:i+1,text:line.slice(0,320),method:numericField?'row-local-source-line':'source-line'};
       }
