@@ -53,6 +53,8 @@ const degraded=[
  {sku:'CQ12T',item_name:'Digital Mixer console',description:'Digital Mixer console. Support up to 12 channels with 7” Multi Touch Screen',quantity:1,unit_price:1400,amount:1400}
 ];
 
+console.log('RECOVERY1 FIXED INCOMING: '+JSON.stringify(degraded.map(x=>{const r=V.fixRow(x,invoice);return {fromSku:x.sku||'',fromItem:x.item_name||'',sku:r.sku||'',item:r.item_name||'',identity:r.v7033Identity||{}};})));
+console.log('RECOVERY1 RECOVERED ONLY: '+JSON.stringify(V.v703312jRecoverNumberedEquipmentRows(invoice,sources).map(r=>({sku:r.sku||r.model||'',item:r.item_name||'',q:r.quantity,p:r.unit_price,a:r.amount,ordinal:r.v703314zOrdinal||r.v411r1SourceOrdinal||null,source:r.v703312kSource||'',sourceLine:r.v703312kSourceLine||''}))));
 const parsed=V.applyParsedFixes({doc:{supplier_name:'Concept Systems Technologies'},items:degraded},invoice,sources);
 console.log('RECOVERY1 PARITY PRE-V41: '+JSON.stringify((parsed.items||[]).map(x=>({sku:x.sku||x.model||'',item:x.item_name||'',q:x.quantity,p:x.unit_price,a:x.amount,source:x.v7033Identity?.source||x.v703312kSource||'',sourceLine:x.v703312kSourceLine||''}))));
 const audited=V41.recoverRows(parsed.items,{raw:invoice,sources});
