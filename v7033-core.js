@@ -396,10 +396,26 @@
     }
     const candidates=productIdentityCandidates(raw,row);
     const top=candidates[0]||null;
+    const currentCandidate=candidates.find(c=>compact(c.model)===compact(current)&&clean(c.line)===clean(currentLine))
+      ||candidates.find(c=>compact(c.model)===compact(current))||null;
+    const currentQuality=identifierTokenQuality(current,currentLine);
+    const strongerSameRow=currentLine?candidates.find(c=>
+      c.relevant&&compact(c.model)!==compact(current)&&clean(c.line)===clean(currentLine)
+      &&c.score>=Math.max(9,Number(currentCandidate?.score??5)+5)
+    ):null;
 
-    // Never let an unrelated model elsewhere on the invoice overwrite a credible model that is directly printed.
+    // A clearly stronger model printed on the same physical row may replace a weak OCR token.
+    // Same-row scope is mandatory so an unrelated model elsewhere on the invoice cannot hijack identity.
+    if(currentCredible&&currentSupported&&strongerSameRow){
+      return {brand:strongerSameRow.brand||'',model:strongerSameRow.model,changed:true,evidenceLine:strongerSameRow.line,source:strongerSameRow.source,score:strongerSameRow.score,reason:'Stronger same-row model evidence outranks a weaker OCR identifier token.'};
+    }
+    if(currentCredible&&currentSupported&&currentQuality<-2){
+      return {brand:'',model:'',changed:true,evidenceLine:currentLine,source:'unverified',score:0,reason:'Printed identifier token is structurally weak and requires targeted recovery or review.'};
+    }
+
+    // Directly printed identifiers remain authoritative when they are structurally plausible.
     if(currentCredible&&currentSupported&&!looksLikeDimensionOrSpec(current,currentLine)){
-      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:5,reason:'Current model is directly printed on the invoice.'};
+      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:Math.max(5,currentQuality),reason:'Current model is directly printed on the invoice.'};
     }
     // Global Product No/Model/SKU evidence may correct a row only when it is relevant to that row.
     if(top&&top.relevant&&top.score>=12){
@@ -1907,7 +1923,7 @@
     const source=String(raw||parsed?.raw||parsed?.rawText||''),incoming=[...(context.incoming||[])],items=[...(parsed?.items||[])];
     const classification=classifyInvoicePage(source),doc=parsed?.doc||{},v7=parsed?.v7||parsed?.parseEvidence?.v7||{},comp=v7.completenessValidation||{},verify=parsed?.v703312kVerification||{};
     const decisionRows=incoming.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,...v703314lRowDecision(r)}));
-    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||Object.keys(r.v7033ReviewFields||{}).length)}));
+    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||explicitReviewFlag(r)||Object.keys(r.v7033ReviewFields||{}).length)}));
     const excludedService=[...(context.excludedService||[])],excludedAccessory=[...(context.excludedAccessory||[])],recovered=[...(context.recovered||[])];
     const level3=!!(verify.level3Required||v7.humanReviewRequired||comp.recheckRequired||finalItems.some(x=>x.human_review_required));
     const status=!classification.allowed?'BLOCK':(!items.length?'BLOCK':(level3?'REVIEW':'PASS'));
