@@ -368,6 +368,7 @@
         score+=targetHits*2;
         if(/\b(?:screen|projector|microphone|speaker|player|controller|panel|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher)\b/i.test(line))score+=3;
         if(compact(raw).includes(compact(model)))score+=2;
+        score+=identifierTokenQuality(model,line);
         const relevant=targetHits>0||typeMatch;
         out.push({brand,model,line,index:i,score,targetHits,typeMatch,relevant,source:(i-headerIndex>=0&&i-headerIndex<=4)?'labelled-product-field':'invoice-text'});
       }
@@ -438,7 +439,7 @@
     return parts.length>=2?parts.join(' '):cleanName(row.item_name)||descriptive;
   }
   function explicitReviewFlag(r={}){
-    return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview);
+    return !!(r.skuReviewRequired||r.quantityReviewRequired||r.priceReviewRequired||r.unit_priceReviewRequired||r.amountReviewRequired||r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview||r.v41ShadowReviewRequired||r.v41ProductionReviewRequired||(Array.isArray(r.v41IntegrityIssues)&&r.v41IntegrityIssues.length));
   }
   // v7.03.3.14f: field-level Level 3 evidence. This is parser metadata, not UI inference.
   function reviewFieldsForRow(r={}){
@@ -449,6 +450,10 @@
     if(r.priceReviewRequired||r.unit_priceReviewRequired)add('unit_price','Unit price evidence is incomplete or conflicts with quantity/amount.');
     if(r.amountReviewRequired)add('amount','Amount evidence is incomplete or conflicts with quantity/unit price.');
     if(r.serialConflict||r.serialConflictReviewRequired||r.serialCountReview)add('serials','Serial-number evidence is incomplete, duplicated or conflicts with quantity.');
+    for(const issue of Array.isArray(r.v41IntegrityIssues)?r.v41IntegrityIssues:[]){
+      const field=issue?.field==='model'?'sku':issue?.field;
+      if(field)add(field,'Evidence-integrity check requires confirmation: '+clean(issue?.code||issue?.reason||'unresolved field evidence')+'.');
+    }
     const reason=clean(r?.verification?.layers?.layer3?.reason||r?.reviewReason||'').toLowerCase();
     if(/sku|model|product\s*(?:no|number)|identity/.test(reason))add('sku',reason);
     if(/standard\s*item|item\s*name|name\s+conflict/.test(reason))add('item_name',reason);
@@ -475,8 +480,13 @@
       if(compact(r.sku||'')!==compact(id.model))r.v7033SkuCorrection={from:clean(r.sku||''),to:id.model,reason:id.reason,evidenceLine:id.evidenceLine,source:id.source};
       r.sku=id.model;
       if(id.score>=7)delete r.skuReviewRequired;
-    }else if(r.sku&&looksLikeDimensionOrSpec(r.sku,raw)){
-      r.v7033RejectedSku=clean(r.sku);r.sku='';r.skuReviewRequired=true;
+    }else if(r.sku){
+      const originalSku=clean(r.sku);
+      const skuLine=String(raw||'').split(/\r?\n/).find(line=>compact(line).includes(compact(originalSku)))||'';
+      if(!credibleSku(originalSku,skuLine)||identifierTokenQuality(originalSku,skuLine)<-2){
+        r.v7033RejectedSku=originalSku;r.sku='';r.skuReviewRequired=true;
+        r.reviewReason='SKU/model token was not strong enough to treat as an equipment identity.';
+      }
     }
     const name=conciseName(r,id);if(name)r.item_name=name;
     r.v7033Identity={brand:id.brand||'',model:id.model||'',source:id.source,score:id.score,evidenceLine:id.evidenceLine||''};
