@@ -4,9 +4,9 @@
     appVersion:'7.03.3.16',
     parserVersion:'V4.1.2',
     runtimeFile:'runtime-v7.03.3.16.js',
-    assetRevision:'v703316-v412-item-block-evidence-r1',
+    assetRevision:'v703316-v412-item-block-evidence-r2',
     currentNotes:[
-      'Evidence Integrity now rejects structurally weak OCR identifiers, recovers stronger same-row models, and blocks unresolved rows from saving.',
+      'Parser V4.1.2 preserves valid source-supported identities, promotes stronger same-item labelled models, and quarantines only unresolved identities.',
       'Evidence Ledger records positive source support for parsed header and line-item fields.',
       'Dual extraction consensus compares independent native-PDF and OCR evidence when both are available.',
       'Name-only Master Item matching can no longer auto-merge records without stable SKU/model identity.',
