@@ -6,7 +6,9 @@ const read=p=>fs.readFileSync(p,'utf8');
 
 const core=read('v7033-core.js');
 const app=read('app.js');
-const activeRuntimePath=(app.match(/loadScript\('(runtime-v7\.03\.3\.14[a-z]+\.js)\?v='/)||[])[1];
+const releaseManifest=read('release-manifest.js');
+const releaseVersion=(releaseManifest.match(/appVersion:'([^']+)'/)||[])[1];
+const activeRuntimePath=(releaseManifest.match(/runtimeFile:'([^']+)'/)||[])[1];
 assert(activeRuntimePath,'Bootstrap must name an active direct runtime');
 const runtime=read(activeRuntimePath);
 const evidenceEngine=read('modules/parser-evidence-engine.js');
@@ -104,11 +106,11 @@ for(const hc of suites.golden.cases){
 }
 console.log('historical-field-accuracy: '+historicalFieldsPassed+'/'+historicalFields+' PASS (source excerpts, not raw-PDF OCR)');
 
-const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=(app.match(/const VERSION='([^']+)'/)||[])[1],iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
-assert(cv==='7.03.3.15','Core version must be 7.03.3.15');
-assert(av===cv,'App/core version mismatch: '+av+' vs '+cv);
+const cv=(core.match(/const VERSION='([^']+)'/)||[])[1],av=releaseVersion,iv=(index.match(/releaseCurrentVersion">v([^<]+)/)||[])[1],uv=(index.match(/releaseUpcomingVersion">v([^<]+)/)||[])[1];
+assert(cv==='7.03.3.16','Core version must be 7.03.3.16');
+assert(av===cv,'Manifest/core version mismatch: '+av+' vs '+cv);
 assert(iv===cv,'Index/core version mismatch: '+iv+' vs '+cv);
-assert(uv==='7.03.3.16','Upcoming version must be 7.03.3.16');
+assert(uv==='7.03.3.17','Upcoming version must be 7.03.3.17');
 
 for(const bad of ['replaceOnce(','src.replace(','new Blob([src]','raw.githubusercontent.com','baseline-v6.55-d452']){
   assert(!runtime.includes(bad),'Direct runtime contains retired compatibility mechanism: '+bad);
@@ -195,7 +197,7 @@ const intel14oStart=runtime.indexOf('(function v703314oInstallParserIntelligence
 assert(intel14oExecutableCalls===1&&intel14oBlock.includes('function renderQualityDashboard14o()'),'Retired 14o quality renderer must have no executable call sites');
 assert(runtime.includes('renderAutomationCentre=function(){renderNeedsAttention14x(false)'),'Automation Centre card must use authoritative 14x issue list');
 assert(runtime.includes('openAttention=function(){renderNeedsAttention14x(true)'),'Needs Attention dialog must use the same authoritative 14x issue list');
-assert(/ASSET_REV='v703315-[^']+'/.test(app),'Active v7.03.3.15 loader must carry an explicit cache-busting asset revision');
+assert(app.includes("RELEASE.assetRevision||'v703316-productivity-accuracy-r1'"),'Active v7.03.3.16 loader must carry an explicit cache-busting asset revision');
 assert(!runtime.includes('out=applySupplierProfile14o(out,raw);out=applyCorrectionMemory14o(out,raw)'),'Retired Correction Memory must not mutate parsed output');
 assert(!runtime.includes('if(corrections.length)await persistCorrectionMemory14o(corrections)'),'Retired Correction Memory must not persist new corrections');
 assert(!runtime.includes('<strong>Correction Memory</strong>'),'Retired Correction Memory UI must not render');
@@ -263,7 +265,7 @@ assert(runtime.includes('InventoryHubParserTable.parseHeaderAlignedLayout'),'Dir
 assert(runtime.includes('InventoryHubGroupedCompanyUI.renderGroupedCompanyCards'),'Direct runtime does not call grouped UI module');
 assert(!runtime.includes('InventoryHubBackupVerificationUI'),'Backup Verification Admin UI must not be referenced by the direct runtime');
 assert(!runtime.includes('backupVerificationCard')&&!runtime.includes('loadBackupVerification')&&!runtime.includes('renderBackupVerification'),'Backup Verification Admin UI hooks remain in the direct runtime');
-assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.15'"),'3.15 direct runtime load sentinel missing');
+assert(runtime.includes("__AV_DIRECT_RUNTIME_LOADED__='7.03.3.16'"),'3.16 direct runtime load sentinel missing');
 assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACCESS_TOKEN'),'Server backup secrets leaked into browser runtime');
 
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
@@ -310,7 +312,7 @@ assert(runtime.includes('refreshParsedDuplicateStandardNameWarnings14z')&&runtim
 assert(parserV4Review.includes('duplicateStandardItemNameGroups'),'Parser V4 Review bridge duplicate Standard Item Name helper missing');
 assert(index.includes('styles.css?v=7.03.3.14z-r28'),'Styles cache-bust revision missing');
 console.log('standard-item-duplicate-policy: exact identity auto-merge + line-item Review yellow warning PASS');
-assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes(activeRuntimePath),'Active bootstrap direct module references missing');
+assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes('modules/productivity-accuracy-v703316.js')&&app.includes("RELEASE.runtimeFile||'runtime-v7.03.3.16.js'"),'Active bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
 assert(runtime.includes('pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized'),'Materialized V2 pending rows must remain reviewable instead of disabling the Review workflow');
 assert(runtime.includes('bridge?.confirmHumanReview'),'Human review must resolve materialized pending rows before save');
@@ -321,10 +323,10 @@ assert(index.includes('components.css?v=7.03.3.14v-r3'),'Reusable component styl
 for(const marker of ['.ui-toolbar','.ui-modal','.ui-table-wrap','.ui-group','.ui-diagnostic','@media(max-width:760px)'])assert(componentsCss.includes(marker),'Reusable component style missing '+marker);
 assert(index.includes('ui-toolbar--responsive')&&index.includes('ui-table-wrap')&&index.includes('ui-modal'),'Core views are not consuming reusable component classes');
 assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'),'Grouped view module is not consuming reusable component classes');
-assert(/ASSET_REV='v703315-[^']+'/.test(app),'Active v7.03.3.15 cache-busting asset revision marker missing');
+assert(app.includes("v703316-productivity-accuracy-r1"),'Active v7.03.3.16 cache-busting asset revision marker missing');
 assert(runtime.includes("'Parser V4.1.1 is the production evidence-integrity baseline after live production parity, multi-supplier and full regression gates passed.'")&&runtime.includes("'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'")&&!runtime.includes("'Simplify review messages and workflow.'"),'Direct runtime Patch Notes are not synchronized with delivered V4.1.1 work');
 assert(index.includes('Parser V4.1.1 is the production evidence-integrity baseline after live production parity, multi-supplier and full regression gates passed.')&&index.includes('Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.')&&!index.includes('<li>Simplify review messages and workflow.</li>'),'Static Patch Notes fallback is not synchronized with delivered V4.1.1 work');
-assert(/app\.js\?v=7\.03\.3\.15-r\d+/.test(index),'Index v7.03.3.15 app.js cache-bust revision missing');
+assert(/app\.js\?v=7\.03\.3\.16-r\d+/.test(index),'Index v7.03.3.16 app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14z bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
@@ -546,4 +548,4 @@ assert(frozen.previous_known_good?.version==='7.03.3.14m'&&frozen.previous_known
 console.log('parser-v2-rollback: numbered-schedule promotion layer disabled by design PASS');
 
 console.log('backup14t: security/storage/workflow contracts PASS');
-console.log('All Inventory Hub v7.03.3.15 regression gates PASS.');
+console.log('All Inventory Hub v7.03.3.16 regression gates PASS.');
