@@ -1,4 +1,4 @@
-/* AV Inventory Hub v7.03.3.15 reference, duplicate-row and review arithmetic patch
+/* AV Inventory Hub v7.03.3.16 reference, productivity and accuracy release
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
  * and safe inventory consolidation across invoices.
@@ -10,7 +10,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
 
-  const VERSION='7.03.3.15';
+  const VERSION='7.03.3.16';
   const BASELINE_VERSION='7.03.2';
   const clean=(v='')=>String(v??'').replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').trim();
   const norm=(v='')=>clean(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -2287,20 +2287,20 @@
     return {ok:cases.every(x=>x.pass),version:VERSION,cases,failures:cases.filter(x=>!x.pass).map(x=>x.name)};
   }
 
-  const RELEASE_NOTES=[
+  const RELEASE_NOTES=globalThis.INVENTORY_RELEASE?.currentNotes||[
     'Improved line-item price recovery using independent table geometry with fail-closed verification.',
     'Improved invoice parsing, Reference No. handling and automatic Amount calculation.',
     'Fixed Confirm & Save database deployment and Master Item merge review.',
     'Added a persistent Resolve option for valid Data Health exceptions.'
   ];
-  const RELEASE_UPCOMING_VERSION='7.03.3.16';
+  const RELEASE_UPCOMING_VERSION=globalThis.INVENTORY_RELEASE?.upcomingVersion||'7.03.3.17';
   const RELEASE_ROADMAP=[
     {id:'quality-retention',text:'Improve parsing accuracy across more invoice layouts.'},
     {id:'module-decomposition',text:'Improve automatic item matching and consolidation.'},
     {id:'review-workflow',text:'Simplify review messages and workflow.'}
   ];
   const COMPLETED_ROADMAP_IDS=new Set(['sku-merge-detection','merge-confirmation-errors','regression-protection','ui-regression','health-resolution','merge-audit-visibility','health-history-controls','activity-detail-expansion','parser-workflow-hardening','regression-evidence-reporting','admin-only-parser-diagnostics','golden-invoice-quality-guards','ocr-preprocessing','holdout-validation','known-good-14m-freeze','automatic-regression-ci','correction-memory','supplier-layout-profiles','pdf-fingerprint-dedupe','admin-parser-quality-dashboard','operational-backups']);
-  const RELEASE_UPCOMING_NOTES=RELEASE_ROADMAP.map(x=>x.text);
+  const RELEASE_UPCOMING_NOTES=globalThis.INVENTORY_RELEASE?.upcomingNotes||RELEASE_ROADMAP.map(x=>x.text);
 
   function applyVersionUi(){
     try{
