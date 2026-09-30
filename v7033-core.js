@@ -1288,6 +1288,70 @@
     return v703314zdResolveModelConsensus(r);
   }
 
+  function v411r1RecoverSourceEquipmentBlocks(text='',source=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(x=>clean(String(x||'').replace(/[\u2500-\u257f]/g,' '))).filter(Boolean);
+    if(!lines.length)return [];
+    const starts=[];
+    for(let i=0;i<lines.length;i++){
+      let m=lines[i].match(/^[|[\]{}()\s]*([1-9]\d?)\s*[|.)\-:]?\s+(.+)$/);
+      if(m){starts.push({ordinal:Number(m[1]),index:i,tail:clean(m[2])});continue;}
+      if(/^[|[\]{}()\s]*([1-9]\d?)[|[\]{}()\s]*$/.test(lines[i])){
+        const n=Number((lines[i].match(/([1-9]\d?)/)||[])[1]);if(n)starts.push({ordinal:n,index:i,tail:''});
+      }
+    }
+    if(!starts.length)return [];
+    const out=[],moneyRe=/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi;
+    const generic=/^(?:RE\s*:|REFERENCE\b|(?:\([A-Z]\)\s*)?SECTION\b|TECHNICAL\s+SPECIFICATIONS\b|AV\s+EQUIPMENT\b|SCOPE\s+OF\s+WORK\b)/i;
+    const serviceOnly=/\b(?:dismantl|dismount|remove\s+old|system\s+tuning|calibration|programming|training|knowledge\s+transfer|installation\s+work|labelling|labeling|tidying|cabling)\b/i;
+    const tokenModel=v=>{
+      const explicit=typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(v):[];
+      const credible=explicit.map(x=>x.model).find(m=>credibleSku(m,v));if(credible)return credible;
+      return '';
+    };
+    const parseEconomics=block=>{
+      const hits=[...block.matchAll(moneyRe)].map(m=>Number(String(m[1]).replace(/,/g,''))).filter(Number.isFinite);
+      let unit=null,amount=null;if(hits.length>=2){unit=hits[hits.length-2];amount=hits[hits.length-1];}
+      let qty=null;
+      if(unit!==null&&amount!==null&&unit>0){const ratio=amount/unit,n=Math.round(ratio);if(n>=1&&n<=999&&Math.abs(ratio-n)<.015)qty=n;}
+      if(!(qty>0)){
+        const before=block.split(moneyRe)[0]||block;
+        const qs=[...before.matchAll(/(?:^|\s)(\d{1,3})(?:\.00)?(?=\s|$)/g)].map(m=>Number(m[1])).filter(n=>n>=1&&n<=999);
+        if(qs.length)qty=qs[qs.length-1];
+      }
+      return {quantity:qty,unit_price:unit,amount};
+    };
+    for(let si=0;si<starts.length;si++){
+      const st=starts[si],end=starts[si+1]?.index??lines.length,blockLines=lines.slice(st.index,end);
+      if(!blockLines.length)continue;
+      const block=blockLines.join(' | ');
+      if(v411r1LooksLikeMetadataText(block)&&!V703312J_EQUIPMENT_RE.test(block))continue;
+      let description='';
+      for(const line of blockLines){
+        const cleaned=clean(line.replace(/^[|[\]{}()\s]*[1-9]\d?\s*[|.)\-:]?\s*/,''));
+        if(!cleaned||generic.test(cleaned)||/^\s*(?:model|sku|part\s*(?:no|number)|item\s*code)\b/i.test(cleaned))continue;
+        if(V703312J_EQUIPMENT_RE.test(cleaned)&&!serviceOnly.test(cleaned)&&!v411r1LooksLikeMetadataText(cleaned)){
+          description=cleaned.replace(/\s+(?:\d{1,3}(?:\.00)?\s+)?(?:SGD\s*|S?\$\s*)?\d[\d,]*\.\d{2}\s+(?:SGD\s*|S?\$\s*)?\d[\d,]*\.\d{2}.*$/i,'').trim();
+          break;
+        }
+      }
+      if(!description)continue;
+      const econ=parseEconomics(block),model=tokenModel(block);
+      const candidate={
+        sku:model||'',model:model||'',item_name:description,description,
+        category:v703312jCategory(description),unit:'pcs',quantity:econ.quantity,
+        unit_price:econ.unit_price,amount:econ.amount,warranty:'',serials:'',
+        v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:block,
+        v411r1SourceBlock:true,v411r1SourceOrdinal:st.ordinal
+      };
+      if(!(Number(candidate.quantity)>0))continue;
+      if(v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(description))continue;
+      if(econ.unit_price===null||econ.amount===null){candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;candidate.humanReviewRequired=true;candidate.needsReview=true;}
+      if(!model){candidate.skuReviewRequired=true;candidate.humanReviewRequired=true;candidate.needsReview=true;}
+      out.push(candidate);
+    }
+    return dedupeParsedLineItems(out);
+  }
+
   function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
@@ -1295,6 +1359,7 @@
       for(const line of lines){const c=v703312kRecoverDirectLine(line,ev.source);if(c)recovered.push(c);}
       recovered.push(...v703314zRecoverWrappedNumberedInvoiceRows(ev.text,ev.source));
       recovered.push(...v703314aRecoverStructuredPricedAssetRows(ev.text,ev.source));
+      recovered.push(...v411r1RecoverSourceEquipmentBlocks(ev.text,ev.source));
       recovered.push(...v703314aaRecoverModelEquipmentBlocks(ev.text,ev.source));
       recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
     }
