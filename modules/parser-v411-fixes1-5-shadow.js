@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r2';
+  const VERSION='4.1.1-shadow-fixes1-10-r3';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -483,6 +483,50 @@
     return {status:ok?'pass':'fail',subtotal,gst,total,expected,actual:total.value,delta:total.value-expected};
   }
 
+  function confidenceBand(score){
+    return score>=0.9?'high':(score>=0.7?'medium':'low');
+  }
+  function fieldConfidence(row={}){
+    const prov=row.provenance||{},arith=row.validation?.arithmetic||{status:'unverified'};
+    const scoreObj=(field,score,reason)=>({field,score:Number(Math.max(0,Math.min(1,score)).toFixed(3)),band:confidenceBand(score),reason});
+    const identityScore=(p,value)=>{
+      if(!value)return scoreObj(p?.field||'identity',0,'not-present');
+      const text=clean(p?.text||'');
+      if(!p?.evidenceBound)return scoreObj(p?.field||'identity',0.45,'value-without-bound-evidence');
+      if(/\b(?:MODEL|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b/i.test(text))return scoreObj(p.field,0.99,'explicit-labelled-identity');
+      if(new RegExp('^\\s*'+String(value).replace(/[.*+?^$()|[\]{}\\]/g,'\\  function buildFieldProvenance(raw='',row={}){')+'\\b','i').test(text))return scoreObj(p.field,0.96,'row-leading-identity');
+      return scoreObj(p.field,0.86,'row-local-identity');
+    };
+    const econScore=(field,value)=>{
+      const p=prov[field];
+      if(value===null||value===undefined)return scoreObj(field,0,'not-present');
+      if(!p?.evidenceBound)return scoreObj(field,0.4,'economics-without-bound-evidence');
+      if(arith.status==='pass')return scoreObj(field,0.99,'row-arithmetic-validated');
+      if(arith.status==='fail')return scoreObj(field,0.15,'row-arithmetic-conflict');
+      return scoreObj(field,0.78,'row-local-economics-unverified');
+    };
+    const desc=(()=>{
+      if(!row.item_name)return scoreObj('item_name',0,'not-present');
+      if(!prov.item_name?.evidenceBound)return scoreObj('item_name',0.45,'description-without-bound-evidence');
+      if(descriptionContaminated(row.item_name))return scoreObj('item_name',0.45,'description-contaminated');
+      return scoreObj('item_name',0.94,'row-local-description');
+    })();
+    const serial=(()=>{
+      if(!Array.isArray(row.serials)||!row.serials.length)return scoreObj('serials',0,'not-present');
+      if(!prov.serials?.evidenceBound)return scoreObj('serials',0.45,'serial-without-labelled-evidence');
+      return scoreObj('serials',0.98,'labelled-serial-evidence');
+    })();
+    return {
+      sku:identityScore(prov.sku,row.sku),
+      model:identityScore(prov.model,row.model),
+      item_name:desc,
+      quantity:econScore('quantity',row.quantity),
+      unit_price:econScore('unit_price',row.unit_price),
+      amount:econScore('amount',row.amount),
+      serials:serial
+    };
+  }
+
   function buildFieldProvenance(raw='',row={}){
     const identityText=clean(row.evidence?.identity||'');
     const economicsText=clean(row.evidence?.economics||'');
@@ -648,7 +692,11 @@
   function run(raw='',opts={}){
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
-    rows=rows.map(r=>({...r,provenance:buildFieldProvenance(raw,r),validation:{arithmetic:rowArithmetic(r)}}));
+    rows=rows.map(r=>{
+      const enriched={...r,provenance:buildFieldProvenance(raw,r),validation:{arithmetic:rowArithmetic(r)}};
+      enriched.confidence=fieldConfidence(enriched);
+      return enriched;
+    });
     const columnar=columnarTableRecovery(raw);
     if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
     const failures=[];
@@ -676,6 +724,11 @@
       if(schema.unitPrice&&row.unit_price===null)failures.push({blockId:row.sourceBlockId,issue:'unit-price-unresolved'});
       if(schema.amount&&row.amount===null)failures.push({blockId:row.sourceBlockId,issue:'amount-unresolved'});
       if(row.validation?.arithmetic?.status==='fail')failures.push({blockId:row.sourceBlockId,issue:'row-arithmetic-mismatch',detail:row.validation.arithmetic});
+      for(const [field,cf] of Object.entries(row.confidence||{})){
+        const value=row[field];
+        const populated=Array.isArray(value)?value.length>0:(value!==null&&value!==undefined&&value!=='');
+        if(populated&&cf.score<0.6)failures.push({blockId:row.sourceBlockId,issue:'low-field-confidence',field,confidence:cf});
+      }
     }
     const invoiceValidation=invoiceArithmetic(raw);
     if(invoiceValidation.status==='fail')failures.push({issue:'invoice-total-arithmetic-mismatch',detail:invoiceValidation});
@@ -689,7 +742,7 @@
       incompleteFieldCount:failures.filter(x=>/missing$/.test(x.issue||'')).length,
       crossRowContaminationCount:failures.filter(x=>x.issue==='cross-row-identity-contamination').length
     };
-    const reviewOnlyIssues=new Set(['quantity-unresolved','unit-price-unresolved','amount-unresolved','description-contaminated']);
+    const reviewOnlyIssues=new Set(['quantity-unresolved','unit-price-unresolved','amount-unresolved','description-contaminated','low-field-confidence']);
     const hardFailures=failures.filter(f=>!reviewOnlyIssues.has(f.issue));
     const reviewFailures=failures.filter(f=>reviewOnlyIssues.has(f.issue));
     const disposition=hardFailures.length?'fail':(reviewFailures.length?'review':'ready');
@@ -711,6 +764,7 @@
     if(r.rows.some(x=>!x.item_name))f.push('description recovery');
     if(r.rows.some(x=>!x.provenance||!x.provenance.item_name?.evidenceBound||!x.provenance.quantity?.evidenceBound))f.push('field provenance');
     if(r.rows.some(x=>x.validation?.arithmetic?.status!=='pass'))f.push('row arithmetic');
+    if(r.rows.some(x=>!x.confidence||x.confidence.item_name?.band!=='high'||x.confidence.quantity?.band!=='high'))f.push('per-field confidence');
     const bad=run(['TAX INVOICE','1 Digital Mixer Model: CQ12T 2 100.00 250.00','SUBTOTAL 250.00','GST 22.50','TOTAL 272.50'].join('\n'));
     if(!bad.failures.some(x=>x.issue==='row-arithmetic-mismatch'))f.push('arithmetic mismatch gate');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
@@ -718,6 +772,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
