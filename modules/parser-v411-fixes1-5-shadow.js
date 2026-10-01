@@ -39,6 +39,7 @@
     if(!/[A-Za-z]/.test(s)||!/\d/.test(s))return false;
     if(/^(?:SGD|GST|UEN|S\/N|SN|QTY|DATE|PAGE|INV|INVOICE)$/i.test(s))return false;
     if(/^\d+(?:\.\d+)?$/.test(s))return false;
+    if(/^[0-9OILSB$.,]+$/i.test(s)&&/[.,]\d{2}$/.test(s))return false;
     return true;
   }
   function isAddress(text=''){
@@ -144,12 +145,29 @@
     for(const b of numberedBlocks(lines)){
       if(isPhysical(b.lines.join(' '))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
     }
+    // Add description-anchored candidates so table layouts with economics on the next line
+    // are not dependent on a money token being on the description line.
+    const physicalIdx=[];
+    for(let i=0;i<lines.length;i++)if(isPhysical(lines[i])&&!ACCESSORY.test(lines[i]))physicalIdx.push(i);
+    for(let p=0;p<physicalIdx.length;p++){
+      const idx=physicalIdx[p],next=physicalIdx[p+1]??lines.length;
+      let lo=Math.max(0,idx-1),hi=idx;
+      while(lo<idx&&isMetadata(lines[lo])&&!plausibleSku((lines[lo].match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/i)||[])[0]||''))lo++;
+      for(let j=idx+1;j<Math.min(next,idx+9);j++){
+        const s=lines[j];
+        if(/\b(?:SUBTOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL)\b/i.test(s))break;
+        hi=j;
+        if(amountAnchors([s]).length)break;
+      }
+      candidates.push({start:lo,end:hi,lines:lines.slice(lo,hi+1),anchor:idx,physicalAnchor:true});
+    }
     candidates.sort((a,b)=>a.start-b.start||a.end-b.end);
     const merged=[];
     for(const b of candidates){
       const text=b.lines.join(' ');
-      if(!isPhysical(text)||isPureService(text))continue;
-      if(ACCESSORY.test(text)&&!/\b(?:trolley|rolling\s+stand|av\s+cart)\b/i.test(text))continue;
+      const physicalLines=b.lines.filter(x=>isPhysical(x)&&!ACCESSORY.test(x));
+      if(!physicalLines.length||isPureService(physicalLines.join(' ')))continue;
+      if(ACCESSORY.test(physicalLines.join(' ')))continue;
       const overlap=merged.find(x=>Math.max(x.start,b.start)<=Math.min(x.end,b.end));
       if(overlap){
         const aSpan=overlap.end-overlap.start,bSpan=b.end-b.start;
@@ -196,11 +214,14 @@
         const ordinalEnd=(ordinalMatch?.[0]||'').length;
         qCandidates=qCandidates.filter(x=>!(x.value===ordinal&&x.index<ordinalEnd));
       }
-      let unit=null,amount=null;
-      if(money.length>=2){unit=money[money.length-2].value;amount=money[money.length-1].value;}
+      let unit=null,amount=null,q=null;
+      if(money.length>=3&&money[0].value>0&&money[0].value<=999&&Number.isInteger(money[0].value)){
+        unit=money[money.length-2].value;amount=money[money.length-1].value;
+        const derived=unit?amount/unit:null;
+        if(derived!==null&&Math.abs(derived-money[0].value)<=0.001)q=money[0].value;
+      }else if(money.length>=2){unit=money[money.length-2].value;amount=money[money.length-1].value;}
       else if(money.length===1){amount=money[0].value;}
-      let q=null;
-      if(unit!==null&&amount!==null){
+      if(q===null&&unit!==null&&amount!==null){
         const derived=amount/unit;
         const exact=qCandidates.find(x=>Math.abs(x.value-derived)<=0.001);
         if(exact)q=exact.value;
@@ -292,12 +313,15 @@
     const uniqueBlockIds=new Set(rows.map(r=>r.sourceBlockId));
     if(uniqueBlockIds.size!==rows.length)failures.push({issue:'source-block-reused'});
     const sourceBlockCount=blocks.length,outputRowCount=rows.length;
+    const sourceInvoiceText=invoiceText(raw);
+    const physicalCueCount=linesOf(sourceInvoiceText).filter(x=>isPhysical(x)&&!ACCESSORY.test(x)).length;
+    if(sourceBlockCount===0&&physicalCueCount>0)failures.push({issue:'no-source-blocks-detected',physicalCueCount});
     if(sourceBlockCount!==outputRowCount)failures.push({issue:'row-count-mismatch',sourceBlockCount,outputRowCount});
     const printedIdentityCount=blocks.filter(b=>printedIdentityInBlock(b.text)).length;
     const recoveredPrintedIdentityCount=blocks.filter((b,i)=>printedIdentityInBlock(b.text)&&rows[i]?.sku).length;
     const metrics={
       sourceBlockCount,outputRowCount,
-      rowRecall:sourceBlockCount?outputRowCount/sourceBlockCount:1,
+      rowRecall:sourceBlockCount?outputRowCount/sourceBlockCount:(physicalCueCount?0:1),
       printedIdentityCount,recoveredPrintedIdentityCount,
       printedIdentityRecall:printedIdentityCount?recoveredPrintedIdentityCount/printedIdentityCount:1,
       incompleteFieldCount:failures.filter(x=>/missing$/.test(x.issue||'')).length,
