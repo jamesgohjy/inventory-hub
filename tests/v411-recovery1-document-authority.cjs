@@ -82,3 +82,4 @@ for(const row of [
 }
 
 console.log('V4.1.1 RECOVERY1 DOCUMENT AUTHORITY: SIMULATION PASS');
+// CI trigger: validate latest Recovery1 stress matrix head.
