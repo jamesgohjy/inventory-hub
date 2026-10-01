@@ -92,8 +92,19 @@
     return chunks.length?chunks:[raw];
   }
   function invoiceText(text=''){
-    const pages=splitPages(text);
-    const accepted=pages.filter(p=>pageAuthority(p)==='invoice');
+    const pages=splitPages(text),accepted=[];let invoiceActive=false;
+    for(const page of pages){
+      const authority=pageAuthority(page);
+      if(authority==='reject'){invoiceActive=false;continue;}
+      if(authority==='invoice'){invoiceActive=true;accepted.push(page);continue;}
+      if(invoiceActive){
+        const ls=linesOf(page);
+        const continuation=/\bDESCRIPTION\b.*\bQUANTITY\b/i.test(ls.slice(0,20).join(' '))
+          ||ls.some(x=>isPhysical(x))
+          ||ls.some(x=>moneyTokens(x).length>=2);
+        if(continuation)accepted.push(page);
+      }
+    }
     return accepted.length?accepted.join('\n'):text;
   }
   function economicLineScore(line=''){
@@ -153,15 +164,30 @@
     const text=b.lines.join('\n');
     return {...b,id:'B'+String(index+1).padStart(2,'0'),text};
   }
+  function normalizeSkuCandidate(v=''){
+    const raw=clean(v).replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+._\/$-]+$/g,'');
+    if(!raw)return '';
+    const repaired=raw.replace(/\$/g,'S');
+    return plausibleSku(repaired)?repaired:'';
+  }
+  function leadingSku(line=''){
+    const tokens=clean(line).split(/\s+/).slice(0,4);
+    for(const t of tokens){const v=normalizeSkuCandidate(t);if(v)return v;}
+    return '';
+  }
+  function modelPricedLine(line=''){
+    const sku=leadingSku(line);
+    return !!sku&&moneyTokens(line).length>=1&&!isMetadata(line)&&!isPureService(line)&&!isAccessoryOnly(line);
+  }
   function rowOrdinal(line=''){
     const m=clean(line).match(/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.)\-:]?\s+/);
     return m?Number(m[1]):null;
   }
   function sequentialItemBlocks(lines=[]){
     const out=[];let cur=null;
-    const close=()=>{if(cur&&cur.lines.some(x=>isPhysical(x))){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
+    const close=()=>{if(cur&&(cur.lines.some(x=>isPhysical(x))||cur.modelPriced)){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
     for(let i=0;i<lines.length;i++){
-      const line=lines[i],physical=isPhysical(line),service=isPureService(line),accessory=isAccessoryOnly(line);
+      const line=lines[i],modelPriced=modelPricedLine(line),physical=isPhysical(line)||modelPriced,service=isPureService(line),accessory=isAccessoryOnly(line);
       const totals=/\b(?:SUBTOTAL|SUB\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+LOCAL|PAYMENT\s+ADVICE)\b/i.test(line);
       if(PROHIBITED_TITLE.test(line)||totals){close();continue;}
       if(service||accessory){if(cur&&cur.seenEconomics)close();continue;}
@@ -169,22 +195,16 @@
       if(physical){
         if(cur){
           const newOrdinal=ord!==null&&cur.ordinal!==null&&ord!==cur.ordinal;
-          // Only a model/SKU near the start of a new physical line may open a new block.
-          // Component/frequency identifiers later in the description (e.g. SM58, G66)
-          // cannot split the parent product.
-          const lead=line.split(/\s+/).slice(0,4).join(' ');
-          const curLead=clean(cur.lines.find(x=>isPhysical(x))||cur.lines[0]||'').split(/\s+/).slice(0,4).join(' ');
-          const lineIds=(lead.match(/[A-Z0-9][A-Z0-9+._\/-]{1,41}/gi)||[]).filter(plausibleSku);
-          const curIds=(curLead.match(/[A-Z0-9][A-Z0-9+._\/-]{1,41}/gi)||[]).filter(plausibleSku);
-          const identityBoundary=!cur.seenEconomics&&lineIds.length>0&&curIds.length>0;
+          const newSku=leadingSku(line),curSku=leadingSku(cur.lines[0]||'');
+          const identityBoundary=!cur.seenEconomics&&!!newSku&&!!curSku&&key(newSku)!==key(curSku);
           if(cur.seenEconomics||newOrdinal||identityBoundary)close();
         }
-        if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
+        if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true,modelPriced};
       }
       if(!cur)continue;
       if(ord!==null&&cur.lines.length&&cur.ordinal!==null&&ord!==cur.ordinal){
         close();
-        if(physical)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
+        if(physical)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true,modelPriced};
         else continue;
       }
       cur.lines.push(line);
@@ -198,6 +218,7 @@
     const text=invoiceText(raw),lines=linesOf(text);
     const anchors=amountAnchors(lines);
     const candidates=[...sequentialItemBlocks(lines)];
+    for(let i=0;i<lines.length;i++)if(modelPricedLine(lines[i]))candidates.push({start:i,end:i,lines:[lines[i]],anchor:i,modelPriced:true});
     for(let i=0;i<anchors.length;i++)candidates.push(blockFromAnchor(lines,anchors[i],anchors[i-1],anchors[i+1]));
     for(const b of numberedBlocks(lines)){
       if(b.lines.some(x=>isPhysical(x)&&!isAccessoryOnly(x))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
@@ -222,8 +243,9 @@
     const merged=[];
     for(const b of candidates){
       const text=b.lines.join(' ');
-      const physicalLines=b.lines.filter(x=>isPhysical(x)&&!isAccessoryOnly(x));
-      if(!physicalLines.length||isPureService(physicalLines.join(' ')))continue;
+      const physicalLines=b.lines.filter(x=>isPhysical(x));
+      const modelPriced=!!b.modelPriced||b.lines.some(modelPricedLine);
+      if((!physicalLines.length&&!modelPriced)||isPureService(b.lines.join(' ')))continue;
       if(isAccessoryOnly(physicalLines.join(' ')))continue;
       const overlap=merged.find(x=>Math.max(x.start,b.start)<=Math.min(x.end,b.end));
       if(overlap){
@@ -252,6 +274,7 @@
       }
     }
     for(const line of eligible){
+      const lead=leadingSku(line);if(lead)votes.push({value:lead,line,rank:58});
       const textTokens=(line.match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
       for(const t of textTokens){
         let rank=10;
@@ -378,9 +401,15 @@
     if(uniqueBlockIds.size!==rows.length)failures.push({issue:'source-block-reused'});
     const sourceBlockCount=blocks.length,outputRowCount=rows.length;
     const sourceInvoiceText=invoiceText(raw);
+    const schema={quantity:/\bQUANTITY\b|\bQTY\b/i.test(sourceInvoiceText),unitPrice:/\bUNIT\s+PRICE\b/i.test(sourceInvoiceText),amount:/\bAMOUNT\b/i.test(sourceInvoiceText)};
     const physicalCueCount=linesOf(sourceInvoiceText).filter(x=>isPhysical(x)&&!isAccessoryOnly(x)).length;
     if(sourceBlockCount===0&&physicalCueCount>0)failures.push({issue:'no-source-blocks-detected',physicalCueCount});
     if(sourceBlockCount!==outputRowCount)failures.push({issue:'row-count-mismatch',sourceBlockCount,outputRowCount});
+    for(const row of rows){
+      if(schema.quantity&&row.quantity===null)failures.push({blockId:row.sourceBlockId,issue:'quantity-unresolved'});
+      if(schema.unitPrice&&row.unit_price===null)failures.push({blockId:row.sourceBlockId,issue:'unit-price-unresolved'});
+      if(schema.amount&&row.amount===null)failures.push({blockId:row.sourceBlockId,issue:'amount-unresolved'});
+    }
     const printedIdentityCount=blocks.filter(b=>printedIdentityInBlock(b.text)).length;
     const recoveredPrintedIdentityCount=blocks.filter((b,i)=>printedIdentityInBlock(b.text)&&rows[i]?.sku).length;
     const metrics={
