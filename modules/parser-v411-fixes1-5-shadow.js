@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r13';
+  const VERSION='4.1.1-shadow-fixes1-5-r14';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -65,7 +65,7 @@
   function isPureService(text=''){
     const s=ocrLex(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
     if(/^SERVICE\s+CENT(?:RE|ER)\b/i.test(lead))return false;
-    if(/\b(?:HI-?CARE|CARE\s+PACK|SUPPORT\s+(?:PLAN|CONTRACT)|MAINTENANCE\s+CONTRACT|SUBSCRIPTION)\b/i.test(s))return true;
+    if(/\b(?:HI\s*-?\s*CARE|CARE\s+PACK|SUPPORT\s+(?:PLAN|CONTRACT)|MAINTENANCE\s+CONTRACT|SUBSCRIPTION)\b/i.test(s))return true;
     if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
@@ -321,6 +321,7 @@
         if(moneyTokens(line).length||isPhysical(line)||/\b(?:WARRANTY|IN\s+STOCK)\b/i.test(line))serialMode=false;
         else continue;
       }
+      if(isMetadata(line))continue;
       eligible.push(line);
       const m=line.match(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*(.+)$/i);
       if(m){
@@ -340,6 +341,11 @@
         if(EQUIPMENT.test(line))rank+=30;
         if(new RegExp('^\\s*'+escRe(t)+'\\b','i').test(line))rank+=14;
         if(/\b(?:MODEL|SKU|PRODUCT\s+NO)\b/i.test(line))rank+=40;
+        if(/^(?:\d+(?:\.\d+)?(?:-?\s*(?:INCH|INCHES|IN|CM|MM))?|\d+[Xx]\d+)$/i.test(t))rank-=70;
+        if(/^[A-Za-z0-9]+[-_/][A-Za-z0-9+._/-]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t))rank+=16;
+        const pos=line.toUpperCase().indexOf(t.toUpperCase());
+        const prefix=pos>0?line.slice(Math.max(0,pos-18),pos):'';
+        if(/\b(?:FOR|WITH|TO)\s*$/i.test(prefix))rank-=55;
         votes.push({value:t,line,rank});
       }
     }
@@ -437,7 +443,7 @@
     if(suspiciousSymbols)return true;
     if(/[|]{2,}|[)!]{2,}|[;:,.]{3,}/.test(s))return true;
     const toks=s.split(/\s+/).filter(Boolean);
-    const mixed=toks.filter(t=>/[A-Z].*[a-z].*[A-Z]|[a-z].*[A-Z].*[a-z]/.test(t)&&/\d|[A-Z]{2}/.test(t));
+    const mixed=toks.filter(t=>(/[A-Z].*[a-z].*[A-Z]|[a-z].*[A-Z].*[a-z]/.test(t))&&/\d/.test(t));
     const digitNoise=toks.filter(t=>/[A-Za-z]\d{2,}|\d+[A-Za-z]{2,}/.test(t)&&!plausibleSku(t));
     return mixed.length>=1||digitNoise.length>=2;
   }
