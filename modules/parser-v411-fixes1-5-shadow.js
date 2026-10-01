@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r1';
+  const VERSION='4.1.1-shadow-fixes1-10-r2';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -449,6 +449,40 @@
   function serialEvidenceLine(blockText=''){
     return linesOf(blockText).find(x=>/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?/i.test(x))||'';
   }
+  function nearMoney(a,b,tolerance=0.02){
+    if(!Number.isFinite(a)||!Number.isFinite(b))return false;
+    const tol=Math.max(0.02,Math.abs(b)*tolerance);
+    return Math.abs(a-b)<=tol;
+  }
+  function rowArithmetic(row={}){
+    const q=Number(row.quantity),u=Number(row.unit_price),a=Number(row.amount);
+    if(!Number.isFinite(q)||!Number.isFinite(u)||!Number.isFinite(a))return {status:'unverified',reason:'missing-economics'};
+    const expected=q*u,ok=nearMoney(expected,a,0.01);
+    return {status:ok?'pass':'fail',expected,actual:a,delta:a-expected,tolerance:Math.max(0.02,Math.abs(a)*0.01)};
+  }
+  function labelledTotal(raw='',kind='subtotal'){
+    const text=invoiceText(raw),ls=linesOf(text);
+    const patterns={
+      subtotal:/\bSUB\s*TOTAL\b/i,
+      gst:/\bGST\b/i,
+      total:/\b(?:AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|\bTOTAL\b)\b/i
+    };
+    const re=patterns[kind];if(!re)return null;
+    for(const line of ls){
+      if(!re.test(line))continue;
+      if(kind==='total'&&/\bSUB\s*TOTAL\b/i.test(line))continue;
+      const vals=moneyTokens(line).map(x=>x.value).filter(Number.isFinite);
+      if(vals.length)return {value:vals[vals.length-1],line};
+    }
+    return null;
+  }
+  function invoiceArithmetic(raw=''){
+    const subtotal=labelledTotal(raw,'subtotal'),gst=labelledTotal(raw,'gst'),total=labelledTotal(raw,'total');
+    if(!subtotal||!gst||!total)return {status:'unverified',subtotal,gst,total};
+    const expected=subtotal.value+gst.value,ok=nearMoney(expected,total.value,0.005);
+    return {status:ok?'pass':'fail',subtotal,gst,total,expected,actual:total.value,delta:total.value-expected};
+  }
+
   function buildFieldProvenance(raw='',row={}){
     const identityText=clean(row.evidence?.identity||'');
     const economicsText=clean(row.evidence?.economics||'');
@@ -614,7 +648,7 @@
   function run(raw='',opts={}){
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
-    rows=rows.map(r=>({...r,provenance:buildFieldProvenance(raw,r)}));
+    rows=rows.map(r=>({...r,provenance:buildFieldProvenance(raw,r),validation:{arithmetic:rowArithmetic(r)}}));
     const columnar=columnarTableRecovery(raw);
     if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
     const failures=[];
@@ -641,7 +675,10 @@
       if(schema.quantity&&row.quantity===null)failures.push({blockId:row.sourceBlockId,issue:'quantity-unresolved'});
       if(schema.unitPrice&&row.unit_price===null)failures.push({blockId:row.sourceBlockId,issue:'unit-price-unresolved'});
       if(schema.amount&&row.amount===null)failures.push({blockId:row.sourceBlockId,issue:'amount-unresolved'});
+      if(row.validation?.arithmetic?.status==='fail')failures.push({blockId:row.sourceBlockId,issue:'row-arithmetic-mismatch',detail:row.validation.arithmetic});
     }
+    const invoiceValidation=invoiceArithmetic(raw);
+    if(invoiceValidation.status==='fail')failures.push({issue:'invoice-total-arithmetic-mismatch',detail:invoiceValidation});
     const printedIdentityCount=blocks.filter(b=>printedIdentityInBlock(b.text)).length;
     const recoveredPrintedIdentityCount=blocks.filter((b,i)=>printedIdentityInBlock(b.text)&&rows[i]?.sku).length;
     const metrics={
@@ -656,7 +693,7 @@
     const hardFailures=failures.filter(f=>!reviewOnlyIssues.has(f.issue));
     const reviewFailures=failures.filter(f=>reviewOnlyIssues.has(f.issue));
     const disposition=hardFailures.length?'fail':(reviewFailures.length?'review':'ready');
-    return {version:VERSION,mode:'shadow',blocks,rows,failures,hardFailures,reviewFailures,metrics,ready:disposition==='ready',safe:hardFailures.length===0,disposition};
+    return {version:VERSION,mode:'shadow',blocks,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},ready:disposition==='ready',safe:hardFailures.length===0,disposition};
   }
   function selfTest(){
     const sample=[
@@ -673,11 +710,14 @@
     if(r.rows.find(x=>x.sku==='ZX1I-90')?.quantity!==6)f.push('numbered-row quantity');
     if(r.rows.some(x=>!x.item_name))f.push('description recovery');
     if(r.rows.some(x=>!x.provenance||!x.provenance.item_name?.evidenceBound||!x.provenance.quantity?.evidenceBound))f.push('field provenance');
+    if(r.rows.some(x=>x.validation?.arithmetic?.status!=='pass'))f.push('row arithmetic');
+    const bad=run(['TAX INVOICE','1 Digital Mixer Model: CQ12T 2 100.00 250.00','SUBTOTAL 250.00','GST 22.50','TOTAL 272.50'].join('\n'));
+    if(!bad.failures.some(x=>x.issue==='row-arithmetic-mismatch'))f.push('arithmetic mismatch gate');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
     if(!r.ready||r.failures.length)f.push('shadow readiness gate');
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
