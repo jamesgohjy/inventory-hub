@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r14-critic';
+  const VERSION='4.1.1-shadow-fixes1-15-r1';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -992,6 +992,197 @@
     return [...count.values()].sort((a,b)=>b.votes-a.votes||a.text.length-b.text.length)[0]||null;
   }
 
+  function candidateKindFromBlock(b={}){
+    if(b.sequential)return 'sequential';
+    if(b.modelPriced)return 'model-priced';
+    if(b.physicalAnchor)return 'description-anchor';
+    if(b.ordinal!==null&&b.ordinal!==undefined)return 'numbered-row';
+    if(b.anchor!==null&&b.anchor!==undefined)return 'money-anchor';
+    if(b.columnar)return 'columnar';
+    return 'source-block';
+  }
+  function candidateExclusionReasons(text=''){
+    const reasons=[];
+    if(!clean(text))reasons.push('empty');
+    if(pageAuthority(text)==='reject')reasons.push('prohibited-document');
+    if(isPureService(text))reasons.push('service');
+    if(isAccessoryOnly(text))reasons.push('accessory');
+    if(isMetadata(text))reasons.push('metadata');
+    if(descriptionContaminated(description(text)))reasons.push('description-contaminated');
+    return [...new Set(reasons)];
+  }
+  function buildCandidateLedger(raw='',blocks=[]){
+    const text=invoiceText(raw),ls=linesOf(text),ledger=[];
+    for(const b of blocks){
+      const id=explicitIdentity(b.text),econ=economics(b.text),name=description(b.text);
+      ledger.push({
+        candidateId:'accepted:'+b.id,
+        status:'accepted',
+        kind:candidateKindFromBlock(b),
+        sourceBlockId:b.id,
+        sourceRange:[b.start,b.end],
+        text:b.text,
+        identity:id.value||'',
+        identityEvidence:id.line||'',
+        item_name:name||'',
+        quantity:econ.quantity,
+        unit_price:econ.unit_price,
+        amount:econ.amount,
+        exclusionReasons:[]
+      });
+    }
+    for(let i=0;i<ls.length;i++){
+      const line=ls[i];
+      const reasons=candidateExclusionReasons(line);
+      const candidateLike=isPhysical(line)||isPureService(line)||isAccessoryOnly(line)||moneyTokens(line).length>=2;
+      if(!candidateLike||!reasons.length)continue;
+      if(blocks.some(b=>i>=b.start&&i<=b.end))continue;
+      ledger.push({
+        candidateId:'excluded:'+i,
+        status:'excluded',
+        kind:'line',
+        sourceBlockId:null,
+        sourceRange:[i,i],
+        text:line,
+        identity:explicitIdentity(line).value||'',
+        identityEvidence:explicitIdentity(line).line||'',
+        item_name:description(line)||'',
+        quantity:economics(line).quantity,
+        unit_price:economics(line).unit_price,
+        amount:economics(line).amount,
+        exclusionReasons:reasons
+      });
+    }
+    return ledger;
+  }
+
+  function scoreCandidate(candidate={},row=null){
+    let score=0,reasons=[];
+    const text=candidate.text||row?.sourceText||'';
+    const id=candidate.identity||row?.sku||'';
+    const q=row?.quantity??candidate.quantity;
+    const u=row?.unit_price??candidate.unit_price;
+    const a=row?.amount??candidate.amount;
+    const name=row?.item_name??candidate.item_name??'';
+    const exclusions=candidate.exclusionReasons||[];
+    if(exclusions.length){score-=0.75;reasons.push('excluded:'+exclusions.join(','));}
+    if(id){score+=0.22;reasons.push('identity');}
+    if(candidate.identityEvidence||row?.evidence?.identity){score+=0.08;reasons.push('identity-evidence');}
+    if(name&&isPhysical(name)){score+=0.18;reasons.push('physical-description');}
+    if(q!==null&&q!==undefined){score+=0.12;reasons.push('quantity');}
+    if(u!==null&&u!==undefined){score+=0.12;reasons.push('unit-price');}
+    if(a!==null&&a!==undefined){score+=0.12;reasons.push('amount');}
+    if(q!==null&&u!==null&&a!==null&&q!==undefined&&u!==undefined&&a!==undefined){
+      const ok=nearMoney(Number(q)*Number(u),Number(a),0.01);
+      score+=ok?0.16:-0.35;
+      reasons.push(ok?'arithmetic-pass':'arithmetic-fail');
+    }
+    if(row?.provenance){
+      const populated=['sku','item_name','quantity','unit_price','amount'];
+      const bound=populated.every(k=>{
+        const v=row[k];
+        if(v===null||v===undefined||v==='')return false;
+        return row.provenance[k]?.evidenceBound===true;
+      });
+      score+=bound?0.1:-0.15;
+      reasons.push(bound?'provenance-bound':'provenance-gap');
+    }
+    if(descriptionContaminated(name)){score-=0.3;reasons.push('description-contaminated');}
+    if(isPureService(text)){score-=0.7;reasons.push('service');}
+    if(isAccessoryOnly(text)){score-=0.7;reasons.push('accessory');}
+    score=Math.max(0,Math.min(1,score));
+    return {score:Number(score.toFixed(3)),band:score>=0.9?'high':score>=0.7?'medium':'low',reasons};
+  }
+
+  function canonicalIdentity(v=''){
+    let s=clean(v).replace(/\s*([\/_-])\s*/g,'$1').replace(/\s{2,}/g,' ').trim();
+    if(!s)return '';
+    if(/[A-Za-z]/.test(s)&&/\d/.test(s))return s.toUpperCase();
+    if(/^[A-Z][A-Z\s-]{2,}$/.test(s))return s.toUpperCase();
+    return s;
+  }
+  function canonicalItemName(v=''){
+    return sanitizeItemName(v).replace(/\s{2,}/g,' ').trim();
+  }
+  function canonicalizeRow(row={}){
+    return {
+      ...row,
+      raw:{sku:row.sku,model:row.model,item_name:row.item_name},
+      canonical:{
+        sku:canonicalIdentity(row.sku),
+        model:canonicalIdentity(row.model||row.sku),
+        item_name:canonicalItemName(row.item_name)
+      }
+    };
+  }
+
+  function buildReviewGate(rows=[],failures=[],ledger=[]){
+    const byBlock=new Map(ledger.filter(x=>x.status==='accepted').map(x=>[x.sourceBlockId,x]));
+    const decisions=rows.map(row=>{
+      const candidate=byBlock.get(row.sourceBlockId)||{text:row.sourceText,exclusionReasons:[]};
+      const evidenceScore=scoreCandidate(candidate,row);
+      const rowFailures=failures.filter(f=>!f.blockId||f.blockId===row.sourceBlockId);
+      const hard=rowFailures.filter(f=>!['low-field-confidence'].includes(f.issue));
+      const review=rowFailures.filter(f=>['low-field-confidence'].includes(f.issue));
+      const unresolved=[row.sku,row.item_name,row.quantity,row.unit_price,row.amount].some(v=>v===null||v===undefined||v==='');
+      let status='auto-accept';
+      const reasons=[];
+      if(hard.length||unresolved||evidenceScore.score<0.7){status='reject';reasons.push(...hard.map(x=>x.issue));if(unresolved)reasons.push('unresolved-required-field');if(evidenceScore.score<0.7)reasons.push('candidate-score-low');}
+      else if(review.length||evidenceScore.score<0.9){status='review';reasons.push(...review.map(x=>x.issue));if(evidenceScore.score<0.9)reasons.push('candidate-score-medium');}
+      return {sourceBlockId:row.sourceBlockId,status,reasons:[...new Set(reasons)],evidenceScore};
+    });
+    return {
+      decisions,
+      autoAcceptCount:decisions.filter(x=>x.status==='auto-accept').length,
+      reviewCount:decisions.filter(x=>x.status==='review').length,
+      rejectCount:decisions.filter(x=>x.status==='reject').length,
+      allClear:decisions.length===rows.length&&decisions.every(x=>x.status==='auto-accept')
+    };
+  }
+
+  function duplicateSerials(rows=[]){
+    const seen=new Map(),dups=[];
+    for(const r of rows){
+      for(const s of (Array.isArray(r.serials)?r.serials:[])){
+        const k=key(s); if(!k)continue;
+        if(seen.has(k))dups.push({serial:s,first:seen.get(k),second:r.sourceBlockId});
+        else seen.set(k,r.sourceBlockId);
+      }
+    }
+    return dups;
+  }
+  function prepareAtomicSave(rows=[],gate={},failures=[],opts={}){
+    const serialConflicts=duplicateSerials(rows);
+    const blockers=[
+      ...(failures||[]).map(x=>x.issue),
+      ...(gate.allClear?[]:['review-gate-not-clear']),
+      ...(serialConflicts.length?['duplicate-serial']:[])
+    ];
+    const unique=[...new Set(blockers)];
+    const operations=rows.map(r=>({
+      operation:'upsert-inventory-row',
+      sourceBlockId:r.sourceBlockId,
+      canonical:r.canonical,
+      quantity:r.quantity,
+      unit_price:r.unit_price,
+      amount:r.amount,
+      serials:r.serials,
+      provenance:r.provenance
+    }));
+    return {
+      mode:'shadow-transaction-plan',
+      atomic:true,
+      transactionId:opts.transactionId||null,
+      canCommit:unique.length===0,
+      blockers:unique,
+      serialConflicts,
+      operations:unique.length?[]:operations,
+      requestedOperations:operations.length,
+      committedOperations:0,
+      partialWriteAllowed:false
+    };
+  }
+
   function run(raw='',opts={}){
     const extraction=selectExtractionCandidate(raw,opts);
     raw=extraction.text;
@@ -1010,7 +1201,7 @@
       const enriched={...withMethod,provenance:buildFieldProvenance(raw,withMethod),validation:{arithmetic:rowArithmetic(withMethod)}};
       enriched.confidence=fieldConfidence(enriched);
       enriched.correctionSuggestions=correctionMemorySuggestions(enriched,opts,raw);
-      return enriched;
+      return canonicalizeRow(enriched);
     });
     const columnar=columnarTableRecovery(raw);
     if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
@@ -1071,7 +1262,11 @@
       autoAppliedCount:0,
       policy:'approved-evidence-bound-suggestion-only'
     };
-    return {version:VERSION,mode:'shadow',extraction,blocks,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},correctionMemory,ready:disposition==='ready',safe:hardFailures.length===0,disposition};
+    const candidateLedger=buildCandidateLedger(raw,blocks);
+    const reviewGate=buildReviewGate(rows,failures,candidateLedger);
+    const atomicSave=prepareAtomicSave(rows,reviewGate,failures,opts);
+    const finalDisposition=atomicSave.canCommit?'ready':(reviewGate.rejectCount||hardFailures.length?'fail':'review');
+    return {version:VERSION,mode:'shadow',extraction,blocks,candidateLedger,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},correctionMemory,reviewGate,atomicSave,ready:atomicSave.canCommit,safe:hardFailures.length===0,disposition:finalDisposition};
   }
   function selfTest(){
     const sample=[
@@ -1107,6 +1302,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,verificationIdentityConflicts,rawQuantityCandidates,rawMoneyCandidates,applyNumericCellEvidence,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,verificationIdentityConflicts,rawQuantityCandidates,rawMoneyCandidates,applyNumericCellEvidence,buildCandidateLedger,scoreCandidate,buildReviewGate,canonicalizeRow,prepareAtomicSave,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
