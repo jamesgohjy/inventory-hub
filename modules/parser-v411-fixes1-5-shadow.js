@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r3';
+  const VERSION='4.1.1-shadow-fixes1-10-r4';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -545,7 +545,8 @@
       sourceRange:Array.isArray(row.sourceRange)?[...row.sourceRange]:null,
       page:pageForEvidence(raw,text||row.sourceText||''),
       text:clean(text||''),
-      method,
+      method:(row.extractionMethod?row.extractionMethod+':':'')+method,
+      preprocess:row.extractionPreprocess||null,
       evidenceBound:!!clean(text||'')
     });
     return {
@@ -695,11 +696,64 @@
     return {blocks,rows,confidence:'structural-column-sequence'};
   }
 
+  function extractionCandidateScore(text=''){
+    const s=String(text||''),invoice=invoiceText(s),ls=linesOf(invoice);
+    const usable=clean(invoice).replace(/\s+/g,'').length;
+    const authority=pageAuthority(invoice);
+    const physical=ls.filter(x=>isPhysical(x)&&!isAccessoryOnly(x)).length;
+    const econ=ls.filter(x=>moneyTokens(x).length>=2).length;
+    const labelledModels=(invoice.match(/\b(?:MODEL|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b/gi)||[]).length;
+    const table=/\b(?:DESCRIPTION|ITEM)\b/i.test(invoice)&&/\b(?:QTY|QUANTITY|UNITS?)\b/i.test(invoice);
+    const suspicious=(invoice.match(/[�□◇◆¤]/g)||[]).length;
+    let score=0;
+    if(authority==='invoice')score+=40;
+    if(authority==='reject')score-=120;
+    if(/\bTAX\s+INVOICE\b|^\s*INVOICE\b/im.test(invoice))score+=25;
+    if(table)score+=15;
+    score+=Math.min(30,physical*5);
+    score+=Math.min(25,econ*4);
+    score+=Math.min(15,labelledModels*3);
+    score+=Math.min(20,usable/120);
+    score-=Math.min(30,suspicious*3);
+    return {score:Number(score.toFixed(3)),usable,authority,physical,econ,labelledModels,table,suspicious};
+  }
+  function selectExtractionCandidate(raw='',opts={}){
+    const candidates=[{
+      text:String(raw||''),
+      method:opts.rawMethod||'native-or-provided',
+      preprocess:'none',
+      source:'raw'
+    }];
+    for(const [i,c] of (Array.isArray(opts.ocrCandidates)?opts.ocrCandidates:[]).entries()){
+      if(!c||!String(c.text||'').trim())continue;
+      candidates.push({
+        text:String(c.text),
+        method:String(c.method||c.source||('ocr-'+(i+1))),
+        preprocess:String(c.preprocess||c.mode||'ocr'),
+        source:String(c.source||('ocr-'+(i+1)))
+      });
+    }
+    const scored=candidates.map((c,i)=>({...c,index:i,quality:extractionCandidateScore(c.text)}));
+    scored.sort((a,b)=>b.quality.score-a.quality.score||b.quality.usable-a.quality.usable||a.index-b.index);
+    const selected=scored[0]||candidates[0];
+    return {
+      text:selected.text,
+      method:selected.method,
+      preprocess:selected.preprocess,
+      source:selected.source,
+      quality:selected.quality||extractionCandidateScore(selected.text),
+      candidates:scored.map(x=>({method:x.method,preprocess:x.preprocess,source:x.source,quality:x.quality}))
+    };
+  }
+
   function run(raw='',opts={}){
+    const extraction=selectExtractionCandidate(raw,opts);
+    raw=extraction.text;
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
     rows=rows.map(r=>{
-      const enriched={...r,provenance:buildFieldProvenance(raw,r),validation:{arithmetic:rowArithmetic(r)}};
+      const withMethod={...r,extractionMethod:extraction.method,extractionPreprocess:extraction.preprocess};
+      const enriched={...withMethod,provenance:buildFieldProvenance(raw,withMethod),validation:{arithmetic:rowArithmetic(withMethod)}};
       enriched.confidence=fieldConfidence(enriched);
       return enriched;
     });
@@ -752,7 +806,7 @@
     const hardFailures=failures.filter(f=>!reviewOnlyIssues.has(f.issue));
     const reviewFailures=failures.filter(f=>reviewOnlyIssues.has(f.issue));
     const disposition=hardFailures.length?'fail':(reviewFailures.length?'review':'ready');
-    return {version:VERSION,mode:'shadow',blocks,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},ready:disposition==='ready',safe:hardFailures.length===0,disposition};
+    return {version:VERSION,mode:'shadow',extraction,blocks,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},ready:disposition==='ready',safe:hardFailures.length===0,disposition};
   }
   function selfTest(){
     const sample=[
@@ -771,6 +825,10 @@
     if(r.rows.some(x=>!x.provenance||!x.provenance.item_name?.evidenceBound||!x.provenance.quantity?.evidenceBound))f.push('field provenance');
     if(r.rows.some(x=>x.validation?.arithmetic?.status!=='pass'))f.push('row arithmetic');
     if(r.rows.some(x=>!x.confidence||x.confidence.item_name?.band!=='high'||x.confidence.quantity?.band!=='high'))f.push('per-field confidence');
+    const weak='TAX INVOICE\nUnreadable scan';
+    const strong=['TAX INVOICE','1 Digital Mixer Model: CQ12T 1 100.00 100.00','SUBTOTAL 100.00','GST 9.00','TOTAL 109.00'].join('\n');
+    const recovered=run(weak,{ocrCandidates:[{text:strong,method:'ocr-psm6',preprocess:'grayscale-300dpi'}]});
+    if(recovered.extraction?.method!=='ocr-psm6'||!recovered.rows.some(x=>x.sku==='CQ12T'))f.push('ocr candidate selection');
     const bad=run(['TAX INVOICE','1 Digital Mixer Model: CQ12T 2 100.00 250.00','SUBTOTAL 250.00','GST 22.50','TOTAL 272.50'].join('\n'));
     if(!bad.failures.some(x=>x.issue==='row-arithmetic-mismatch'))f.push('arithmetic mismatch gate');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
@@ -778,6 +836,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
