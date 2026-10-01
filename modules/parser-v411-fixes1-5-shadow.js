@@ -15,6 +15,7 @@
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
   const EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub|trolley|rolling\s+stand|av\s+cart)\b/i;
   const SERVICE=/\b(?:labou?r|installation\s+(?:work|service)|service\s+(?:fee|charge|work)|dismantl(?:e|ing|ed)|dismount|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|repair(?:ing|ed)?|testing\s+and\s+commissioning|commissioning|programming|training|delivery\s+(?:fee|service|charge)|freight|courier|transport\s+fee)\b/i;
+  const SERVICE_CODE=/^(?:[A-Z0-9]+[-_/])?(?:INSTALLATION|INSTALL|LABOU?R|SERVICE|DELIVERY|FREIGHT|DISMANTLE|DISMOUNT|RELOCATE|REINSTATE|RE-INSTATE|REPAIR|TESTING|COMMISSIONING)\b/i;
   const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart|trolley|stand|mount)\b/i;
   const CORE_EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub)\b/i;
   const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp)\b/i;
@@ -57,6 +58,7 @@
   }
   function isPureService(text=''){
     const s=clean(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
+    if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
     if(/^(?:supply|provide|install)\b.*\b(?:cable|cabling|wiring|bracket|mount|labou?r)\b/i.test(lead))return true;
@@ -366,7 +368,8 @@
       review:[]
     };
   }
-  function presentInBlock(value,blockText){const k=key(value);return !k||key(blockText).includes(k);}
+  function evidenceKey(v=''){return key(String(v||'').replace(/\$/g,'S'));}
+  function presentInBlock(value,blockText){const k=evidenceKey(value);return !k||evidenceKey(blockText).includes(k);}
   function printedIdentityInBlock(blockText=''){return explicitIdentity(blockText).value;}
   function sourceCompleteness(block,row){
     const issues=[];
