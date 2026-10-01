@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r10-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-10-r11-regression';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -19,11 +19,11 @@
     .replace(/\bBRACKCT\b/ig,'bracket');
   const key=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
-  const EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|ideashare\s+key|presentation\s+(?:key|dongle)|trolleys?|rolling\s+stands?|av\s+carts?)\b/i;
+  const EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|mics?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|ideashare\s+key|presentation\s+(?:key|dongle)|trolleys?|rolling\s+stands?|av\s+carts?)\b/i;
   const SERVICE=/\b(?:labou?r|installation\s+(?:work|service)|service\s+(?:fee|charge|work)|dismantl(?:e|ing|ed)|dismount|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|repair(?:ing|ed)?|testing\s+and\s+commissioning|commissioning|programming|training|delivery\s+(?:fee|service|charge)|freight|courier|transport\s+fee)\b/i;
   const SERVICE_CODE=/^(?:[A-Z0-9]+[-_/])?(?:INSTALLATION|INSTALL|LABOU?R|SERVICE|DELIVERY|FREIGHT|DISMANTLE|DISMOUNT|RELOCATE|REINSTATE|RE-INSTATE|REPAIR|TESTING|COMMISSIONING)\b/i;
   const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart|trolley|stand|mount)\b/i;
-  const CORE_EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|ideashare\s+key|presentation\s+(?:key|dongle))\b/i;
+  const CORE_EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|mics?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|ideashare\s+key|presentation\s+(?:key|dongle))\b/i;
   const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp|shipment\s*(?:no|number))\b/i;
   const PROHIBITED_TITLE=/^(?:PURCHASE\s+ORDER|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+LIST|QUOTATION|QUOTE|PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|SERVICE\s+REPORT|SERVICE\s+INVOICE|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT)\b/i;
 
@@ -188,7 +188,14 @@
     return plausibleSku(repaired)?repaired:'';
   }
   function leadingSku(line=''){
-    const tokens=clean(line).split(/\s+/).slice(0,3);
+    const tokens=clean(line).split(/\s+/).slice(0,4);
+    if(tokens.length>=2){
+      const joined=(tokens[0]||'')+(tokens[1]||'');
+      if(/[A-Za-z]-[A-Za-z]$/i.test(tokens[0]||'')&&/^[A-Za-z]*\d[A-Za-z0-9+._\/-]*$/i.test(tokens[1]||'')){
+        const repaired=normalizeSkuCandidate(joined);
+        if(repaired)return repaired;
+      }
+    }
     for(const t of tokens){const v=normalizeSkuCandidate(t);if(v)return v;}
     return '';
   }
@@ -201,20 +208,23 @@
     return m?Number(m[1]):null;
   }
   function sequentialItemBlocks(lines=[]){
-    const out=[];let cur=null,serviceSpan=false;
+    const out=[];let cur=null,suppressSpan=false;
     const close=()=>{if(cur&&(cur.lines.some(x=>isPhysical(x))||cur.modelPriced)){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
     for(let i=0;i<lines.length;i++){
       const line=lines[i],modelPriced=modelPricedLine(line),physical=isPhysical(line)||modelPriced,service=isPureService(line),accessory=isAccessoryOnly(line);
       const totals=/\b(?:SUBTOTAL|SUB\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+LOCAL|PAYMENT\s+ADVICE)\b/i.test(line);
-      const ord=rowOrdinal(line),strongInventoryBoundary=modelPriced||(physical&&ord!==null&&moneyTokens(line).length>=1);
-      if(PROHIBITED_TITLE.test(line)||totals){close();serviceSpan=false;continue;}
+      const ord=rowOrdinal(line),strongInventoryBoundary=modelPriced
+        ||(!service&&!accessory&&physical&&!!leadingSku(line))
+        ||(!service&&!accessory&&physical&&moneyTokens(line).length>=2)
+        ||(physical&&ord!==null&&moneyTokens(line).length>=1);
+      if(PROHIBITED_TITLE.test(line)||totals){close();suppressSpan=false;continue;}
       if(service||accessory){
         if(cur&&cur.seenEconomics)close();
-        if(service||serviceSpan)serviceSpan=true;
+        suppressSpan=true;
         continue;
       }
-      if(serviceSpan){
-        if(strongInventoryBoundary)serviceSpan=false;
+      if(suppressSpan){
+        if(strongInventoryBoundary)suppressSpan=false;
         else continue;
       }
       if(physical){
@@ -262,13 +272,14 @@
     for(let i=0;i<lines.length;i++){
       const line=lines[i],service=isPureService(line),accessory=isAccessoryOnly(line);
       const total=/\b(?:SUBTOTAL|SUB\s+TOTAL|GST|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL)\b/i.test(line);
-      const strongInventory=!service&&!accessory&&isPhysical(line)&&moneyTokens(line).length>=2;
+      const physical=!service&&!accessory&&isPhysical(line);
+      const strongInventory=physical&&(!!leadingSku(line)||moneyTokens(line).length>=2||rowOrdinal(line)!==null);
       if(PROHIBITED_TITLE.test(line)||total){active=false;continue;}
       if(active){
         if(strongInventory)active=false;
         else {blocked.add(i);continue;}
       }
-      if(service){blocked.add(i);active=true;}
+      if(service||accessory){blocked.add(i);active=true;}
     }
     return blocked;
   }
