@@ -40,11 +40,23 @@ function modelFromBlock(text=''){
   return '';
 }
 function economicsFromBlock(text=''){
-  const s=String(text);
-  const vals=[...s.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(m=>money(m[1])).filter(Number.isFinite);
-  let amount=vals.length?vals[vals.length-1]:null, unit=vals.length>1?vals[vals.length-2]:null, qty=null;
-  const q=[...s.matchAll(/(?:^|\s)(\d{1,3})(?:\.00)?(?=\s|$)/g)].map(m=>Number(m[1])).filter(n=>n>0&&n<1000);
-  if(q.length)qty=q[q.length-1];
+  const s=String(text), lines=s.split(/\r?\n/).map(clean).filter(Boolean);
+  let qty=null,unit=null,amount=null;
+  for(const line of lines){
+    const matches=[...line.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)];
+    if(matches.length<2)continue;
+    const vals=matches.map(m=>money(m[1])).filter(Number.isFinite);
+    if(vals.length<2)continue;
+    unit=vals[vals.length-2];amount=vals[vals.length-1];
+    const prefix=line.slice(0,matches[0].index||0);
+    const ints=[...prefix.matchAll(/(?:^|\s)(\d{1,3})(?:\.00)?(?=\s|$)/g)].map(m=>Number(m[1])).filter(n=>n>0&&n<1000);
+    if(ints.length)qty=ints[ints.length-1];
+    break;
+  }
+  if(unit===null||amount===null){
+    const vals=[...s.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(m=>money(m[1])).filter(Number.isFinite);
+    if(vals.length>=2){unit=vals[vals.length-2];amount=vals[vals.length-1];}
+  }
   if(qty===null&&unit!==null&&amount!==null&&unit>0){
     const x=amount/unit;if(Number.isInteger(x)&&x>0&&x<1000)qty=x;
   }
@@ -62,7 +74,7 @@ function canonicalDesc(lines=[]){
 }
 function numberedBlocks(lines=[]){
   const starts=[];
-  for(let i=0;i<lines.length;i++){const m=lines[i].match(/^[|\[\](){}\s]*(\d{1,2})\s*[|.)\-:]\s*(.+)/);if(m)starts.push({i,n:Number(m[1])});}
+  for(let i=0;i<lines.length;i++){const m=lines[i].match(/^[|\[\](){}\s]*(\d{1,2})(?:\s*[|.)\-:]\s*|\s+)(?=[A-Za-z])(.+)/);if(m)starts.push({i,n:Number(m[1])});}
   const out=[];
   for(let x=0;x<starts.length;x++){
     const a=starts[x].i,b=starts[x+1]?.i??lines.length,bl=lines.slice(a,b);
@@ -117,7 +129,8 @@ function extractSourceRows(pages=[]){
     const text=String(page?.text??page??'');
     const auth=pageAuthority(text); if(!auth.allowed)continue;
     const lines=text.split(/\r?\n/).map(clean);
-    const groups=[...numberedBlocks(lines),...paragraphBlocks(lines),...slidingBlocks(lines)];
+    const numbered=numberedBlocks(lines);
+    const groups=numbered.length?numbered:[...paragraphBlocks(lines),...slidingBlocks(lines)];
     for(const g of groups){const r=scoreBlock(g);if(r&&!ACCESSORY.test(r.item_name))rows.push(r);}
   }
   return dedupeBlocks(rows);
