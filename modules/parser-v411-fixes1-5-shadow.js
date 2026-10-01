@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r12';
+  const VERSION='4.1.1-shadow-fixes1-5-r13';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -19,11 +19,11 @@
     .replace(/\bBRACKCT\b/ig,'bracket');
   const key=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
-  const EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|trolleys?|rolling\s+stands?|av\s+carts?)\b/i;
+  const EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|ideashare\s+key|presentation\s+(?:key|dongle)|trolleys?|rolling\s+stands?|av\s+carts?)\b/i;
   const SERVICE=/\b(?:labou?r|installation\s+(?:work|service)|service\s+(?:fee|charge|work)|dismantl(?:e|ing|ed)|dismount|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|repair(?:ing|ed)?|testing\s+and\s+commissioning|commissioning|programming|training|delivery\s+(?:fee|service|charge)|freight|courier|transport\s+fee)\b/i;
   const SERVICE_CODE=/^(?:[A-Z0-9]+[-_/])?(?:INSTALLATION|INSTALL|LABOU?R|SERVICE|DELIVERY|FREIGHT|DISMANTLE|DISMOUNT|RELOCATE|REINSTATE|RE-INSTATE|REPAIR|TESTING|COMMISSIONING)\b/i;
   const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart|trolley|stand|mount)\b/i;
-  const CORE_EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub)\b/i;
+  const CORE_EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|ideashare\s+key|presentation\s+(?:key|dongle))\b/i;
   const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp|shipment\s*(?:no|number))\b/i;
   const PROHIBITED_TITLE=/^(?:PURCHASE\s+ORDER|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+LIST|QUOTATION|QUOTE|PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|SERVICE\s+REPORT|SERVICE\s+INVOICE|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT)\b/i;
 
@@ -65,6 +65,7 @@
   function isPureService(text=''){
     const s=ocrLex(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
     if(/^SERVICE\s+CENT(?:RE|ER)\b/i.test(lead))return false;
+    if(/\b(?:HI-?CARE|CARE\s+PACK|SUPPORT\s+(?:PLAN|CONTRACT)|MAINTENANCE\s+CONTRACT|SUBSCRIPTION)\b/i.test(s))return true;
     if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
@@ -77,6 +78,9 @@
   }
   function isAccessoryOnly(text=''){
     const s=ocrLex(text);
+    const bundled=/\b(?:projectors?|speakers?|loudspeakers?|displays?|monitors?)\b.*\bwith\b.*\b(?:mounting\s+)?brackets?\b/i.test(s);
+    const strongAccessory=/\b(?:rolling\s+stands?|av\s+carts?|security\s+locks?|ceiling\s+mounts?|speaker\s+brackets?|lamp\s+kits?|fasteners?|(?:hdmi|vga|usb|cat\s*\d*|audio|power|signal)?\s*cables?|wires?)\b/i.test(s);
+    if(strongAccessory&&!bundled)return true;
     if(!ACCESSORY.test(s))return false;
     const core=s.search(CORE_EQUIPMENT),acc=s.search(ACCESSORY);
     if(core<0)return true;
@@ -215,7 +219,8 @@
           const numberedAfterUnnumbered=ord!==null&&cur.ordinal===null&&cur.lines.some(x=>/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER))\b\s*[:#-]?/i.test(x));
           const newSku=leadingSku(line),curSku=leadingSku(cur.lines[0]||'');
           const identityBoundary=!cur.seenEconomics&&!!newSku&&!!curSku&&key(newSku)!==key(curSku);
-          if(cur.seenEconomics||newOrdinal||numberedAfterUnnumbered||identityBoundary)close();
+          const numberedContinuation=cur.ordinal!==null&&ord===null;
+          if((cur.seenEconomics&&!numberedContinuation)||newOrdinal||numberedAfterUnnumbered||identityBoundary)close();
         }
         if(!cur){
           let start=i,prefix=[];
@@ -248,19 +253,35 @@
     close();
     return out;
   }
+  function serviceContinuationMask(lines=[]){
+    const blocked=new Set();let active=false;
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i],service=isPureService(line),accessory=isAccessoryOnly(line);
+      const total=/\b(?:SUBTOTAL|SUB\s+TOTAL|GST|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL)\b/i.test(line);
+      const strongInventory=!service&&!accessory&&isPhysical(line)&&moneyTokens(line).length>=2;
+      if(PROHIBITED_TITLE.test(line)||total){active=false;continue;}
+      if(active){
+        if(strongInventory)active=false;
+        else {blocked.add(i);continue;}
+      }
+      if(service){blocked.add(i);active=true;}
+    }
+    return blocked;
+  }
   function sourceBlocks(raw=''){
     const text=invoiceText(raw),lines=linesOf(text);
-    const anchors=amountAnchors(lines);
-    const candidates=[...sequentialItemBlocks(lines)];
-    for(let i=0;i<lines.length;i++)if(modelPricedLine(lines[i]))candidates.push({start:i,end:i,lines:[lines[i]],anchor:i,modelPriced:true});
+    const blocked=serviceContinuationMask(lines);
+    const anchors=amountAnchors(lines).filter(a=>!blocked.has(a.index));
+    const candidates=[...sequentialItemBlocks(lines)].filter(b=>!blocked.has(b.start));
+    for(let i=0;i<lines.length;i++)if(!blocked.has(i)&&modelPricedLine(lines[i]))candidates.push({start:i,end:i,lines:[lines[i]],anchor:i,modelPriced:true});
     for(let i=0;i<anchors.length;i++)candidates.push(blockFromAnchor(lines,anchors[i],anchors[i-1],anchors[i+1]));
     for(const b of numberedBlocks(lines)){
-      if(b.lines.some(x=>isPhysical(x)&&!isAccessoryOnly(x))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
+      if(!blocked.has(b.start)&&b.lines.some(x=>isPhysical(x)&&!isAccessoryOnly(x))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
     }
     // Add description-anchored candidates so table layouts with economics on the next line
     // are not dependent on a money token being on the description line.
     const physicalIdx=[];
-    for(let i=0;i<lines.length;i++)if(isPhysical(lines[i])&&!isAccessoryOnly(lines[i]))physicalIdx.push(i);
+    for(let i=0;i<lines.length;i++)if(!blocked.has(i)&&isPhysical(lines[i])&&!isAccessoryOnly(lines[i]))physicalIdx.push(i);
     for(let p=0;p<physicalIdx.length;p++){
       const idx=physicalIdx[p],next=physicalIdx[p+1]??lines.length;
       let lo=Math.max(0,idx-1),hi=idx;
