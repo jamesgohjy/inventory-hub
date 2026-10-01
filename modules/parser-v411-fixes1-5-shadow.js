@@ -224,6 +224,7 @@
   }
   function explicitIdentity(blockText=''){
     const ls=linesOf(blockText),votes=[],eligible=[];let serialMode=false;
+    const escRe=v=>String(v).replace(/[.*+?^$()|[\]{}\\]/g,'\\$&');
     for(const line of ls){
       if(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?/i.test(line)){serialMode=true;continue;}
       if(serialMode){
@@ -242,28 +243,7 @@
       for(const t of textTokens){
         let rank=10;
         if(EQUIPMENT.test(line))rank+=30;
-        if(new RegExp('^\\s*'+t.replace(/[.*+?^$()|[\]{}\\]/g,'\\  function explicitIdentity(blockText=''){
-    const ls=linesOf(blockText),votes=[];
-    for(const line of ls){
-      const m=line.match(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*(.+)$/i);
-      if(m){
-        const toks=(m[1].match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
-        if(toks.length)votes.push({value:toks[toks.length-1],line,rank:100});
-      }
-    }
-    const textTokens=(String(blockText).match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
-    for(const t of textTokens){
-      if(/\b(?:S\/N|SN|SERIAL)\b/i.test(ls.find(x=>x.includes(t))||''))continue;
-      let rank=10;
-      const line=ls.find(x=>x.includes(t))||'';
-      if(EQUIPMENT.test(line))rank+=30;
-      if(/^[A-Z0-9+._\/-]+\b/i.test(line))rank+=10;
-      if(/\b(?:MODEL|SKU|PRODUCT\s+NO)\b/i.test(line))rank+=40;
-      votes.push({value:t,line,rank});
-    }
-    votes.sort((a,b)=>b.rank-a.rank);
-    return votes[0]||{value:'',line:'',rank:0};
-  }')+'\\b','i').test(line))rank+=14;
+        if(new RegExp('^\\s*'+escRe(t)+'\\b','i').test(line))rank+=14;
         if(/\b(?:MODEL|SKU|PRODUCT\s+NO)\b/i.test(line))rank+=40;
         votes.push({value:t,line,rank});
       }
