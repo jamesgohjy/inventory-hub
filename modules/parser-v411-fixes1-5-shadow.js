@@ -171,7 +171,7 @@
     return plausibleSku(repaired)?repaired:'';
   }
   function leadingSku(line=''){
-    const tokens=clean(line).split(/\s+/).slice(0,4);
+    const tokens=clean(line).split(/\s+/).slice(0,3);
     for(const t of tokens){const v=normalizeSkuCandidate(t);if(v)return v;}
     return '';
   }
