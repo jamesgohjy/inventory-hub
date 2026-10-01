@@ -35,7 +35,8 @@
   }
   function plausibleSku(v=''){
     const s=clean(v).replace(/^[,;:()[\]{}]+|[,;:()[\]{}]+$/g,'');
-    if(s.length<3||s.length>42||/\s/.test(s))return false;
+    if(s.length<2||s.length>42||/\s/.test(s))return false;
+    if(s.length===2&&!/^(?:[A-Za-z]\d|\d[A-Za-z])$/.test(s))return false;
     if(!/^[A-Z0-9][A-Z0-9+._\/-]*$/i.test(s))return false;
     if(!/[A-Za-z]/.test(s)||!/\d/.test(s))return false;
     if(/^(?:SGD|GST|UEN|S\/N|SN|QTY|DATE|PAGE|INV|INVOICE)$/i.test(s))return false;
@@ -55,16 +56,24 @@
     return !s||isAddress(s)||META.test(s)||/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(s);
   }
   function isPureService(text=''){
-    const s=clean(text);
+    const s=clean(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
+    // The object being supplied controls classification. Cable/bracket/mount/labour work
+    // stays non-inventory even when an AV product is mentioned later as context.
+    if(/^(?:supply|provide|install)\b.*\b(?:cable|cabling|wiring|bracket|mount|labou?r)\b/i.test(lead))return true;
     if(!SERVICE.test(s))return false;
-    // "Supply & Install <physical equipment>" is a purchased object, not service-only.
-    if(/^(?:supply|provide)\s*(?:&|and)?\s*install\b/i.test(s)&&EQUIPMENT.test(s)&&!/\b(?:labou?r|cabling|wiring|testing|commissioning|training)\b/i.test(s))return false;
+    if(/^(?:supply|provide)\s*(?:&|and)?\s*install\b/i.test(lead)
+      &&CORE_EQUIPMENT.test(lead)
+      &&!/\b(?:labou?r|cabling|wiring|testing|commissioning|training)\b/i.test(lead))return false;
     return true;
   }
   function isAccessoryOnly(text=''){
     const s=clean(text);
     if(!ACCESSORY.test(s))return false;
-    return !CORE_EQUIPMENT.test(s);
+    const core=s.search(CORE_EQUIPMENT),acc=s.search(ACCESSORY);
+    if(core<0)return true;
+    const supply=/^[^A-Za-z0-9]*(?:supply|provide|install)\b/i.test(s);
+    if(supply&&acc>=0&&acc<core)return true;
+    return false;
   }
   function isPhysical(text=''){
     const s=clean(text);
@@ -150,9 +159,9 @@
   }
   function sequentialItemBlocks(lines=[]){
     const out=[];let cur=null;
-    const close=()=>{if(cur&&cur.lines.some(x=>isPhysical(x)&&!isAccessoryOnly(x))){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
+    const close=()=>{if(cur&&cur.lines.some(x=>isPhysical(x))){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
     for(let i=0;i<lines.length;i++){
-      const line=lines[i],physical=isPhysical(line)&&!ACCESSORY.test(line),service=isPureService(line),accessory=isAccessoryOnly(line);
+      const line=lines[i],physical=isPhysical(line),service=isPureService(line),accessory=isAccessoryOnly(line);
       const totals=/\b(?:SUBTOTAL|SUB\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+LOCAL|PAYMENT\s+ADVICE)\b/i.test(line);
       if(PROHIBITED_TITLE.test(line)||totals){close();continue;}
       if(service||accessory){if(cur&&cur.seenEconomics)close();continue;}
@@ -160,15 +169,19 @@
       if(physical){
         if(cur){
           const newOrdinal=ord!==null&&cur.ordinal!==null&&ord!==cur.ordinal;
-          const lineIds=(line.match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
-          const curIds=(cur.lines.join(' ').match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
-          const independentIdentityBoundary=!cur.seenEconomics&&lineIds.length>0&&curIds.length>0;
-          if(cur.seenEconomics||newOrdinal||independentIdentityBoundary){close();}
+          // Only a model/SKU near the start of a new physical line may open a new block.
+          // Component/frequency identifiers later in the description (e.g. SM58, G66)
+          // cannot split the parent product.
+          const lead=line.split(/\s+/).slice(0,4).join(' ');
+          const curLead=clean(cur.lines.find(x=>isPhysical(x))||cur.lines[0]||'').split(/\s+/).slice(0,4).join(' ');
+          const lineIds=(lead.match(/[A-Z0-9][A-Z0-9+._\/-]{1,41}/gi)||[]).filter(plausibleSku);
+          const curIds=(curLead.match(/[A-Z0-9][A-Z0-9+._\/-]{1,41}/gi)||[]).filter(plausibleSku);
+          const identityBoundary=!cur.seenEconomics&&lineIds.length>0&&curIds.length>0;
+          if(cur.seenEconomics||newOrdinal||identityBoundary)close();
         }
         if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
       }
       if(!cur)continue;
-      // A fresh numbered row is always a hard boundary, even when the previous OCR lost economics.
       if(ord!==null&&cur.lines.length&&cur.ordinal!==null&&ord!==cur.ordinal){
         close();
         if(physical)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
