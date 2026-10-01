@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r10';
+  const VERSION='4.1.1-shadow-fixes1-5-r11';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -192,14 +192,22 @@
     return m?Number(m[1]):null;
   }
   function sequentialItemBlocks(lines=[]){
-    const out=[];let cur=null;
+    const out=[];let cur=null,serviceSpan=false;
     const close=()=>{if(cur&&(cur.lines.some(x=>isPhysical(x))||cur.modelPriced)){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
     for(let i=0;i<lines.length;i++){
       const line=lines[i],modelPriced=modelPricedLine(line),physical=isPhysical(line)||modelPriced,service=isPureService(line),accessory=isAccessoryOnly(line);
       const totals=/\b(?:SUBTOTAL|SUB\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+LOCAL|PAYMENT\s+ADVICE)\b/i.test(line);
-      if(PROHIBITED_TITLE.test(line)||totals){close();continue;}
-      if(service||accessory){if(cur&&cur.seenEconomics)close();continue;}
-      const ord=rowOrdinal(line);
+      const ord=rowOrdinal(line),strongInventoryBoundary=modelPriced||(physical&&ord!==null&&moneyTokens(line).length>=1);
+      if(PROHIBITED_TITLE.test(line)||totals){close();serviceSpan=false;continue;}
+      if(service||accessory){
+        if(cur&&cur.seenEconomics)close();
+        if(service||serviceSpan)serviceSpan=true;
+        continue;
+      }
+      if(serviceSpan){
+        if(strongInventoryBoundary)serviceSpan=false;
+        else continue;
+      }
       if(physical){
         if(cur){
           const newOrdinal=ord!==null&&cur.ordinal!==null&&ord!==cur.ordinal;
