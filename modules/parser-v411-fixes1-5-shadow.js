@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r16';
+  const VERSION='4.1.1-shadow-fixes1-5-r17';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -273,9 +273,17 @@
   function sourceBlocks(raw=''){
     const text=invoiceText(raw),lines=linesOf(text);
     const blocked=serviceContinuationMask(lines);
-    // A complete numbered row outranks partial alternate candidates. Once the full
-    // numbered row is proven service/accessory, suppress every sub-candidate in it.
-    for(const nb of numberedBlocks(lines)){
+    // A complete numbered row outranks partial alternate candidates, but only when
+    // the document actually contains a verified consecutive numbered item table.
+    const numbered=numberedBlocks(lines),numberedTableRows=new Set();
+    let run=[];
+    const flushRun=()=>{if(run.length>=3)for(const r of run)numberedTableRows.add(r);run=[];};
+    for(const nb of numbered){
+      if(!run.length||nb.ordinal===run[run.length-1].ordinal+1)run.push(nb);
+      else {flushRun();run=[nb];}
+    }
+    flushRun();
+    for(const nb of numberedTableRows){
       const whole=nb.lines.join(' ');
       if(moneyTokens(whole).length<2)continue;
       if(isPureService(whole)||isAccessoryOnly(whole)){
