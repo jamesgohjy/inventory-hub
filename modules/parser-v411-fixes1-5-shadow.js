@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r13-regression';
+  const VERSION='4.1.1-shadow-fixes1-10-r14-critic';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -67,6 +67,7 @@
     const serviceScan=s.replace(/[_\r\n]+/g,' ');
     if(/^SERVICE\s+CENT(?:RE|ER)\b/i.test(lead))return false;
     if(/\b(?:HI\s*-?\s*CARE|CARE\s+PACK|SUPPORT\s+(?:PLAN|CONTRACT)|MAINTENANCE\s+CONTRACT|SUBSCRIPTION)\b/i.test(serviceScan))return true;
+    if(/\b(?:DEL(?:IVERY)?\s+SERVICES?|SALES\s*-\s*INSTALLATION|INSTALLATION\s+SERVICES?|CABLING\s*,?\s*INSTALLATION\s*,?\s*SERVICES?)\b/i.test(serviceScan))return true;
     if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
