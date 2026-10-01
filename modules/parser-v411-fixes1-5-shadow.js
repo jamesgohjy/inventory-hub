@@ -191,7 +191,7 @@
       const ordinalMatch=line.match(/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.)\-:]?\s+/);
       const ordinal=ordinalMatch?Number(ordinalMatch[1]):null;
       const nums=numberTokens(line);
-      let qCandidates=nums.filter(x=>x.value>0&&x.value<=999&&!money.some(m=>Math.abs(m.index-x.index)<3));
+      let qCandidates=nums.filter(x=>x.value>0&&x.value<=999&&!money.some(m=>x.index>=m.index&&x.index<m.index+String(m.raw).length));
       if(ordinal!==null){
         const ordinalEnd=(ordinalMatch?.[0]||'').length;
         qCandidates=qCandidates.filter(x=>!(x.value===ordinal&&x.index<ordinalEnd));
@@ -220,7 +220,7 @@
       let line=original
         .replace(/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/,'')
         .replace(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*[A-Z0-9][A-Z0-9+._\/-]{2,41}/ig,' ')
-        .replace(/(?:SGD\s*)?\d{1,3}(?:,\d{3})*\.\d{2}/g,' ')
+        .replace(/(?:SGD\s*)?\d+(?:,\d{3})*\.\d{2}/g,' ')
         .replace(/\b\d+(?:\.\d{1,2})?\b\s*$/g,' ')
         .replace(/\s+/g,' ').trim();
       if(!line||isMetadata(line))continue;
