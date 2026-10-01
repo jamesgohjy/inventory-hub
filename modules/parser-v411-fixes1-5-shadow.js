@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r4';
+  const VERSION='4.1.1-shadow-fixes1-5-r5';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -24,7 +24,7 @@
   const SERVICE_CODE=/^(?:[A-Z0-9]+[-_/])?(?:INSTALLATION|INSTALL|LABOU?R|SERVICE|DELIVERY|FREIGHT|DISMANTLE|DISMOUNT|RELOCATE|REINSTATE|RE-INSTATE|REPAIR|TESTING|COMMISSIONING)\b/i;
   const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart|trolley|stand|mount)\b/i;
   const CORE_EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub)\b/i;
-  const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp)\b/i;
+  const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp|shipment\s*(?:no|number))\b/i;
   const PROHIBITED_TITLE=/^(?:PURCHASE\s+ORDER|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+LIST|QUOTATION|QUOTE|PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|SERVICE\s+REPORT|SERVICE\s+INVOICE|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT)\b/i;
 
   function moneyTokens(text=''){
@@ -340,7 +340,7 @@
         .replace(/\b\d+(?:\.\d{1,2})?\b\s*$/g,' ')
         .replace(/\s+/g,' ').trim();
       if(!line||isMetadata(line))continue;
-      let score=0;if(EQUIPMENT.test(line))score+=10;if(isPureService(line))score-=12;
+      let score=0;if(EQUIPMENT.test(ocrLex(line)))score+=10;if(isPureService(line))score-=12;
       score+=Math.min(8,line.split(/\s+/).length/2);
       if(score>0)ranked.push({line,score});
     }
@@ -350,7 +350,8 @@
   function serials(blockText=''){
     const out=[];
     for(const line of linesOf(blockText)){
-      const m=line.match(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?\s*(.+)$/i);
+      const m=line.match(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?\s*(.+)$/i)
+        ||line.match(/^\s*S\s*[\/\\|]\s*[A-Za-z0-9]{1,2}\s*[:#-]?\s*(.+)$/i);
       if(!m)continue;
       for(const t of m[1].split(/[,;]\s*/).map(clean).filter(Boolean))if(!/^N\/?A$/i.test(t))out.push(t);
     }
@@ -387,6 +388,7 @@
     if(econ.unit_price!==null&&row.unit_price===null)issues.push('unit-price-missing');
     if(econ.amount!==null&&row.amount===null)issues.push('amount-missing');
     if(!row.item_name)issues.push('description-missing');
+    else if(block.lines.some(x=>isPhysical(x))&&!isPhysical(row.item_name))issues.push('description-not-equipment');
     return issues;
   }
   function recoverMissingFields(row,block){
