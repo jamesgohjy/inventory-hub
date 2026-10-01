@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r8';
+  const VERSION='4.1.1-shadow-fixes1-5-r9';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -336,14 +336,14 @@
         const derived=unit?amount/unit:null;
         if(derived!==null&&Math.abs(derived-money[0].value)<=0.001)q=money[0].value;
       }else if(money.length>=2){unit=money[money.length-2].value;amount=money[money.length-1].value;}
-      else if(money.length===1){amount=money[0].value;}
+      else if(money.length===1&&/\bAMOUNT\b/i.test(line)){amount=money[0].value;}
       if(q===null&&unit!==null&&amount!==null&&unit>0){
         const derived=amount/unit;
         const exact=qCandidates.find(x=>Math.abs(x.value-derived)<=0.001);
         if(exact)q=exact.value;
         else if(derived>0&&derived<=999&&Math.abs(derived-Math.round(derived))<=0.001)q=Math.round(derived);
       }
-      if(q===null&&qCandidates.length)q=qCandidates[qCandidates.length-1].value;
+      if(q===null&&qCandidates.length)q=qCandidates[0].value;
       const calc=(q&&unit!==null&&amount!==null)?Math.abs(q*unit-amount):Infinity;
       const score=(money.length>=2?10:4)+(q?4:0)+(calc<=Math.max(.1,(amount||1)*.015)?8:0)+economicLineScore(line);
       if(!best||score>best.score)best={quantity:q,unit_price:unit,amount,sourceLine:line,score};
@@ -400,6 +400,18 @@
   function evidenceKey(v=''){return key(String(v||'').replace(/\$/g,'S'));}
   function presentInBlock(value,blockText){const k=evidenceKey(value);return !k||evidenceKey(blockText).includes(k);}
   function printedIdentityInBlock(blockText=''){return explicitIdentity(blockText).value;}
+  function descriptionContaminated(v=''){
+    const s=clean(v);
+    if(!s)return false;
+    const suspiciousSymbols=(s.match(/[¥€£©®<>\\{}]/g)||[]).length;
+    if(suspiciousSymbols)return true;
+    if(/[|]{2,}|[)!]{2,}|[;:,.]{3,}/.test(s))return true;
+    const toks=s.split(/\s+/).filter(Boolean);
+    const mixed=toks.filter(t=>/[A-Z].*[a-z].*[A-Z]|[a-z].*[A-Z].*[a-z]/.test(t)&&/\d|[A-Z]{2}/.test(t));
+    const digitNoise=toks.filter(t=>/[A-Za-z]\d{2,}|\d+[A-Za-z]{2,}/.test(t)&&!plausibleSku(t));
+    return mixed.length>=1||digitNoise.length>=2;
+  }
+
   function sourceCompleteness(block,row){
     const issues=[];
     const printed=printedIdentityInBlock(block.text);
@@ -411,6 +423,7 @@
     if(econ.amount!==null&&row.amount===null)issues.push('amount-missing');
     if(!row.item_name)issues.push('description-missing');
     else if(block.lines.some(x=>isPhysical(x))&&!isPhysical(row.item_name))issues.push('description-not-equipment');
+    if(descriptionContaminated(row.item_name))issues.push('description-contaminated');
     return issues;
   }
   function recoverMissingFields(row,block){
@@ -542,7 +555,11 @@
       incompleteFieldCount:failures.filter(x=>/missing$/.test(x.issue||'')).length,
       crossRowContaminationCount:failures.filter(x=>x.issue==='cross-row-identity-contamination').length
     };
-    return {version:VERSION,mode:'shadow',blocks,rows,failures,metrics,ready:failures.length===0};
+    const reviewOnlyIssues=new Set(['quantity-unresolved','unit-price-unresolved','amount-unresolved','description-contaminated']);
+    const hardFailures=failures.filter(f=>!reviewOnlyIssues.has(f.issue));
+    const reviewFailures=failures.filter(f=>reviewOnlyIssues.has(f.issue));
+    const disposition=hardFailures.length?'fail':(reviewFailures.length?'review':'ready');
+    return {version:VERSION,mode:'shadow',blocks,rows,failures,hardFailures,reviewFailures,metrics,ready:disposition==='ready',safe:hardFailures.length===0,disposition};
   }
   function selfTest(){
     const sample=[
