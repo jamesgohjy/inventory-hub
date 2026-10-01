@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r22-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-5-r23-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -668,7 +668,8 @@
   function applyNumericCellEvidence(block,row,entry){
     if(!entry)return row;
     const Q=rawQuantityCandidates(entry.quantity_ocr);
-    let q=(Q[0]&&Q[0].votes>=2)?Q[0].value:recoverQuantityFromBlock(block,row);
+    const existingQ=(row.quantity!==null&&row.quantity!==undefined&&Number.isFinite(Number(row.quantity)))?Number(row.quantity):null;
+    let q=existingQ!==null?existingQ:((Q[0]&&Q[0].votes>=2)?Q[0].value:recoverQuantityFromBlock(block,row));
     const U=rawMoneyCandidates(entry.unit_price_ocr);
     const A=rawMoneyCandidates(entry.amount_ocr);
     const uExisting=Number.isFinite(Number(row.unit_price))&&row.unit_price!==null?Number(row.unit_price):null;
