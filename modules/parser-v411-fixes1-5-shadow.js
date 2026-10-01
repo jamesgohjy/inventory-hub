@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r2';
+  const VERSION='4.1.1-shadow-fixes1-15-r3';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -1080,8 +1080,9 @@
       reasons.push(ok?'arithmetic-pass':'arithmetic-fail');
     }
     if(row?.provenance){
-      const populated=['sku','item_name','quantity','unit_price','amount'];
-      const bound=populated.every(k=>{
+      const required=['item_name','quantity','unit_price','amount'];
+      if(printedIdentity)required.unshift('sku');
+      const bound=required.every(k=>{
         const v=row[k];
         if(v===null||v===undefined||v==='')return false;
         return row.provenance[k]?.evidenceBound===true;
