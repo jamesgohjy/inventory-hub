@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r11';
+  const VERSION='4.1.1-shadow-fixes1-5-r12';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -64,6 +64,7 @@
   }
   function isPureService(text=''){
     const s=ocrLex(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
+    if(/^SERVICE\s+CENT(?:RE|ER)\b/i.test(lead))return false;
     if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
