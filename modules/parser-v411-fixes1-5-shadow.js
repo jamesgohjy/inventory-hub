@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r9';
+  const VERSION='4.1.1-shadow-fixes1-5-r10';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -215,7 +215,7 @@
               const prev=lines[i-d];
               if(PROHIBITED_TITLE.test(prev)||isPhysical(prev)||isPureService(prev)||isAccessoryOnly(prev))break;
               const prevOrd=rowOrdinal(prev),prevMoney=moneyTokens(prev);
-              const cleanEconomicPrelude=prevMoney.length>=2
+              const cleanEconomicPrelude=d>=2&&prevMoney.length>=2
                 &&!isMetadata(prev)&&!isPureService(prev)&&!isAccessoryOnly(prev)
                 &&!/(?:SUBTOTAL|SUB\s+TOTAL|GST|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL)/i.test(prev);
               if((prevOrd!==null&&prevMoney.length>=2)||cleanEconomicPrelude){
