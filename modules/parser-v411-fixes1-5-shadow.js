@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r15';
+  const VERSION='4.1.1-shadow-fixes1-5-r16';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -273,6 +273,15 @@
   function sourceBlocks(raw=''){
     const text=invoiceText(raw),lines=linesOf(text);
     const blocked=serviceContinuationMask(lines);
+    // A complete numbered row outranks partial alternate candidates. Once the full
+    // numbered row is proven service/accessory, suppress every sub-candidate in it.
+    for(const nb of numberedBlocks(lines)){
+      const whole=nb.lines.join(' ');
+      if(moneyTokens(whole).length<2)continue;
+      if(isPureService(whole)||isAccessoryOnly(whole)){
+        for(let i=nb.start;i<=nb.end;i++)blocked.add(i);
+      }
+    }
     const anchors=amountAnchors(lines).filter(a=>!blocked.has(a.index));
     const candidates=[...sequentialItemBlocks(lines)].filter(b=>!blocked.has(b.start));
     for(let i=0;i<lines.length;i++)if(!blocked.has(i)&&modelPricedLine(lines[i]))candidates.push({start:i,end:i,lines:[lines[i]],anchor:i,modelPriced:true});
