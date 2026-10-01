@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r12-regression';
+  const VERSION='4.1.1-shadow-fixes1-10-r13-regression';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -387,6 +387,15 @@
     }
     for(const line of eligible){
       const lead=leadingSku(line);if(lead)votes.push({value:lead,line,rank:58});
+      // Some supplier PRODUCT NO columns use short multi-token uppercase codes
+      // (for example "HEAD MIC") rather than digit-bearing SKUs.
+      const codeRun=line.match(/^\s*([A-Z]{2,10})\s+([A-Z]{2,10})\b(?=\s+[A-Z][a-z])/);
+      if(codeRun&&moneyTokens(line).length>=2&&EQUIPMENT.test(line)){
+        const generic=new Set(['DIGITAL','WIRELESS','ACTIVE','PASSIVE','AUDIO','VIDEO','POWER','CONTROL','SYSTEM']);
+        if(!generic.has(codeRun[1])&&!generic.has(codeRun[2])){
+          votes.push({value:codeRun[1]+' '+codeRun[2],line,rank:64});
+        }
+      }
       const textTokens=(line.match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
       for(const t of textTokens){
         let rank=10;
