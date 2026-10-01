@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r6';
+  const VERSION='4.1.1-shadow-fixes1-10-r7';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -271,7 +271,9 @@
     return blocked;
   }
   function sourceBlocks(raw=''){
-    const text=invoiceText(raw),lines=linesOf(text);
+    const text=invoiceText(raw);
+    if(pageAuthority(text)==='reject')return [];
+    const lines=linesOf(text);
     const blocked=serviceContinuationMask(lines);
     // A complete numbered row outranks partial alternate candidates, but only when
     // the document actually contains a verified consecutive numbered item table.
@@ -319,7 +321,12 @@
       const text=b.lines.join(' ');
       const physicalLines=b.lines.filter(x=>isPhysical(x));
       const modelPriced=!!b.modelPriced||b.lines.some(modelPricedLine);
+      const econ=economics(text);
+      const hasEconomics=econ.quantity!==null||econ.unit_price!==null||econ.amount!==null;
+      const hasExplicitIdentity=/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*[:#-]?/i.test(text);
+      const hasSerial=/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?/i.test(text);
       if((!physicalLines.length&&!modelPriced)||isPureService(b.lines.join(' ')))continue;
+      if(!hasEconomics&&!hasExplicitIdentity&&!hasSerial)continue;
       if(isAccessoryOnly(physicalLines.join(' ')))continue;
       const overlap=merged.find(x=>Math.max(x.start,b.start)<=Math.min(x.end,b.end));
       if(overlap){
@@ -587,8 +594,10 @@
   function descriptionContaminated(v=''){
     const s=clean(v);
     if(!s)return false;
-    const suspiciousSymbols=(s.match(/[¥€£©®<>\\{}]/g)||[]).length;
-    if(suspiciousSymbols)return true;
+    const suspiciousSymbols=(s.match(/[¥€£©®<>\\{}@$%]/g)||[]).length;
+    if(suspiciousSymbols>=2)return true;
+    const nonWord=(s.match(/[^A-Za-z0-9\s.,()\/_+:-]/g)||[]).length;
+    if(nonWord>=3&&nonWord/Math.max(1,s.length)>0.04)return true;
     if(/[|]{2,}|[)!]{2,}|[;:,.]{3,}/.test(s))return true;
     const toks=s.split(/\s+/).filter(Boolean);
     const mixed=toks.filter(t=>(/[A-Z].*[a-z].*[A-Z]|[a-z].*[A-Z].*[a-z]/.test(t))&&/\d/.test(t));
