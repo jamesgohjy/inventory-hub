@@ -44,23 +44,25 @@ function economicsFromBlock(text=''){
   let qty=null,unit=null,amount=null;
   for(const line of lines){
     const matches=[...line.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)];
-    if(matches.length<2)continue;
     const vals=matches.map(m=>money(m[1])).filter(Number.isFinite);
-    if(vals.length<2)continue;
-    unit=vals[vals.length-2];amount=vals[vals.length-1];
-    const prefix=line.slice(0,matches[0].index||0);
-    const ints=[...prefix.matchAll(/(?:^|\s)(\d{1,3})(?:\.00)?(?=\s|$)/g)].map(m=>Number(m[1])).filter(n=>n>0&&n<1000);
-    if(ints.length)qty=ints[ints.length-1];
-    break;
+    if(vals.length>=3){
+      const a=vals[0],b=vals[1],z=vals[vals.length-1];
+      if(a>0&&a<1000&&Number.isInteger(a)&&b>0&&Math.abs(a*b-z)<=Math.max(0.08,Math.abs(z)*0.01)){
+        qty=a;unit=b;amount=z;break;
+      }
+    }
+    if(vals.length>=2){
+      const z=vals[vals.length-1],b=vals[vals.length-2],prefix=line.slice(0,matches[0]?.index||0);
+      const ints=[...prefix.matchAll(/(?:^|\s)(\d{1,3})(?=\s|$)/g)].map(m=>Number(m[1])).filter(n=>n>0&&n<1000);
+      const q=ints.length?ints[ints.length-1]:null;
+      if(q&&Math.abs(q*b-z)<=Math.max(0.08,Math.abs(z)*0.01)){qty=q;unit=b;amount=z;break;}
+      if(Math.abs(b-z)<=0.01){qty=1;unit=b;amount=z;break;}
+    }
+    if(vals.length===1&&modelFromBlock(line)&&EQUIPMENT.test(line)){
+      qty=1;unit=vals[0];amount=vals[0];break;
+    }
   }
-  if(unit===null||amount===null){
-    const vals=[...s.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi)].map(m=>money(m[1])).filter(Number.isFinite);
-    if(vals.length>=2){unit=vals[vals.length-2];amount=vals[vals.length-1];}
-  }
-  if(qty===null&&unit!==null&&amount!==null&&unit>0){
-    const x=amount/unit;if(Number.isInteger(x)&&x>0&&x<1000)qty=x;
-  }
-  if(qty===null&&unit!==null&&amount!==null&&Math.abs(unit-amount)<0.01)qty=1;
+  if(qty===null&&unit!==null&&amount!==null&&unit>0){const x=amount/unit;if(Number.isInteger(x)&&x>0&&x<1000)qty=x;}
   return {quantity:qty,unit_price:unit,amount};
 }
 function canonicalDesc(lines=[]){
@@ -91,11 +93,22 @@ function paragraphBlocks(lines=[]){
     cur.push(l);
   }flush();return out;
 }
-function slidingBlocks(lines=[]){
-  const out=[];
+function equipmentAnchorBlocks(lines=[]){
+  const starts=[];
   for(let i=0;i<lines.length;i++){
-    if(!EQUIPMENT.test(lines[i])||META.test(lines[i])||isAddress(lines[i]))continue;
-    out.push(lines.slice(Math.max(0,i-2),Math.min(lines.length,i+6)));
+    const line=clean(lines[i]);
+    if(!line||META.test(line)||isAddress(line)||SERVICE.test(line)||!EQUIPMENT.test(line))continue;
+    const hasModel=!!modelFromBlock(line);
+    const moneyCount=[...line.matchAll(/\d[\d,]*\.\d{2}/g)].length;
+    if(!hasModel&&moneyCount===0)continue;
+    const prev=clean(lines[i-1]||'');
+    if(i>0&&EQUIPMENT.test(prev)&&modelFromBlock(prev))continue;
+    starts.push(i);
+  }
+  const out=[];
+  for(let x=0;x<starts.length;x++){
+    const a=starts[x],b=starts[x+1]??Math.min(lines.length,a+12);
+    out.push(lines.slice(a,b));
   }
   return out;
 }
@@ -130,7 +143,8 @@ function extractSourceRows(pages=[]){
     const auth=pageAuthority(text); if(!auth.allowed)continue;
     const lines=text.split(/\r?\n/).map(clean);
     const numbered=numberedBlocks(lines);
-    const groups=numbered.length?numbered:[...paragraphBlocks(lines),...slidingBlocks(lines)];
+    const anchors=equipmentAnchorBlocks(lines);
+    const groups=numbered.length?numbered:(anchors.length?anchors:paragraphBlocks(lines));
     for(const g of groups){const r=scoreBlock(g);if(r&&!ACCESSORY.test(r.item_name))rows.push(r);}
   }
   return dedupeBlocks(rows);
