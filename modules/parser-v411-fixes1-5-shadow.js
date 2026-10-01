@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r21-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-5-r22-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -619,6 +619,20 @@
     return out;
   }
 
+  function rawQuantityCandidates(entries=[]){
+    const vals=[];
+    for(const e of (Array.isArray(entries)?entries:[])){
+      const s=clean(e?.text??e);
+      for(const m of s.matchAll(/(?<!\d)(\d{1,2})(?!\d)/g)){
+        const v=Number(m[1]);
+        if(Number.isInteger(v)&&v>=1&&v<=50)vals.push(v);
+      }
+    }
+    const count=new Map();
+    for(const v of vals)count.set(v,(count.get(v)||0)+1);
+    return [...count.entries()].map(([value,votes])=>({value,votes})).sort((a,b)=>b.votes-a.votes||a.value-b.value);
+  }
+
   function rawMoneyCandidates(entries=[]){
     const vals=[];
     for(const e of (Array.isArray(entries)?entries:[])){
@@ -653,7 +667,8 @@
   }
   function applyNumericCellEvidence(block,row,entry){
     if(!entry)return row;
-    let q=recoverQuantityFromBlock(block,row);
+    const Q=rawQuantityCandidates(entry.quantity_ocr);
+    let q=(Q[0]&&Q[0].votes>=2)?Q[0].value:recoverQuantityFromBlock(block,row);
     const U=rawMoneyCandidates(entry.unit_price_ocr);
     const A=rawMoneyCandidates(entry.amount_ocr);
     const uExisting=Number.isFinite(Number(row.unit_price))&&row.unit_price!==null?Number(row.unit_price):null;
@@ -687,6 +702,7 @@
       cellOcrRecovery:{
         ordinal:block?.ordinal??null,
         method:best.method,
+        quantityCandidates:Q.slice(0,5),
         unitCandidates:U.slice(0,5),
         amountCandidates:A.slice(0,5),
         anchorText:clean(entry.anchor_text||'')
@@ -769,6 +785,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,verificationIdentityConflicts,rawMoneyCandidates,applyNumericCellEvidence,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,verificationIdentityConflicts,rawQuantityCandidates,rawMoneyCandidates,applyNumericCellEvidence,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
