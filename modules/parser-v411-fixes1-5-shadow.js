@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r1';
+  const VERSION='4.1.1-shadow-fixes1-15-r2';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -1066,8 +1066,10 @@
     const name=row?.item_name??candidate.item_name??'';
     const exclusions=candidate.exclusionReasons||[];
     if(exclusions.length){score-=0.75;reasons.push('excluded:'+exclusions.join(','));}
+    const printedIdentity=!!printedIdentityInBlock(text);
     if(id){score+=0.22;reasons.push('identity');}
     if(candidate.identityEvidence||row?.evidence?.identity){score+=0.08;reasons.push('identity-evidence');}
+    if(!id&&!printedIdentity&&name&&isPhysical(name)){score+=0.3;reasons.push('identity-not-printed');}
     if(name&&isPhysical(name)){score+=0.18;reasons.push('physical-description');}
     if(q!==null&&q!==undefined){score+=0.12;reasons.push('quantity');}
     if(u!==null&&u!==undefined){score+=0.12;reasons.push('unit-price');}
@@ -1124,7 +1126,9 @@
       const rowFailures=failures.filter(f=>!f.blockId||f.blockId===row.sourceBlockId);
       const hard=rowFailures.filter(f=>!['low-field-confidence'].includes(f.issue));
       const review=rowFailures.filter(f=>['low-field-confidence'].includes(f.issue));
-      const unresolved=[row.sku,row.item_name,row.quantity,row.unit_price,row.amount].some(v=>v===null||v===undefined||v==='');
+      const printedIdentity=!!printedIdentityInBlock(row.sourceText||'');
+      const unresolved=[row.item_name,row.quantity,row.unit_price,row.amount].some(v=>v===null||v===undefined||v==='')
+        ||(printedIdentity&&(row.sku===null||row.sku===undefined||row.sku===''));
       let status='auto-accept';
       const reasons=[];
       if(hard.length||unresolved||evidenceScore.score<0.7){status='reject';reasons.push(...hard.map(x=>x.issue));if(unresolved)reasons.push('unresolved-required-field');if(evidenceScore.score<0.7)reasons.push('candidate-score-low');}
