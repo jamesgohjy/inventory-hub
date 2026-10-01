@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r4';
+  const VERSION='4.1.1-shadow-fixes1-10-r5';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -746,6 +746,51 @@
     };
   }
 
+  const CORRECTION_HIGH_RISK=new Set(['sku','model','quantity','unit_price','amount','serials','invoice_number','invoice_date','supplier']);
+  function memoryMatch(row={},entry={},raw=''){
+    if(!entry||entry.approved!==true)return false;
+    if(entry.supplier&& !key(raw).includes(key(entry.supplier)))return false;
+    const m=entry.match||{};
+    if(m.sku&&key(row.sku)!==key(m.sku))return false;
+    if(m.model&&key(row.model)!==key(m.model))return false;
+    if(m.item_name&& !key(row.item_name).includes(key(m.item_name)))return false;
+    if(m.contains&& !key(row.sourceText).includes(key(m.contains)))return false;
+    if(!m.sku&&!m.model&&!m.item_name&&!m.contains)return false;
+    return true;
+  }
+  function correctionMemorySuggestions(row={},opts={},raw=''){
+    const entries=Array.isArray(opts.correctionMemory)?opts.correctionMemory:[];
+    const suggestions=[];
+    for(const entry of entries){
+      if(!memoryMatch(row,entry,raw))continue;
+      const corrections=entry.corrections||entry.fields||{};
+      const evidence=clean(entry.evidence?.text||entry.evidenceText||row.sourceText||'');
+      const evidenceBound=entry.evidenceBound===true||!!evidence;
+      if(!evidenceBound)continue;
+      for(const [field,value] of Object.entries(corrections)){
+        if(value===undefined||value===null||value==='')continue;
+        suggestions.push({
+          field,
+          current:row[field]??null,
+          suggested:value,
+          risk:CORRECTION_HIGH_RISK.has(field)?'high':'normal',
+          mode:'suggestion-only',
+          approved:true,
+          evidenceBound:true,
+          evidence:{
+            text:evidence,
+            sourceBlockId:row.sourceBlockId||null,
+            page:pageForEvidence(raw,evidence||row.sourceText||''),
+            memoryId:entry.id||entry.memoryId||null,
+            approvedBy:entry.approvedBy||null,
+            approvedAt:entry.approvedAt||null
+          }
+        });
+      }
+    }
+    return suggestions;
+  }
+
   function run(raw='',opts={}){
     const extraction=selectExtractionCandidate(raw,opts);
     raw=extraction.text;
@@ -755,6 +800,7 @@
       const withMethod={...r,extractionMethod:extraction.method,extractionPreprocess:extraction.preprocess};
       const enriched={...withMethod,provenance:buildFieldProvenance(raw,withMethod),validation:{arithmetic:rowArithmetic(withMethod)}};
       enriched.confidence=fieldConfidence(enriched);
+      enriched.correctionSuggestions=correctionMemorySuggestions(enriched,opts,raw);
       return enriched;
     });
     const columnar=columnarTableRecovery(raw);
@@ -806,7 +852,12 @@
     const hardFailures=failures.filter(f=>!reviewOnlyIssues.has(f.issue));
     const reviewFailures=failures.filter(f=>reviewOnlyIssues.has(f.issue));
     const disposition=hardFailures.length?'fail':(reviewFailures.length?'review':'ready');
-    return {version:VERSION,mode:'shadow',extraction,blocks,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},ready:disposition==='ready',safe:hardFailures.length===0,disposition};
+    const correctionMemory={
+      approvedSuggestionCount:rows.reduce((n,r)=>n+(r.correctionSuggestions?.length||0),0),
+      autoAppliedCount:0,
+      policy:'approved-evidence-bound-suggestion-only'
+    };
+    return {version:VERSION,mode:'shadow',extraction,blocks,rows,failures,hardFailures,reviewFailures,metrics,validation:{invoice:invoiceValidation},correctionMemory,ready:disposition==='ready',safe:hardFailures.length===0,disposition};
   }
   function selfTest(){
     const sample=[
@@ -829,6 +880,12 @@
     const strong=['TAX INVOICE','1 Digital Mixer Model: CQ12T 1 100.00 100.00','SUBTOTAL 100.00','GST 9.00','TOTAL 109.00'].join('\n');
     const recovered=run(weak,{ocrCandidates:[{text:strong,method:'ocr-psm6',preprocess:'grayscale-300dpi'}]});
     if(recovered.extraction?.method!=='ocr-psm6'||!recovered.rows.some(x=>x.sku==='CQ12T'))f.push('ocr candidate selection');
+    const memoryRun=run(sample,{correctionMemory:[
+      {id:'approved-1',approved:true,approvedBy:'admin',match:{sku:'CQ12T'},corrections:{sku:'CQ12T-CANON',item_name:'Digital Mixer'},evidenceBound:true,evidenceText:'1 Digital Mixer console Model: CQ12T 1 1400.00 1400.00'},
+      {id:'unapproved-1',approved:false,match:{sku:'ZX1I-90'},corrections:{sku:'BAD'}}
+    ]});
+    const memRow=memoryRun.rows.find(x=>x.sku==='CQ12T');
+    if(!memRow||memRow.sku!=='CQ12T'||!memRow.correctionSuggestions?.some(x=>x.field==='sku'&&x.suggested==='CQ12T-CANON')||memoryRun.correctionMemory.autoAppliedCount!==0)f.push('correction memory safety');
     const bad=run(['TAX INVOICE','1 Digital Mixer Model: CQ12T 2 100.00 250.00','SUBTOTAL 250.00','GST 22.50','TOTAL 272.50'].join('\n'));
     if(!bad.failures.some(x=>x.issue==='row-arithmetic-mismatch'))f.push('arithmetic mismatch gate');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
@@ -836,6 +893,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
