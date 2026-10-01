@@ -15,7 +15,8 @@
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
   const EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub|trolley|rolling\s+stand|av\s+cart)\b/i;
   const SERVICE=/\b(?:labou?r|installation\s+(?:work|service)|service\s+(?:fee|charge|work)|dismantl(?:e|ing|ed)|dismount|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|repair(?:ing|ed)?|testing\s+and\s+commissioning|commissioning|programming|training|delivery\s+(?:fee|service|charge)|freight|courier|transport\s+fee)\b/i;
-  const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart(?!\s*m)|stand(?!\s+ii)|mount)\b/i;
+  const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart|trolley|stand|mount)\b/i;
+  const CORE_EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub)\b/i;
   const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp)\b/i;
   const PROHIBITED_TITLE=/^(?:PURCHASE\s+ORDER|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+LIST|QUOTATION|QUOTE|PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|SERVICE\s+REPORT|SERVICE\s+INVOICE|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT)\b/i;
 
@@ -39,6 +40,7 @@
     if(!/[A-Za-z]/.test(s)||!/\d/.test(s))return false;
     if(/^(?:SGD|GST|UEN|S\/N|SN|QTY|DATE|PAGE|INV|INVOICE)$/i.test(s))return false;
     if(/^\d+(?:\.\d+)?$/.test(s))return false;
+    if(/^\d+(?:\.\d+)?(?:GHZ|MHZ|KHZ|HZ)$/i.test(s))return false;
     if(/^[0-9OILSB$.,]+$/i.test(s)&&/[.,]\d{2}$/.test(s))return false;
     return true;
   }
@@ -59,9 +61,14 @@
     if(/^(?:supply|provide)\s*(?:&|and)?\s*install\b/i.test(s)&&EQUIPMENT.test(s)&&!/\b(?:labou?r|cabling|wiring|testing|commissioning|training)\b/i.test(s))return false;
     return true;
   }
+  function isAccessoryOnly(text=''){
+    const s=clean(text);
+    if(!ACCESSORY.test(s))return false;
+    return !CORE_EQUIPMENT.test(s);
+  }
   function isPhysical(text=''){
     const s=clean(text);
-    return !!s&&EQUIPMENT.test(s)&&!isMetadata(s)&&!isPureService(s);
+    return !!s&&EQUIPMENT.test(s)&&!isMetadata(s)&&!isPureService(s)&&!isAccessoryOnly(s);
   }
   function pageAuthority(text=''){
     const ls=linesOf(text).slice(0,120);
@@ -72,7 +79,7 @@
   }
   function splitPages(text=''){
     const raw=String(text||'');
-    const chunks=raw.split(/\n\s*={3,}\s*PAGE\s+\d+\s*={3,}\s*\n/i).filter(x=>clean(x));
+    const chunks=raw.split(/(?:\f|\n\s*<PARSED\s+TEXT\s+FOR\s+PAGE:\s*\d+\s*\/\s*\d+>\s*\n|\n\s*={3,}\s*PAGE\s+\d+\s*={3,}\s*\n)/i).filter(x=>clean(x));
     return chunks.length?chunks:[raw];
   }
   function invoiceText(text=''){
@@ -143,9 +150,9 @@
   }
   function sequentialItemBlocks(lines=[]){
     const out=[];let cur=null;
-    const close=()=>{if(cur&&cur.lines.some(x=>isPhysical(x)&&!ACCESSORY.test(x))){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
+    const close=()=>{if(cur&&cur.lines.some(x=>isPhysical(x)&&!isAccessoryOnly(x))){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
     for(let i=0;i<lines.length;i++){
-      const line=lines[i],physical=isPhysical(line)&&!ACCESSORY.test(line),service=isPureService(line),accessory=ACCESSORY.test(line);
+      const line=lines[i],physical=isPhysical(line)&&!ACCESSORY.test(line),service=isPureService(line),accessory=isAccessoryOnly(line);
       const totals=/\b(?:SUBTOTAL|SUB\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+LOCAL|PAYMENT\s+ADVICE)\b/i.test(line);
       if(PROHIBITED_TITLE.test(line)||totals){close();continue;}
       if(service||accessory){if(cur&&cur.seenEconomics)close();continue;}
@@ -153,7 +160,10 @@
       if(physical){
         if(cur){
           const newOrdinal=ord!==null&&cur.ordinal!==null&&ord!==cur.ordinal;
-          if(cur.seenEconomics||newOrdinal){close();}
+          const lineIds=(line.match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
+          const curIds=(cur.lines.join(' ').match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
+          const independentIdentityBoundary=!cur.seenEconomics&&lineIds.length>0&&curIds.length>0;
+          if(cur.seenEconomics||newOrdinal||independentIdentityBoundary){close();}
         }
         if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
       }
@@ -177,12 +187,12 @@
     const candidates=[...sequentialItemBlocks(lines)];
     for(let i=0;i<anchors.length;i++)candidates.push(blockFromAnchor(lines,anchors[i],anchors[i-1],anchors[i+1]));
     for(const b of numberedBlocks(lines)){
-      if(b.lines.some(x=>isPhysical(x)&&!ACCESSORY.test(x))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
+      if(b.lines.some(x=>isPhysical(x)&&!isAccessoryOnly(x))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
     }
     // Add description-anchored candidates so table layouts with economics on the next line
     // are not dependent on a money token being on the description line.
     const physicalIdx=[];
-    for(let i=0;i<lines.length;i++)if(isPhysical(lines[i])&&!ACCESSORY.test(lines[i]))physicalIdx.push(i);
+    for(let i=0;i<lines.length;i++)if(isPhysical(lines[i])&&!isAccessoryOnly(lines[i]))physicalIdx.push(i);
     for(let p=0;p<physicalIdx.length;p++){
       const idx=physicalIdx[p],next=physicalIdx[p+1]??lines.length;
       let lo=Math.max(0,idx-1),hi=idx;
@@ -199,9 +209,9 @@
     const merged=[];
     for(const b of candidates){
       const text=b.lines.join(' ');
-      const physicalLines=b.lines.filter(x=>isPhysical(x)&&!ACCESSORY.test(x));
+      const physicalLines=b.lines.filter(x=>isPhysical(x)&&!isAccessoryOnly(x));
       if(!physicalLines.length||isPureService(physicalLines.join(' ')))continue;
-      if(ACCESSORY.test(physicalLines.join(' ')))continue;
+      if(isAccessoryOnly(physicalLines.join(' ')))continue;
       const overlap=merged.find(x=>Math.max(x.start,b.start)<=Math.min(x.end,b.end));
       if(overlap){
         // Prefer the sequential block because it respects item/economics boundaries.
@@ -213,6 +223,26 @@
     return merged.map(normalizeBlock);
   }
   function explicitIdentity(blockText=''){
+    const ls=linesOf(blockText),votes=[],eligible=[];let serialMode=false;
+    for(const line of ls){
+      if(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?/i.test(line)){serialMode=true;continue;}
+      if(serialMode){
+        if(moneyTokens(line).length||isPhysical(line)||/\b(?:WARRANTY|IN\s+STOCK)\b/i.test(line))serialMode=false;
+        else continue;
+      }
+      eligible.push(line);
+      const m=line.match(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*(.+)$/i);
+      if(m){
+        const toks=(m[1].match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
+        if(toks.length)votes.push({value:toks[toks.length-1],line,rank:100});
+      }
+    }
+    for(const line of eligible){
+      const textTokens=(line.match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
+      for(const t of textTokens){
+        let rank=10;
+        if(EQUIPMENT.test(line))rank+=30;
+        if(new RegExp('^\\s*'+t.replace(/[.*+?^$()|[\]{}\\]/g,'\\  function explicitIdentity(blockText=''){
     const ls=linesOf(blockText),votes=[];
     for(const line of ls){
       const m=line.match(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*(.+)$/i);
@@ -230,6 +260,13 @@
       if(/^[A-Z0-9+._\/-]+\b/i.test(line))rank+=10;
       if(/\b(?:MODEL|SKU|PRODUCT\s+NO)\b/i.test(line))rank+=40;
       votes.push({value:t,line,rank});
+    }
+    votes.sort((a,b)=>b.rank-a.rank);
+    return votes[0]||{value:'',line:'',rank:0};
+  }')+'\\b','i').test(line))rank+=14;
+        if(/\b(?:MODEL|SKU|PRODUCT\s+NO)\b/i.test(line))rank+=40;
+        votes.push({value:t,line,rank});
+      }
     }
     votes.sort((a,b)=>b.rank-a.rank);
     return votes[0]||{value:'',line:'',rank:0};
@@ -348,7 +385,7 @@
     if(uniqueBlockIds.size!==rows.length)failures.push({issue:'source-block-reused'});
     const sourceBlockCount=blocks.length,outputRowCount=rows.length;
     const sourceInvoiceText=invoiceText(raw);
-    const physicalCueCount=linesOf(sourceInvoiceText).filter(x=>isPhysical(x)&&!ACCESSORY.test(x)).length;
+    const physicalCueCount=linesOf(sourceInvoiceText).filter(x=>isPhysical(x)&&!isAccessoryOnly(x)).length;
     if(sourceBlockCount===0&&physicalCueCount>0)failures.push({issue:'no-source-blocks-detected',physicalCueCount});
     if(sourceBlockCount!==outputRowCount)failures.push({issue:'row-count-mismatch',sourceBlockCount,outputRowCount});
     const printedIdentityCount=blocks.filter(b=>printedIdentityInBlock(b.text)).length;
