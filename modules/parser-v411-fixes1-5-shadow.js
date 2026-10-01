@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r1';
+  const VERSION='4.1.1-shadow-fixes1-5-r2';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const key=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
@@ -392,9 +392,96 @@
     if(!next.item_name){next.item_name=description(block.text);next.description=next.item_name;}
     return next;
   }
+  function columnarTableRecovery(raw=''){
+    const text=invoiceText(raw),ls=linesOf(text);
+    const firstMoney=ls.findIndex(line=>/^\s*(?:SGD\s*)?\d+(?:,\d{3})*\.\d{2}\s*$/i.test(line));
+    if(firstMoney<0)return null;
+    const bodyEnd=firstMoney;
+    const rowStarts=[];
+    for(let i=0;i<bodyEnd;i++){
+      const line=ls[i];
+      if((isPhysical(line)||isPureService(line))&&!isMetadata(line))rowStarts.push(i);
+    }
+    if(rowStarts.length<2)return null;
+    const firstRow=rowStarts[0];
+    const codeCandidates=[];
+    for(let i=Math.max(0,firstRow-18);i<firstRow;i++){
+      const line=clean(ls[i]);
+      const normalized=normalizeSkuCandidate(line);
+      if(!normalized)continue;
+      if(/\b(?:WARRANTY|WT\s+FOR|YEAR|YR)\b/i.test(line))continue;
+      if(isMetadata(line))continue;
+      codeCandidates.push({lineIndex:i,raw:line,sku:normalized,service:/INSTALL|LABOU?R|SERVICE|DELIVERY|FREIGHT|RELOCAT|DISMANT|DISMOUNT|COMMISSION/i.test(normalized)});
+    }
+    if(codeCandidates.length<2)return null;
+
+    const starts=[];
+    for(let i=0;i<bodyEnd;i++){
+      const line=ls[i];
+      if(i<firstRow)continue;
+      if(isPhysical(line)||isPureService(line)){
+        if(starts.length&&i-starts[starts.length-1]<2)continue;
+        starts.push(i);
+      }
+    }
+    if(starts.length<2)return null;
+
+    const priceValues=[];
+    for(let i=firstMoney;i<ls.length;i++){
+      const s=clean(ls[i]);
+      if(/\b(?:SUBTOTAL|SUB\s+TOTAL|GST|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL)\b/i.test(s))break;
+      const m=s.match(/^(?:SGD\s*)?(\d+(?:,\d{3})*\.\d{2})$/i);
+      if(m)priceValues.push(Number(m[1].replace(/,/g,'')));
+    }
+    const pricedCodes=codeCandidates;
+    if(priceValues.length<pricedCodes.length)return null;
+
+    const unit=priceValues.slice(0,pricedCodes.length);
+    let amount=null;
+    const tail=priceValues.slice(pricedCodes.length);
+    if(tail.length===pricedCodes.length)amount=tail.slice();
+    else if(tail.length===pricedCodes.length-1&&tail.every((v,i)=>Math.abs(v-unit[i+1])<0.001))amount=unit.slice();
+    else {
+      const same=unit.every(v=>Number.isFinite(v));
+      if(same)amount=unit.slice();
+    }
+    if(!amount)return null;
+
+    const rowSpans=[];
+    for(let i=0;i<starts.length;i++){
+      const start=starts[i],end=(starts[i+1]??firstMoney)-1;
+      rowSpans.push({start,end,lines:ls.slice(start,end+1)});
+    }
+
+    const n=Math.min(pricedCodes.length,rowSpans.length,unit.length,amount.length);
+    if(n<2)return null;
+    const blocks=[],rows=[];
+    for(let i=0;i<n;i++){
+      const code=pricedCodes[i],span=rowSpans[i],descText=span.lines.join('\n');
+      const service=code.service||isPureService(descText);
+      const accessory=isAccessoryOnly(descText);
+      if(service||accessory)continue;
+      const syntheticLines=[code.sku,...span.lines,'1 '+unit[i].toFixed(2)+' '+amount[i].toFixed(2)];
+      const block=normalizeBlock({start:span.start,end:span.end,lines:syntheticLines,columnar:true,columnarEvidence:{printedProductNo:code.raw,unit_price:unit[i],amount:amount[i]}},blocks.length);
+      let row=parseBlock(block);
+      row.sku=code.sku;
+      row.model=code.sku;
+      row.quantity=1;
+      row.unit_price=unit[i];
+      row.amount=amount[i];
+      row.evidence={...(row.evidence||{}),identity:code.raw,economics:'columnar OCR sequence: '+unit[i].toFixed(2)+' / '+amount[i].toFixed(2)};
+      row.v411ColumnarRecovery=true;
+      blocks.push(block);rows.push(row);
+    }
+    if(rows.length<2)return null;
+    return {blocks,rows,confidence:'structural-column-sequence'};
+  }
+
   function run(raw='',opts={}){
-    const blocks=sourceBlocks(raw);
-    const rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
+    let blocks=sourceBlocks(raw);
+    let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
+    const columnar=columnarTableRecovery(raw);
+    if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
     const failures=[];
     for(let i=0;i<blocks.length;i++){
       const issues=sourceCompleteness(blocks[i],rows[i]);
@@ -406,7 +493,14 @@
     const sourceInvoiceText=invoiceText(raw);
     const schema={quantity:/\bQUANTITY\b|\bQTY\b/i.test(sourceInvoiceText),unitPrice:/\bUNIT\s+PRICE\b/i.test(sourceInvoiceText),amount:/\bAMOUNT\b/i.test(sourceInvoiceText)};
     const physicalCueCount=linesOf(sourceInvoiceText).filter(x=>isPhysical(x)&&!isAccessoryOnly(x)).length;
-    if(sourceBlockCount===0&&physicalCueCount>0)failures.push({issue:'no-source-blocks-detected',physicalCueCount});
+    const usableSourceChars=clean(raw).replace(/\s+/g,'').length;
+    const authority=pageAuthority(sourceInvoiceText);
+    if(sourceBlockCount===0){
+      if(usableSourceChars<220)failures.push({issue:'insufficient-source-text',usableSourceChars});
+      else if(authority==='reject')failures.push({issue:'prohibited-document-type'});
+      else if(authority==='invoice')failures.push({issue:'invoice-has-no-inventory-equipment'});
+      else failures.push({issue:'no-source-blocks-detected',physicalCueCount,usableSourceChars});
+    }
     if(sourceBlockCount!==outputRowCount)failures.push({issue:'row-count-mismatch',sourceBlockCount,outputRowCount});
     for(const row of rows){
       if(schema.quantity&&row.quantity===null)failures.push({blockId:row.sourceBlockId,issue:'quantity-unresolved'});
