@@ -188,13 +188,25 @@
     for(const line of ls){
       const money=moneyTokens(line);
       if(!money.length)continue;
+      const ordinalMatch=line.match(/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.)\-:]?\s+/);
+      const ordinal=ordinalMatch?Number(ordinalMatch[1]):null;
       const nums=numberTokens(line);
-      const qCandidates=nums.filter(x=>x.value>0&&x.value<=999&&!money.some(m=>Math.abs(m.index-x.index)<2));
-      const q=qCandidates.length?qCandidates[0].value:null;
+      let qCandidates=nums.filter(x=>x.value>0&&x.value<=999&&!money.some(m=>Math.abs(m.index-x.index)<3));
+      if(ordinal!==null){
+        const ordinalEnd=(ordinalMatch?.[0]||'').length;
+        qCandidates=qCandidates.filter(x=>!(x.value===ordinal&&x.index<ordinalEnd));
+      }
       let unit=null,amount=null;
       if(money.length>=2){unit=money[money.length-2].value;amount=money[money.length-1].value;}
       else if(money.length===1){amount=money[0].value;}
-      const calc=(q&&unit!==null)?Math.abs(q*unit-(amount??q*unit)):Infinity;
+      let q=null;
+      if(unit!==null&&amount!==null){
+        const derived=amount/unit;
+        const exact=qCandidates.find(x=>Math.abs(x.value-derived)<=0.001);
+        if(exact)q=exact.value;
+      }
+      if(q===null&&qCandidates.length)q=qCandidates[qCandidates.length-1].value;
+      const calc=(q&&unit!==null&&amount!==null)?Math.abs(q*unit-amount):Infinity;
       const score=(money.length>=2?10:4)+(q?4:0)+(calc<=Math.max(.1,(amount||1)*.015)?8:0)+economicLineScore(line);
       if(!best||score>best.score)best={quantity:q,unit_price:unit,amount,sourceLine:line,score};
     }
@@ -203,13 +215,20 @@
   function description(blockText=''){
     const ls=linesOf(blockText);
     const ranked=[];
-    for(const line of ls){
-      if(isMetadata(line)||moneyTokens(line).length>=2||/^\s*(?:MODEL|SKU|PRODUCT\s+NO|S\/N|SN)\b/i.test(line))continue;
+    for(const original of ls){
+      if(isMetadata(original)||/^\s*(?:MODEL|SKU|PRODUCT\s+NO|S\/N|SN)\b/i.test(original))continue;
+      let line=original
+        .replace(/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/,'')
+        .replace(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*[A-Z0-9][A-Z0-9+._\/-]{2,41}/ig,' ')
+        .replace(/(?:SGD\s*)?\d{1,3}(?:,\d{3})*\.\d{2}/g,' ')
+        .replace(/\b\d+(?:\.\d{1,2})?\b\s*$/g,' ')
+        .replace(/\s+/g,' ').trim();
+      if(!line||isMetadata(line))continue;
       let score=0;if(EQUIPMENT.test(line))score+=10;if(isPureService(line))score-=12;
       score+=Math.min(8,line.split(/\s+/).length/2);
       if(score>0)ranked.push({line,score});
     }
-    ranked.sort((a,b)=>b.score-a.score);
+    ranked.sort((a,b)=>b.score-a.score||b.line.length-a.line.length);
     return ranked[0]?.line||'';
   }
   function serials(blockText=''){
@@ -298,7 +317,10 @@
     if(r.rows.length!==2)f.push('service row filtering / row recovery');
     if(!r.rows.some(x=>x.sku==='CQ12T'))f.push('CQ12T');
     if(!r.rows.some(x=>x.sku==='ZX1I-90'))f.push('ZX1I-90');
+    if(r.rows.find(x=>x.sku==='ZX1I-90')?.quantity!==6)f.push('numbered-row quantity');
+    if(r.rows.some(x=>!x.item_name))f.push('description recovery');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
+    if(!r.ready||r.failures.length)f.push('shadow readiness gate');
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
