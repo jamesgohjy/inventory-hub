@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r3';
+  const VERSION='4.1.1-shadow-fixes1-5-r4';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -403,13 +403,8 @@
     const firstMoney=ls.findIndex(line=>/^\s*(?:SGD\s*)?\d+(?:,\d{3})*\.\d{2}\s*$/i.test(line));
     if(firstMoney<0)return null;
     const bodyEnd=firstMoney;
-    const rowStarts=[];
-    for(let i=0;i<bodyEnd;i++){
-      const line=ls[i];
-      if((isPhysical(line)||isPureService(line))&&!isMetadata(line))rowStarts.push(i);
-    }
-    if(rowStarts.length<2)return null;
-    const firstRow=rowStarts[0];
+    const firstRow=ls.findIndex((line,i)=>i<bodyEnd&&isPhysical(line)&&!isMetadata(line));
+    if(firstRow<0)return null;
     const codeCandidates=[];
     for(let i=Math.max(0,firstRow-18);i<firstRow;i++){
       const line=clean(ls[i]);
