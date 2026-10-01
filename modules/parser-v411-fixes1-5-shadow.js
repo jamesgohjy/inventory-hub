@@ -137,13 +137,47 @@
     const text=b.lines.join('\n');
     return {...b,id:'B'+String(index+1).padStart(2,'0'),text};
   }
+  function rowOrdinal(line=''){
+    const m=clean(line).match(/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.)\-:]?\s+/);
+    return m?Number(m[1]):null;
+  }
+  function sequentialItemBlocks(lines=[]){
+    const out=[];let cur=null;
+    const close=()=>{if(cur&&cur.lines.some(x=>isPhysical(x)&&!ACCESSORY.test(x))){cur.end=cur.start+cur.lines.length-1;out.push(cur);}cur=null;};
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i],physical=isPhysical(line)&&!ACCESSORY.test(line),service=isPureService(line),accessory=ACCESSORY.test(line);
+      const totals=/\b(?:SUBTOTAL|SUB\s+TOTAL|AMOUNT\s+DUE|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+LOCAL|PAYMENT\s+ADVICE)\b/i.test(line);
+      if(PROHIBITED_TITLE.test(line)||totals){close();continue;}
+      if(service||accessory){if(cur&&cur.seenEconomics)close();continue;}
+      const ord=rowOrdinal(line);
+      if(physical){
+        if(cur){
+          const newOrdinal=ord!==null&&cur.ordinal!==null&&ord!==cur.ordinal;
+          if(cur.seenEconomics||newOrdinal){close();}
+        }
+        if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
+      }
+      if(!cur)continue;
+      // A fresh numbered row is always a hard boundary, even when the previous OCR lost economics.
+      if(ord!==null&&cur.lines.length&&cur.ordinal!==null&&ord!==cur.ordinal){
+        close();
+        if(physical)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true};
+        else continue;
+      }
+      cur.lines.push(line);
+      if(amountAnchors([line]).length)cur.seenEconomics=true;
+      if(cur.lines.length>=14)close();
+    }
+    close();
+    return out;
+  }
   function sourceBlocks(raw=''){
     const text=invoiceText(raw),lines=linesOf(text);
     const anchors=amountAnchors(lines);
-    const candidates=[];
+    const candidates=[...sequentialItemBlocks(lines)];
     for(let i=0;i<anchors.length;i++)candidates.push(blockFromAnchor(lines,anchors[i],anchors[i-1],anchors[i+1]));
     for(const b of numberedBlocks(lines)){
-      if(isPhysical(b.lines.join(' '))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
+      if(b.lines.some(x=>isPhysical(x)&&!ACCESSORY.test(x))&&moneyTokens(b.lines.join(' ')).length)candidates.push(b);
     }
     // Add description-anchored candidates so table layouts with economics on the next line
     // are not dependent on a money token being on the description line.
@@ -170,8 +204,8 @@
       if(ACCESSORY.test(physicalLines.join(' ')))continue;
       const overlap=merged.find(x=>Math.max(x.start,b.start)<=Math.min(x.end,b.end));
       if(overlap){
-        const aSpan=overlap.end-overlap.start,bSpan=b.end-b.start;
-        if(bSpan>aSpan){overlap.start=b.start;overlap.end=b.end;overlap.lines=b.lines;}
+        // Prefer the sequential block because it respects item/economics boundaries.
+        if(b.sequential&&!overlap.sequential){overlap.start=b.start;overlap.end=b.end;overlap.lines=b.lines;overlap.ordinal=b.ordinal;overlap.sequential=true;}
         continue;
       }
       merged.push({...b});
