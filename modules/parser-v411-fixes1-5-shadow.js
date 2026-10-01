@@ -488,13 +488,19 @@
   }
   function fieldConfidence(row={}){
     const prov=row.provenance||{},arith=row.validation?.arithmetic||{status:'unverified'};
-    const scoreObj=(field,score,reason)=>({field,score:Number(Math.max(0,Math.min(1,score)).toFixed(3)),band:confidenceBand(score),reason});
+    const scoreObj=(field,score,reason)=>({
+      field,
+      score:Number(Math.max(0,Math.min(1,score)).toFixed(3)),
+      band:confidenceBand(score),
+      reason
+    });
+    const escapeRe=v=>String(v).replace(/[.*+?^$()|[\]{}\\]/g,'\\$&');
     const identityScore=(p,value)=>{
       if(!value)return scoreObj(p?.field||'identity',0,'not-present');
       const text=clean(p?.text||'');
       if(!p?.evidenceBound)return scoreObj(p?.field||'identity',0.45,'value-without-bound-evidence');
       if(/\b(?:MODEL|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b/i.test(text))return scoreObj(p.field,0.99,'explicit-labelled-identity');
-      if(new RegExp('^\\s*'+String(value).replace(/[.*+?^$()|[\]{}\\]/g,'\\  function buildFieldProvenance(raw='',row={}){')+'\\b','i').test(text))return scoreObj(p.field,0.96,'row-leading-identity');
+      if(new RegExp('^\\s*'+escapeRe(value)+'\\b','i').test(text))return scoreObj(p.field,0.96,'row-leading-identity');
       return scoreObj(p.field,0.86,'row-local-identity');
     };
     const econScore=(field,value)=>{
