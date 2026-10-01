@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r17';
+  const VERSION='4.1.1-shadow-fixes1-5-r18-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -102,7 +102,7 @@
   }
   function splitPages(text=''){
     const raw=String(text||'');
-    const chunks=raw.split(/(?:\f|\n\s*<PARSED\s+TEXT\s+FOR\s+PAGE:\s*\d+\s*\/\s*\d+>\s*\n|\n\s*={3,}\s*PAGE\s+\d+\s*={3,}\s*\n)/i).filter(x=>clean(x));
+    const chunks=raw.split(/(?:\f|\n\s*<PARSED\s+TEXT\s+FOR\s+PAGE:\s*\d+\s*\/\s*\d+>\s*\n|\n\s*={3,}\s*PAGE\s+\d+\s*={3,}\s*\n|\n\s*={3,}\s*page[-_ ]?\d+(?:\.txt)?\s*={3,}\s*\n)/i).filter(x=>clean(x));
     return chunks.length?chunks:[raw];
   }
   function invoiceText(text=''){
@@ -119,7 +119,9 @@
         if(continuation)accepted.push(page);
       }
     }
-    return accepted.length?accepted.join('\n'):text;
+    if(accepted.length)return accepted.join('\n');
+    if(pages.length>1)return '';
+    return pageAuthority(text)==='invoice'?text:'';
   }
   function economicLineScore(line=''){
     const money=moneyTokens(line),nums=numberTokens(line);
