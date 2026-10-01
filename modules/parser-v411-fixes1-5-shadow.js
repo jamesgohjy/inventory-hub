@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r5';
+  const VERSION='4.1.1-shadow-fixes1-10-r6';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -455,8 +455,11 @@
     return Math.abs(a-b)<=tol;
   }
   function rowArithmetic(row={}){
+    if(row.quantity===null||row.quantity===undefined||row.unit_price===null||row.unit_price===undefined||row.amount===null||row.amount===undefined){
+      return {status:'unverified',reason:'missing-economics'};
+    }
     const q=Number(row.quantity),u=Number(row.unit_price),a=Number(row.amount);
-    if(!Number.isFinite(q)||!Number.isFinite(u)||!Number.isFinite(a))return {status:'unverified',reason:'missing-economics'};
+    if(!Number.isFinite(q)||!Number.isFinite(u)||!Number.isFinite(a))return {status:'unverified',reason:'invalid-economics'};
     const expected=q*u,ok=nearMoney(expected,a,0.01);
     return {status:ok?'pass':'fail',expected,actual:a,delta:a-expected,tolerance:Math.max(0.02,Math.abs(a)*0.01)};
   }
