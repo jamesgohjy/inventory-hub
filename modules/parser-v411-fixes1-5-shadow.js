@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r19-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-5-r20-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -593,7 +593,10 @@
     const out=[];
     for(const text of texts){
       const vBlocks=sourceBlocks(String(text||''));
-      const vRows=vBlocks.map(parseBlock);
+      const vRows=vBlocks.map(parseBlock).filter(v=>{
+        const physicalLines=linesOf(v.sourceText||'').filter(x=>isPhysical(x));
+        return physicalLines.length<=1;
+      });
       for(const row of rows){
         if(!row.sku)continue;
         const matches=vRows
