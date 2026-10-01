@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r5';
+  const VERSION='4.1.1-shadow-fixes1-5-r6';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -203,9 +203,10 @@
       if(physical){
         if(cur){
           const newOrdinal=ord!==null&&cur.ordinal!==null&&ord!==cur.ordinal;
+          const numberedAfterUnnumbered=ord!==null&&cur.ordinal===null&&cur.lines.some(x=>/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER))\b\s*[:#-]?/i.test(x));
           const newSku=leadingSku(line),curSku=leadingSku(cur.lines[0]||'');
           const identityBoundary=!cur.seenEconomics&&!!newSku&&!!curSku&&key(newSku)!==key(curSku);
-          if(cur.seenEconomics||newOrdinal||identityBoundary)close();
+          if(cur.seenEconomics||newOrdinal||numberedAfterUnnumbered||identityBoundary)close();
         }
         if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true,modelPriced};
       }
