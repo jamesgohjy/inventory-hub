@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r17';
+  const VERSION='4.1.1-shadow-fixes1-10-r1';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -434,6 +434,47 @@
     }
     return [...new Set(out)];
   }
+  function pageForEvidence(raw='',evidence=''){
+    const needle=clean(evidence);
+    if(!needle)return null;
+    const pages=splitPages(raw);
+    for(let i=0;i<pages.length;i++){
+      const hay=clean(pages[i]);
+      if(hay.includes(needle))return i+1;
+      const short=needle.slice(0,Math.min(80,needle.length));
+      if(short.length>=12&&hay.includes(short))return i+1;
+    }
+    return null;
+  }
+  function serialEvidenceLine(blockText=''){
+    return linesOf(blockText).find(x=>/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?/i.test(x))||'';
+  }
+  function buildFieldProvenance(raw='',row={}){
+    const identityText=clean(row.evidence?.identity||'');
+    const economicsText=clean(row.evidence?.economics||'');
+    const descriptionText=clean(row.item_name||'');
+    const serialText=serialEvidenceLine(row.sourceText||'');
+    const prov=(field,value,text,method)=>({
+      field,
+      value:value??null,
+      sourceBlockId:row.sourceBlockId||null,
+      sourceRange:Array.isArray(row.sourceRange)?[...row.sourceRange]:null,
+      page:pageForEvidence(raw,text||row.sourceText||''),
+      text:clean(text||''),
+      method,
+      evidenceBound:!!clean(text||'')
+    });
+    return {
+      sku:prov('sku',row.sku,identityText,'row-local-identity'),
+      model:prov('model',row.model,identityText,'row-local-identity'),
+      item_name:prov('item_name',row.item_name,descriptionText,'row-local-description'),
+      quantity:prov('quantity',row.quantity,economicsText,'row-local-economics'),
+      unit_price:prov('unit_price',row.unit_price,economicsText,'row-local-economics'),
+      amount:prov('amount',row.amount,economicsText,'row-local-economics'),
+      serials:prov('serials',row.serials,serialText,'row-local-serial')
+    };
+  }
+
   function parseBlock(block){
     const identity=explicitIdentity(block.text),econ=economics(block.text),name=description(block.text);
     return {
@@ -573,6 +614,7 @@
   function run(raw='',opts={}){
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
+    rows=rows.map(r=>({...r,provenance:buildFieldProvenance(raw,r)}));
     const columnar=columnarTableRecovery(raw);
     if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
     const failures=[];
@@ -630,11 +672,12 @@
     if(!r.rows.some(x=>x.sku==='ZX1I-90'))f.push('ZX1I-90');
     if(r.rows.find(x=>x.sku==='ZX1I-90')?.quantity!==6)f.push('numbered-row quantity');
     if(r.rows.some(x=>!x.item_name))f.push('description recovery');
+    if(r.rows.some(x=>!x.provenance||!x.provenance.item_name?.evidenceBound||!x.provenance.quantity?.evidenceBound))f.push('field provenance');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
     if(!r.ready||r.failures.length)f.push('shadow readiness gate');
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
