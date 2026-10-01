@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r14';
+  const VERSION='4.1.1-shadow-fixes1-5-r15';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -64,8 +64,9 @@
   }
   function isPureService(text=''){
     const s=ocrLex(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
+    const serviceScan=s.replace(/[_\r\n]+/g,' ');
     if(/^SERVICE\s+CENT(?:RE|ER)\b/i.test(lead))return false;
-    if(/\b(?:HI\s*-?\s*CARE|CARE\s+PACK|SUPPORT\s+(?:PLAN|CONTRACT)|MAINTENANCE\s+CONTRACT|SUBSCRIPTION)\b/i.test(s))return true;
+    if(/\b(?:HI\s*-?\s*CARE|CARE\s+PACK|SUPPORT\s+(?:PLAN|CONTRACT)|MAINTENANCE\s+CONTRACT|SUBSCRIPTION)\b/i.test(serviceScan))return true;
     if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
@@ -181,6 +182,7 @@
     const raw=clean(v).replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9+._\/$-]+$/g,'');
     if(!raw)return '';
     const repaired=raw.replace(/\$/g,'S');
+    if(/^\d+(?:\.\d+)?-?(?:INCH|INCHES|IN|CM|MM)$/i.test(repaired))return '';
     return plausibleSku(repaired)?repaired:'';
   }
   function leadingSku(line=''){
@@ -350,7 +352,7 @@
       }
     }
     votes.sort((a,b)=>b.rank-a.rank);
-    return votes[0]||{value:'',line:'',rank:0};
+    return (votes[0]&&votes[0].rank>0)?votes[0]:{value:'',line:'',rank:0};
   }
   function economics(blockText=''){
     const ls=linesOf(blockText);
