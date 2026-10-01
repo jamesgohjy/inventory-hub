@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r7';
+  const VERSION='4.1.1-shadow-fixes1-10-r8-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -102,7 +102,7 @@
   }
   function splitPages(text=''){
     const raw=String(text||'');
-    const chunks=raw.split(/(?:\f|\n\s*<PARSED\s+TEXT\s+FOR\s+PAGE:\s*\d+\s*\/\s*\d+>\s*\n|\n\s*={3,}\s*PAGE\s+\d+\s*={3,}\s*\n)/i).filter(x=>clean(x));
+    const chunks=raw.split(/(?:\f|\n\s*<PARSED\s+TEXT\s+FOR\s+PAGE:\s*\d+\s*\/\s*\d+>\s*\n|\n\s*={3,}\s*PAGE\s+\d+\s*={3,}\s*\n|\n\s*={3,}\s*page[-_ ]?\d+(?:\.txt)?\s*={3,}\s*\n)/i).filter(x=>clean(x));
     return chunks.length?chunks:[raw];
   }
   function invoiceText(text=''){
@@ -119,7 +119,9 @@
         if(continuation)accepted.push(page);
       }
     }
-    return accepted.length?accepted.join('\n'):text;
+    if(accepted.length)return accepted.join('\n');
+    if(pages.length>1)return '';
+    return pageAuthority(text)==='invoice'?text:'';
   }
   function economicLineScore(line=''){
     const money=moneyTokens(line),nums=numberTokens(line);
@@ -352,10 +354,20 @@
       const m=line.match(/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|SKU|PRODUCT\s*(?:NO\.?|NUMBER)|PART\s*(?:NO\.?|NUMBER))\b\s*(?::|#|-)?\s*(.+)$/i);
       if(m){
         const toks=(m[1].match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
-        if(toks.length)votes.push({value:toks[toks.length-1],line,rank:100});
-        else {
-          const direct=clean(m[1]).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g,'');
-          if(/^[A-Za-z][A-Za-z-]{2,31}$/.test(direct)&&!/^(?:MODEL|UNKNOWN|NONE|NIL|NA)$/i.test(direct))votes.push({value:direct,line,rank:96});
+        if(toks.length){
+          const ranked=toks.map((t,idx)=>{
+            let score=100;
+            if(/[\/_-]/.test(t))score+=18;
+            if((t.match(/\d/g)||[]).length>=2)score+=8;
+            if(/[A-Z]{2,}/i.test(t)&&/\d/.test(t))score+=4;
+            score-=idx*0.5;
+            return {t,score};
+          }).sort((a,b)=>b.score-a.score);
+          votes.push({value:ranked[0].t,line,rank:ranked[0].score});
+        } else {
+          const words=(m[1].match(/[A-Za-z][A-Za-z-]{2,31}/g)||[])
+            .filter(x=>!/^(?:MODEL|UNKNOWN|NONE|NIL|NA)$/i.test(x));
+          if(words.length)votes.push({value:words[0],line,rank:96});
         }
       }
     }
@@ -803,6 +815,44 @@
     return suggestions;
   }
 
+  function descSimilarity(a='',b=''){
+    const stop=new Set(['with','from','system','support','supply','install','the','and','for']);
+    const toks=v=>new Set(clean(v).toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>3&&!stop.has(x)));
+    const A=toks(a),B=toks(b); if(!A.size||!B.size)return 0;
+    let hit=0; for(const x of A)if(B.has(x))hit++;
+    return hit/Math.max(1,Math.min(A.size,B.size));
+  }
+  function verificationIdentityConflicts(rows=[],texts=[]){
+    const out=[];
+    for(const text of texts){
+      if(!String(text||'').trim())continue;
+      const vBlocks=sourceBlocks(String(text));
+      const vRows=vBlocks.map(parseBlock).filter(v=>{
+        const physicalLines=linesOf(v.sourceText||'').filter(x=>isPhysical(x));
+        return physicalLines.length<=1;
+      });
+      for(const row of rows){
+        if(!row.sku)continue;
+        const matches=vRows
+          .map(v=>({v,sim:descSimilarity(row.item_name,v.item_name)}))
+          .filter(x=>x.sim>=0.6&&x.v.sku);
+        for(const {v,sim} of matches){
+          if(key(v.sku)!==key(row.sku)){
+            out.push({
+              blockId:row.sourceBlockId,
+              issue:'identity-conflict-between-extractions',
+              current:row.sku,
+              alternate:v.sku,
+              similarity:Number(sim.toFixed(3))
+            });
+            break;
+          }
+        }
+      }
+    }
+    return out;
+  }
+
   function run(raw='',opts={}){
     const extraction=selectExtractionCandidate(raw,opts);
     raw=extraction.text;
@@ -850,6 +900,11 @@
     }
     const invoiceValidation=invoiceArithmetic(raw);
     if(invoiceValidation.status==='fail')failures.push({issue:'invoice-total-arithmetic-mismatch',detail:invoiceValidation});
+    const verificationTexts=[
+      ...(Array.isArray(opts.verificationTexts)?opts.verificationTexts:[]),
+      ...(Array.isArray(opts.ocrCandidates)?opts.ocrCandidates.map(x=>x?.text).filter(Boolean):[])
+    ].filter(x=>String(x||'').trim()&&String(x)!==String(raw));
+    failures.push(...verificationIdentityConflicts(rows,verificationTexts));
     const printedIdentityCount=blocks.filter(b=>printedIdentityInBlock(b.text)).length;
     const recoveredPrintedIdentityCount=blocks.filter((b,i)=>printedIdentityInBlock(b.text)&&rows[i]?.sku).length;
     const metrics={
@@ -860,7 +915,7 @@
       incompleteFieldCount:failures.filter(x=>/missing$/.test(x.issue||'')).length,
       crossRowContaminationCount:failures.filter(x=>x.issue==='cross-row-identity-contamination').length
     };
-    const reviewOnlyIssues=new Set(['quantity-unresolved','unit-price-unresolved','amount-unresolved','description-contaminated','low-field-confidence']);
+    const reviewOnlyIssues=new Set(['quantity-unresolved','unit-price-unresolved','amount-unresolved','description-contaminated','low-field-confidence','identity-conflict-between-extractions']);
     const hardFailures=failures.filter(f=>!reviewOnlyIssues.has(f.issue));
     const reviewFailures=failures.filter(f=>reviewOnlyIssues.has(f.issue));
     const disposition=hardFailures.length?'fail':(reviewFailures.length?'review':'ready');
@@ -905,6 +960,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,verificationIdentityConflicts,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
