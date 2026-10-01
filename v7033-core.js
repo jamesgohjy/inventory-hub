@@ -232,7 +232,7 @@
 
     // Explicit prohibited document titles outrank incidental invoice-like fields.
     // A genuine Invoice/Tax Invoice may legitimately contain "Delivery Order Number" or
-    // "Purchase Order Number" as a reference field; those reference forms alone are not titles.
+    // "Purchase Order Number" as a reference field; those two reference forms alone are not titles.
     const referenceOnlyNonInvoice=nonInvoiceTitles.length>0&&nonInvoiceTitles.every(x=>/^(?:DELIVERY\s+ORDER|PURCHASE\s+ORDER)\s+(?:NO|NUMBER|#)\b/i.test(x));
     if(nonInvoiceTitles.length&&!(referenceOnlyNonInvoice&&(strongTax||strongInvoice))){
       return {allowed:false,disposition:'reject',type:'non-invoice',reason:'Explicit non-invoice document title; page is excluded before line-item extraction.',reviewRequired:false,score:structureScore,evidence};
@@ -363,44 +363,162 @@
     }
     return out.sort((a,b)=>b.score-a.score||a.index-b.index);
   }
-  function resolveInvoiceIdentity(row={},raw=''){
-    const current=clean(row.sku||'');
-    const currentLine=String(raw||'').split(/\r?\n/).find(l=>compact(l).includes(compact(current)))||'';
-    const currentCredible=credibleSku(current,currentLine);
-    const currentSupported=currentCredible&&String(raw||'').toUpperCase().includes(current.toUpperCase());
-    const localEvidence=clean(row.v703315StackedSourceLine||row.v703312kSourceLine||row.v7Provenance?.sku?.sourceText||row.provenance?.sku?.sourceText||row.raw_text||row.rawText||row.source_text||row.sourceText||'');
-    const localModels=modelTokens(localEvidence);
-    // A deterministic description-first stacked row owns its local identity. Do not let
-    // a later model elsewhere on the invoice overwrite the first model printed in this row.
-    if(row.v703315StackedRecovery===true&&localModels.length){
-      const model=localModels[0];
-      return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-stacked',score:10,reason:'Row-local stacked invoice evidence outranks invoice-wide model candidates.'};
+  function v411r1NumericForms(value){
+    const n=Number(value);if(!Number.isFinite(n))return [];
+    return uniq([String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})]);
+  }
+  function v411r1NumberedItemBlocks(raw=''){
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+    const starts=[];
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(/^[\[\]{}|()\s]*([1-9]\d?)\s*[|.)\-:]?\s+(.+)$/);
+      if(!m)continue;
+      const ordinal=Number(m[1]);if(!(ordinal>=1&&ordinal<=99))continue;
+      starts.push({ordinal,index:i});
     }
-    // Outside stacked recovery, one unambiguous row-local model can safely outrank an
-    // unsupported/global candidate without changing multi-model rows.
-    if(localModels.length===1&&(!currentCredible||!currentSupported)){
-      const model=localModels[0];
-      return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-explicit',score:9,reason:'Unambiguous row-local model evidence outranks unsupported invoice-wide candidates.'};
+    const blocks=[];
+    for(let i=0;i<starts.length;i++){
+      const st=starts[i],next=starts[i+1]?.index??lines.length;
+      const blockLines=lines.slice(st.index,next);
+      if(blockLines.length)blocks.push({ordinal:st.ordinal,index:st.index,lines:blockLines,text:blockLines.join('\n')});
     }
-    const candidates=productIdentityCandidates(raw,row);
-    const top=candidates[0]||null;
+    return blocks;
+  }
+  function v411r1RowLocalEvidence(row={},raw=''){
+    const direct=clean(row.v703315StackedSourceLine||row.v703312kSourceLine||row.v7Provenance?.sku?.sourceText||row.provenance?.sku?.sourceText||row.raw_text||row.rawText||row.source_text||row.sourceText||'');
+    if(direct&&direct.length>=8)return direct;
 
-    // Never let an unrelated model elsewhere on the invoice overwrite a credible model that is directly printed.
-    if(currentCredible&&currentSupported&&!looksLikeDimensionOrSpec(current,currentLine)){
-      return {brand:'',model:current,changed:false,evidenceLine:currentLine,source:'invoice-text',score:5,reason:'Current model is directly printed on the invoice.'};
-    }
-    // Global Product No/Model/SKU evidence may correct a row only when it is relevant to that row.
-    if(top&&top.relevant&&top.score>=12){
-      if(!currentCredible||!currentSupported||looksLikeDimensionOrSpec(current,currentLine)||compact(current)!==compact(top.model)){
-        return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Relevant labelled product identity evidence outranks unsupported row text.'};
+    const source=String(raw||'');
+    const lines=source.replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
+    if(!lines.length)return '';
+
+    const current=clean(row.sku||row.model||''),currentKey=compact(current);
+    const targetWords=uniq(contentWords([row.item_name,row.description].filter(Boolean).join(' '))).filter(w=>w.length>=3).slice(0,12);
+    const type=equipmentType([row.item_name,row.description].filter(Boolean).join(' '));
+    const amountForms=v411r1NumericForms(row.amount),priceForms=v411r1NumericForms(row.unit_price);
+    const q=Number(row.quantity);
+
+    const scoreRegion=(text,ordinal=null)=>{
+      const key=compact(text),n=norm(text);
+      let score=0,anchors=0;
+      const idHit=!!(currentKey&&key.includes(currentKey));
+      const amountHit=amountForms.some(x=>String(text).includes(x));
+      const priceHit=priceForms.some(x=>String(text).includes(x));
+      if(idHit){score+=40;anchors+=3;}
+      if(amountHit){score+=24;anchors+=2;}
+      if(priceHit){score+=20;anchors+=2;}
+      if(amountHit&&priceHit){score+=18;anchors+=2;}
+      if(Number.isFinite(q)&&q>0){
+        const qRe=new RegExp('(?:^|\\D)'+String(q).replace(/[.*+?^$()|[\]{}\\]/g,'\\$&')+'(?:\\.00)?(?:\\D|$)');
+        if(qRe.test(text)){score+=4;anchors++;}
+      }
+      let hits=0;
+      for(const w of targetWords)if(n.includes(w)){hits++;score+=3;}
+      if(hits>=2){score+=Math.min(10,hits*2);anchors+=2;}
+      const regionType=equipmentType(text);
+      if(type&&regionType){
+        if(type===regionType){score+=12;anchors+=2;}
+        else score-=8;
+      }
+      if(v411r1LooksLikeMetadataText(text)&&!V703312J_EQUIPMENT_RE.test(text))score-=30;
+      return {score,anchors,idHit,amountHit,priceHit,hits,type:regionType,ordinal};
+    };
+
+    // Primary path: respect invoice row boundaries. A model printed in row N must never
+    // satisfy row N+1 merely because it is nearby on the page.
+    const blocks=v411r1NumberedItemBlocks(source);
+    if(blocks.length){
+      const ranked=blocks.map(b=>({...b,...scoreRegion(b.text,b.ordinal)}))
+        .sort((a,b)=>b.score-a.score||b.anchors-a.anchors||b.hits-a.hits||a.index-b.index);
+      const top=ranked[0],runner=ranked[1];
+      if(top&&top.score>=12&&top.anchors>=2){
+        // Economics or current identity is a hard local anchor. Semantic-only ties remain
+        // unresolved rather than crossing into a neighboring item block.
+        const hardAnchor=top.idHit||(top.amountHit&&top.priceHit);
+        if(hardAnchor||!runner||top.score-runner.score>=8)return top.text;
       }
     }
-    // Strong unlabelled brand+model evidence can correct an unsupported OCR model only with row relevance.
-    if(top&&top.relevant&&top.score>=7&&(!currentCredible||!currentSupported)){
-      return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:top.source,score:top.score,reason:'Unsupported parsed model replaced by stronger relevant invoice evidence.'};
+
+    // Fallback for unnumbered invoices: use line windows, but stop at numbered row
+    // boundaries if encountered. This path is deliberately weaker than block matching.
+    const scored=[];
+    for(let i=0;i<lines.length;i++){
+      let lo=i,hi=i+1;
+      while(lo>0&&i-lo<2&&!/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/.test(lines[lo-1]))lo--;
+      while(hi<lines.length&&hi-i<4&&!/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/.test(lines[hi]))hi++;
+      const window=lines.slice(lo,hi).join('\n');
+      const s=scoreRegion(window,null);
+      if(s.score>0)scored.push({...s,text:window,index:i});
     }
-    return {brand:'',model:currentCredible?current:'',changed:false,evidenceLine:currentLine,source:currentSupported?'invoice-text':'unverified',score:currentSupported?5:0,reason:currentSupported?'Current model is printed on the invoice.':'No verified relevant model was found.'};
+    scored.sort((a,b)=>b.score-a.score||b.anchors-a.anchors||b.hits-a.hits||a.index-b.index);
+    const top=scored[0],runner=scored[1];
+    if(!top||top.score<12||top.anchors<2)return '';
+    if(runner&&top.score-runner.score<8&&!top.idHit&&!(top.amountHit&&top.priceHit))return '';
+    return top.text;
   }
+
+  function resolveInvoiceIdentity(row={},raw=''){
+    const current=clean(row.sku||row.model||'');
+    const localEvidence=v411r1RowLocalEvidence(row,raw);
+    const localIdentityEvidence=String(localEvidence||'').replace(/\s+\|\s+/g,'\n');
+    const currentCredible=credibleSku(current,localIdentityEvidence||current);
+    const currentSupported=!!(currentCredible&&localIdentityEvidence&&compact(localIdentityEvidence).includes(compact(current)));
+    // Description-first stacked recovery already isolates one item's identity line.
+    // Use the first credible mixed alphanumeric model token from that local line only;
+    // later tokens may be capsule/frequency/component identifiers (e.g. SM58, G66).
+    if(row.v703315StackedRecovery===true){
+      const stackedModels=modelTokens(localIdentityEvidence);
+      if(stackedModels.length){
+        const model=stackedModels[0];
+        return {brand:'',model,changed:compact(current)!==compact(model),evidenceLine:localEvidence,source:'row-local-stacked',score:11,reason:'First credible model token from the isolated stacked item identity line.'};
+      }
+    }
+    const explicit=(typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(localIdentityEvidence):[]).filter(x=>clean(x.model));
+    const explicitGroups=new Map();
+    for(const e of explicit){const k=compact(e.model);if(!k)continue;if(!explicitGroups.has(k))explicitGroups.set(k,{model:e.model,line:e.line,count:0});explicitGroups.get(k).count++;}
+    const explicitRanked=[...explicitGroups.values()].sort((a,b)=>b.count-a.count);
+    if(explicitRanked.length===1){
+      const model=explicitRanked[0].model;
+      if(credibleSku(model,explicitRanked[0].line||localEvidence)){
+        const localCandidates=productIdentityCandidates(localEvidence,row),same=localCandidates.find(x=>compact(x.model)===compact(model));
+        return {brand:same?.brand||'',model,changed:compact(current)!==compact(model),evidenceLine:explicitRanked[0].line||localEvidence,source:'row-local-explicit',score:12,reason:'Explicit Model/SKU evidence from the same item block.'};
+      }
+    }
+    if(explicitRanked.length>1){
+      if(currentSupported&&explicitGroups.has(compact(current)))return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-local-current',score:8,reason:'Current model is supported inside a conflicting local item block; keep it for review.'};
+      return {brand:'',model:'',changed:!!current,evidenceLine:localEvidence,source:'row-local-conflict',score:0,reason:'Conflicting model/SKU evidence exists inside the same item block.'};
+    }
+    if(currentSupported&&!looksLikeDimensionOrSpec(current,localEvidence)){
+      return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-local-current',score:8,reason:'Current model is directly supported by the same item block.'};
+    }
+    const localCandidates=productIdentityCandidates(localIdentityEvidence,row).filter(x=>x.relevant&&credibleSku(x.model,x.line));
+    if(localCandidates.length){
+      const top=localCandidates[0],runner=localCandidates[1];
+      if(!runner||top.score-runner.score>=3||compact(top.model)===compact(runner.model)){
+        return {brand:top.brand,model:top.model,changed:compact(current)!==compact(top.model),evidenceLine:top.line,source:'row-local-model',score:Math.max(7,top.score),reason:'Unambiguous model evidence recovered from the same item block.'};
+      }
+    }
+    // Preserve a syntactically credible upstream identity when the local item block
+    // contains no contradictory identity. It stays reviewable because the same block
+    // did not independently prove the SKU/model. This prevents an unrelated global
+    // model from replacing or erasing a credible row while still failing closed on
+    // explicit same-block conflicts.
+    if(currentCredible&&localEvidence&&V703312J_EQUIPMENT_RE.test(localEvidence)){
+      return {brand:'',model:current,changed:false,evidenceLine:localEvidence,source:'row-current-unconfirmed',score:4,reason:'Credible current identity preserved because the same item block contains no contradictory model; independent identity confirmation is still required.'};
+    }
+    if(currentCredible){
+      const targetWords=uniq(contentWords([row.item_name,row.description].filter(Boolean).join(' '))).slice(0,8);
+      const semanticLine=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean).find(line=>{
+        const n=norm(line),hits=targetWords.filter(w=>n.includes(w)).length;
+        return hits>=Math.min(2,targetWords.length)&&V703312J_EQUIPMENT_RE.test(line)&&!v411r1LooksLikeMetadataText(line);
+      })||'';
+      if(semanticLine){
+        return {brand:'',model:current,changed:false,evidenceLine:semanticLine,source:'row-current-unconfirmed',score:4,reason:'Credible current identity preserved only as a reviewable fallback because the row description is locally evidenced and no same-row model contradicts it.'};
+      }
+    }
+    return {brand:'',model:'',changed:!!current,evidenceLine:localEvidence,source:'unverified',score:0,reason:'No trustworthy same-item model/SKU evidence was found.'};
+  }
+
   function conciseName(row={},identity={}){
     const model=clean(identity.model||row.sku||'');
     if(!model)return clean(row.item_name||row.description||'');
@@ -464,6 +582,7 @@
       if(compact(r.sku||'')!==compact(id.model))r.v7033SkuCorrection={from:clean(r.sku||''),to:id.model,reason:id.reason,evidenceLine:id.evidenceLine,source:id.source};
       r.sku=id.model;
       if(id.score>=7)delete r.skuReviewRequired;
+      else if(id.source==='row-current-unconfirmed')r.skuReviewRequired=true;
     }else if(r.sku&&looksLikeDimensionOrSpec(r.sku,raw)){
       r.v7033RejectedSku=clean(r.sku);r.sku='';r.skuReviewRequired=true;
     }
@@ -679,6 +798,16 @@
     if(!V703312J_SERVICE_ROW_RE.test(text)&&!genericScope)return false;
     return !v703314kHasStrongEquipmentIdentity(row);
   }
+  function v411r1LooksLikeMetadataText(value=''){
+    const s=clean(value);if(!s)return true;
+    if(/\b(?:invoice\s*(?:no|number|date)?|tax\s+invoice|reference|order\s+ref|p\/?o\s*(?:no|number)?|purchase\s+order|delivery\s+order|quotation|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|gst\s*(?:reg|registration)|uen|company\s*(?:reg|registration)|telephone|tel\.?|fax|e-?mail|email|website|www\.|payment\s+due|page\s+\d+|subtotal|amount\s+due|grand\s+total)\b/i.test(s))return true;
+    if(/\b(?:pte\.?\s+ltd\.?|private\s+limited|limited|ltd\.?|llp|llc|inc\.?|corporation|corp\.?)\b/i.test(s))return true;
+    if(/\bsingapore\s*\d{5,6}\b/i.test(s)||/#\s*\d{1,3}\s*[-/]\s*\d{1,5}\b/.test(s))return true;
+    if(/\b\d{1,4}\s+[A-Za-z][A-Za-z0-9 .'-]{1,70}\s+(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|close|way|walk|place|plaza|boulevard|terrace|industrial\s+park|centre|center)\b/i.test(s))return true;
+    if(/\b(?:road|rd\.?|street|st\.?|avenue|ave\.?|drive|dr\.?|lane|ln\.?|crescent|cres\.?|industrial\s+park)\b[^\n]{0,40}\b\d{5,6}\b/i.test(s))return true;
+    if(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(s))return true;
+    return false;
+  }
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
     if(isStructuredPhysicalAssetRow(row))return false;
@@ -730,16 +859,29 @@
     return out;
   }
   function v703312kEvidenceTexts(raw='',evidenceSources=[]){
-    const list=[{source:'primary',text:String(raw||'')},...(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}))];
+    const named=(evidenceSources||[]).map((x,i)=>({source:String(x?.source||('evidence-'+(i+1))),text:String(x?.text||'')}));
+    const normalizeText=v=>String(v||'').replace(/\s+/g,' ').trim().slice(0,5000);
+    const primary={source:'primary',text:String(raw||'')},primaryText=normalizeText(primary.text);
+    const namedTexts=new Set(named.map(x=>normalizeText(x.text)).filter(Boolean));
+    // "primary" is often only the selected copy of one named OCR/native witness.
+    // Do not count that same witness twice. Distinct named sources remain independent
+    // even when their recognized text is identical.
+    const list=[...(primaryText&&!namedTexts.has(primaryText)?[primary]:[]),...named];
     const out=[],seen=new Set();
-    for(const x of list){const key=x.text.replace(/\s+/g,' ').trim().slice(0,5000);if(!key||seen.has(key))continue;seen.add(key);out.push(x);}
+    for(const x of list){
+      const normalizedText=normalizeText(x.text);
+      const sourceKey=clean(x.source||'unknown').toLowerCase();
+      const key=sourceKey+'|'+normalizedText;
+      if(!normalizedText||seen.has(key))continue;
+      seen.add(key);out.push(x);
+    }
     return out;
   }
   function v703312kBuildCandidate(description='',qty=null,unitPrice=null,amount=null,meta={}){
     const body=clean(String(description||'').replace(/^[\[\]{}()|,;:.\-]+/,'').replace(/[\[\]{}|]+/g,' ').replace(/\s+/g,' '));
     if(!body)return null;
     const candidate={sku:'',item_name:body,description:body,category:v703312jCategory(body),unit:'pcs',quantity:Number(qty),unit_price:unitPrice,amount,warranty:'',serials:'',v703312kOcrEvidence:true,v703312kSource:meta.source||'',v703312kSourceLine:meta.line||''};
-    if(!(candidate.quantity>0)||v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))return null;
+    if(!(candidate.quantity>0)||v411r1LooksLikeMetadataText(body)||v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(body))return null;
     const models=modelTokens(body);if(models.length===1)candidate.sku=models[0];
     if(unitPrice!==null&&amount!==null){
       const p=Number(unitPrice),a=Number(amount),q=Number(candidate.quantity);
@@ -778,7 +920,9 @@
     }
     if(!options.length)return null;
     options.sort((a,b)=>b.score-a.score);const best=options[0];
-    let desc=clean(line.slice(0,best.descEnd).replace(/[$/]+/g,' '));
+    // Preserve '/' because it is a legitimate model/SKU character (for example RC-208/UK,
+    // SLXD24/SM58). Only currency-marker noise is removed here.
+    let desc=clean(line.slice(0,best.descEnd).replace(/[$]+/g,' '));
     desc=desc.replace(/\s+\d{1,3}(?:\.00)?\s*(?:PCS?|EA|NOS?|UNITS?)?\s*$/i,'').trim();
     return v703312kBuildCandidate(desc,best.quantity,best.unit,best.amount,{source,line:original,qtyDerived:best.kind==='derived'});
   }
@@ -1249,6 +1393,70 @@
     return v703314zdResolveModelConsensus(r);
   }
 
+  function v411r1RecoverSourceEquipmentBlocks(text='',source=''){
+    const lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(x=>clean(String(x||'').replace(/[\u2500-\u257f]/g,' '))).filter(Boolean);
+    if(!lines.length)return [];
+    const starts=[];
+    for(let i=0;i<lines.length;i++){
+      let m=lines[i].match(/^[|[\]{}()\s]*([1-9]\d?)\s*[|.)\-:]?\s+(.+)$/);
+      if(m){starts.push({ordinal:Number(m[1]),index:i,tail:clean(m[2])});continue;}
+      if(/^[|[\]{}()\s]*([1-9]\d?)[|[\]{}()\s]*$/.test(lines[i])){
+        const n=Number((lines[i].match(/([1-9]\d?)/)||[])[1]);if(n)starts.push({ordinal:n,index:i,tail:''});
+      }
+    }
+    if(!starts.length)return [];
+    const out=[],moneyRe=/(?:SGD\s*|S?\$\s*)?(\d[\d,]*\.\d{2})/gi;
+    const generic=/^(?:RE\s*:|REFERENCE\b|(?:\([A-Z]\)\s*)?SECTION\b|TECHNICAL\s+SPECIFICATIONS\b|AV\s+EQUIPMENT\b|SCOPE\s+OF\s+WORK\b)/i;
+    const serviceOnly=/\b(?:dismantl|dismount|remove\s+old|system\s+tuning|calibration|programming|training|knowledge\s+transfer|installation\s+work|labelling|labeling|tidying|cabling)\b/i;
+    const tokenModel=v=>{
+      const explicit=typeof v703314zdExplicitModelFromText==='function'?v703314zdExplicitModelFromText(v):[];
+      const credible=explicit.map(x=>x.model).find(m=>credibleSku(m,v));if(credible)return credible;
+      return '';
+    };
+    const parseEconomics=block=>{
+      const hits=[...block.matchAll(moneyRe)].map(m=>Number(String(m[1]).replace(/,/g,''))).filter(Number.isFinite);
+      let unit=null,amount=null;if(hits.length>=2){unit=hits[hits.length-2];amount=hits[hits.length-1];}
+      let qty=null;
+      if(unit!==null&&amount!==null&&unit>0){const ratio=amount/unit,n=Math.round(ratio);if(n>=1&&n<=999&&Math.abs(ratio-n)<.015)qty=n;}
+      if(!(qty>0)){
+        const before=block.split(moneyRe)[0]||block;
+        const qs=[...before.matchAll(/(?:^|\s)(\d{1,3})(?:\.00)?(?=\s|$)/g)].map(m=>Number(m[1])).filter(n=>n>=1&&n<=999);
+        if(qs.length)qty=qs[qs.length-1];
+      }
+      return {quantity:qty,unit_price:unit,amount};
+    };
+    for(let si=0;si<starts.length;si++){
+      const st=starts[si],end=starts[si+1]?.index??lines.length,blockLines=lines.slice(st.index,end);
+      if(!blockLines.length)continue;
+      const block=blockLines.join(' | ');
+      if(v411r1LooksLikeMetadataText(block)&&!V703312J_EQUIPMENT_RE.test(block))continue;
+      let description='';
+      for(const line of blockLines){
+        const cleaned=clean(line.replace(/^[|[\]{}()\s]*[1-9]\d?\s*[|.)\-:]?\s*/,''));
+        if(!cleaned||generic.test(cleaned)||/^\s*(?:model|sku|part\s*(?:no|number)|item\s*code)\b/i.test(cleaned))continue;
+        if(V703312J_EQUIPMENT_RE.test(cleaned)&&!serviceOnly.test(cleaned)&&!v411r1LooksLikeMetadataText(cleaned)){
+          description=cleaned.replace(/\s+(?:\d{1,3}(?:\.00)?\s+)?(?:SGD\s*|S?\$\s*)?\d[\d,]*\.\d{2}\s+(?:SGD\s*|S?\$\s*)?\d[\d,]*\.\d{2}.*$/i,'').trim();
+          break;
+        }
+      }
+      if(!description)continue;
+      const econ=parseEconomics(block),model=tokenModel(block);
+      const candidate={
+        sku:model||'',model:model||'',item_name:description,description,
+        category:v703312jCategory(description),unit:'pcs',quantity:econ.quantity,
+        unit_price:econ.unit_price,amount:econ.amount,warranty:'',serials:'',
+        v703312kOcrEvidence:true,v703312kSource:source||'',v703312kSourceLine:block,
+        v411r1SourceBlock:true,v411r1SourceOrdinal:st.ordinal
+      };
+      if(!(Number(candidate.quantity)>0))continue;
+      if(v703312jIsServiceRow(candidate)||v703312jIsAccessoryRow(candidate)||!V703312J_EQUIPMENT_RE.test(description))continue;
+      if(econ.unit_price===null||econ.amount===null){candidate.priceReviewRequired=true;candidate.amountReviewRequired=true;candidate.humanReviewRequired=true;candidate.needsReview=true;}
+      if(!model){candidate.skuReviewRequired=true;candidate.humanReviewRequired=true;candidate.needsReview=true;}
+      out.push(candidate);
+    }
+    return dedupeParsedLineItems(out);
+  }
+
   function v703312jRecoverNumberedEquipmentRows(raw='',evidenceSources=[]){
     const recovered=[];
     for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
@@ -1258,6 +1466,24 @@
       recovered.push(...v703314aRecoverStructuredPricedAssetRows(ev.text,ev.source));
       recovered.push(...v703314aaRecoverModelEquipmentBlocks(ev.text,ev.source));
       recovered.push(...v703312kRecoverSparseRows(ev.text,ev.source));
+    }
+    // Recovery1 source-block parsing is supplement-only. Existing V4.1.1 recovery retains
+    // authority for a row it already found, especially its fail-closed economics. A source
+    // block may add a genuinely missing row, or add a missing printed identity, but cannot
+    // overwrite quantity/price/amount on an existing recovered row.
+    for(const ev of v703312kEvidenceTexts(raw,evidenceSources)){
+      for(const supplement of v411r1RecoverSourceEquipmentBlocks(ev.text,ev.source)){
+        const match=recovered.find(x=>v703312jSameEquipment(x,supplement))
+          ||recovered.find(x=>compact(x.sku||x.model||'')&&compact(x.sku||x.model||'')===compact(supplement.sku||supplement.model||''));
+        if(!match){recovered.push(supplement);continue;}
+        const sSku=clean(supplement.sku||supplement.model||''),mSku=clean(match.sku||match.model||'');
+        if(!mSku&&sSku&&credibleSku(sSku,supplement.v703312kSourceLine||'')){
+          match.sku=sSku;match.model=sSku;
+          match.v703314zPrintedModel=supplement.v703314zPrintedModel||sSku;
+          match.v703312kSourceLine=uniq([match.v703312kSourceLine,supplement.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+          match.v703312kEvidenceSources=uniq([...(match.v703312kEvidenceSources||[]),supplement.v703312kSource].filter(Boolean));
+        }
+      }
     }
     const out=[];
     for(const row of recovered){
@@ -1491,19 +1717,38 @@
     const sources=v703312kEvidenceTexts(raw,evidenceSources);
     const direct=field==='sku'||field==='serials',target=direct?compact(value):norm(String(value));
     const numericField=['quantity','unit_price','amount'].includes(field);
+    const desired=numericField?Number(value):null;
+    const numericTokens=line=>{
+      const out=[];
+      for(const m of String(line||'').matchAll(/(?:^|[^A-Za-z0-9])(-?\d[\d,]*(?:\.\d+)?)(?=$|[^A-Za-z0-9])/g)){
+        const n=Number(String(m[1]).replace(/,/g,''));if(Number.isFinite(n))out.push(n);
+      }
+      return out;
+    };
     for(const ev of sources){
       const lines=String(ev.text||'').replace(/\r/g,'').split('\n');
       let candidateIndexes=lines.map((_,i)=>i);
       if(numericField){
-        const skuKey=compact(row.sku||''),nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4).slice(0,4),anchors=[];
-        for(let i=0;i<lines.length;i++){const c=compact(lines[i]),n=norm(lines[i]);if((skuKey&&c.includes(skuKey))||(!skuKey&&nameWords.length>=2&&nameWords.filter(w=>n.includes(w)).length>=2))anchors.push(i);}
-        if(anchors.length){const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);candidateIndexes=[...set].sort((a,b)=>a-b);}
+        const skuKey=compact(row.sku||row.model||'');
+        const nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4&&!/^\d/.test(w)).slice(0,6),anchors=[];
+        for(let i=0;i<lines.length;i++){
+          const cc=compact(lines[i]),nn=norm(lines[i]);
+          const skuHit=!!skuKey&&cc.includes(skuKey);
+          const wordHits=nameWords.filter(w=>nn.includes(w)).length;
+          if(skuHit||(!skuKey&&nameWords.length>=2&&wordHits>=2))anchors.push(i);
+        }
+        // Fail closed: a numeric value with no row-local identity anchor is not evidence.
+        if(!anchors.length)continue;
+        const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);
+        candidateIndexes=[...set].sort((a,b)=>a-b);
       }
       for(const i of candidateIndexes){
-        const line=clean(lines[i]);if(!line)continue;const hay=direct?compact(line):norm(line);
-        let matched=!!target&&hay.includes(target);
-        if(!matched&&['quantity','unit_price','amount','subtotal','gst','total_amount'].includes(field)&&Number.isFinite(Number(value))){
-          const n=Number(value),forms=[String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})].map(x=>norm(x));matched=forms.some(x=>x&&hay.includes(x));
+        const line=clean(lines[i]);if(!line)continue;
+        const hay=direct?compact(line):norm(line);
+        let matched=!numericField&&!!target&&hay.includes(target);
+        if(numericField&&Number.isFinite(desired)){
+          const vals=numericTokens(line),tol=field==='quantity'?1e-9:Math.max(.005,Math.abs(desired)*1e-6);
+          matched=vals.some(n=>Math.abs(n-desired)<=tol);
         }
         if(matched)return {found:true,source:ev.source||'evidence',page:ev.page??null,line:i+1,text:line.slice(0,320),method:numericField?'row-local-source-line':'source-line'};
       }
