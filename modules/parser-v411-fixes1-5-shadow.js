@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r20-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-5-r21-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -619,9 +619,92 @@
     return out;
   }
 
+  function rawMoneyCandidates(entries=[]){
+    const vals=[];
+    for(const e of (Array.isArray(entries)?entries:[])){
+      let s=clean(e?.text??e).replace(/\s+/g,'');
+      if(!s)continue;
+      // OCR often uses comma as decimal separator or appends one junk digit after cents.
+      if(s.includes(',')&&!s.includes('.'))s=s.replace(/,/g,'.');
+      const re=/(\d{1,5})[.,](\d{2})(?:\d)?/g;
+      let m;
+      while((m=re.exec(s))){
+        const v=Number(m[1]+'.'+m[2]);
+        if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
+      }
+    }
+    const count=new Map();
+    for(const v of vals)count.set(v,(count.get(v)||0)+1);
+    return [...count.entries()].map(([value,votes])=>({value,votes})).sort((a,b)=>b.votes-a.votes||a.value-b.value);
+  }
+  function recoverQuantityFromBlock(block,row){
+    if(row.quantity!==null&&row.quantity!==undefined)return row.quantity;
+    const ls=linesOf(block?.text||'');
+    for(const line of ls){
+      if(!isPhysical(line))continue;
+      const ord=rowOrdinal(line);
+      let s=line.replace(/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/,' ');
+      const firstMoney=s.search(/\d[\d,]*\.\d{2}/);
+      if(firstMoney>=0)s=s.slice(0,firstMoney);
+      const nums=[...s.matchAll(/(?:^|\s)(\d{1,2})(?=\s|[|,;:]|$)/g)].map(m=>Number(m[1])).filter(n=>n>=1&&n<=50);
+      if(nums.length)return nums[nums.length-1];
+    }
+    return null;
+  }
+  function applyNumericCellEvidence(block,row,entry){
+    if(!entry)return row;
+    let q=recoverQuantityFromBlock(block,row);
+    const U=rawMoneyCandidates(entry.unit_price_ocr);
+    const A=rawMoneyCandidates(entry.amount_ocr);
+    const uExisting=Number.isFinite(Number(row.unit_price))&&row.unit_price!==null?Number(row.unit_price):null;
+    const aExisting=Number.isFinite(Number(row.amount))&&row.amount!==null?Number(row.amount):null;
+    if(uExisting!==null)U.unshift({value:uExisting,votes:100});
+    if(aExisting!==null)A.unshift({value:aExisting,votes:100});
+    let best=null;
+    if(q){
+      for(const u of U.slice(0,8)){
+        for(const a of A.slice(0,8)){
+          if(Math.abs(q*u.value-a.value)<=Math.max(.02,Math.abs(a.value)*.002)){
+            const score=u.votes+a.votes;
+            if(!best||score>best.score)best={score,unit:u.value,amount:a.value,method:'cell-ocr-arithmetic'};
+          }
+        }
+      }
+      if(!best&&U[0]&&U[0].votes>=2){
+        best={score:U[0].votes,unit:U[0].value,amount:q*U[0].value,method:'cell-ocr-unit-derived-amount'};
+      }
+      if(A[0]&&A[0].votes>=2){
+        const candidate={score:A[0].votes,unit:A[0].value/q,amount:A[0].value,method:'cell-ocr-amount-derived-unit'};
+        if(!best||candidate.score>best.score)best=candidate;
+      }
+    }
+    if(!best)return row;
+    return {
+      ...row,
+      quantity:q,
+      unit_price:Number(best.unit.toFixed(2)),
+      amount:Number(best.amount.toFixed(2)),
+      cellOcrRecovery:{
+        ordinal:block?.ordinal??null,
+        method:best.method,
+        unitCandidates:U.slice(0,5),
+        amountCandidates:A.slice(0,5),
+        anchorText:clean(entry.anchor_text||'')
+      }
+    };
+  }
+
   function run(raw='',opts={}){
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
+    const cellEvidence=Array.isArray(opts.numericCellOcrEvidence)?opts.numericCellOcrEvidence:[];
+    if(cellEvidence.length){
+      rows=rows.map((r,i)=>{
+        const ord=blocks[i]?.ordinal??rowOrdinal(blocks[i]?.lines?.[0]||'');
+        const ev=cellEvidence.find(x=>Number(x?.ordinal)===Number(ord));
+        return applyNumericCellEvidence(blocks[i],r,ev);
+      });
+    }
     const columnar=columnarTableRecovery(raw);
     if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
     const failures=[];
@@ -686,6 +769,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,verificationIdentityConflicts,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,verificationIdentityConflicts,rawMoneyCandidates,applyNumericCellEvidence,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
