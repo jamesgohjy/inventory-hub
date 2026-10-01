@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r8-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-10-r9-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -853,11 +853,112 @@
     return out;
   }
 
+  function rawQuantityCandidates(entries=[]){
+    const vals=[];
+    for(const e of (Array.isArray(entries)?entries:[])){
+      const s=clean(e?.text??e);
+      for(const m of s.matchAll(/(?<!\d)(\d{1,2})(?!\d)/g)){
+        const v=Number(m[1]);
+        if(Number.isInteger(v)&&v>=1&&v<=50)vals.push(v);
+      }
+    }
+    const count=new Map();
+    for(const v of vals)count.set(v,(count.get(v)||0)+1);
+    return [...count.entries()].map(([value,votes])=>({value,votes})).sort((a,b)=>b.votes-a.votes||a.value-b.value);
+  }
+  function rawMoneyCandidates(entries=[]){
+    const vals=[];
+    for(const e of (Array.isArray(entries)?entries:[])){
+      let s=clean(e?.text??e).replace(/\s+/g,'');
+      if(!s)continue;
+      if(s.includes(',')&&!s.includes('.'))s=s.replace(/,/g,'.');
+      const re=/(\d{1,5})[.,](\d{2})(?:\d)?/g;
+      let m;
+      while((m=re.exec(s))){
+        const v=Number(m[1]+'.'+m[2]);
+        if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
+      }
+    }
+    const count=new Map();
+    for(const v of vals)count.set(v,(count.get(v)||0)+1);
+    return [...count.entries()].map(([value,votes])=>({value,votes})).sort((a,b)=>b.votes-a.votes||a.value-b.value);
+  }
+  function recoverQuantityFromBlock(block,row){
+    if(row.quantity!==null&&row.quantity!==undefined)return row.quantity;
+    const ls=linesOf(block?.text||'');
+    for(const line of ls){
+      if(!isPhysical(line))continue;
+      let s=line.replace(/^[\[\]{}|()\s]*[1-9]\d?\s*[|.)\-:]?\s+/,' ');
+      const firstMoney=s.search(/\d[\d,]*\.\d{2}/);
+      if(firstMoney>=0)s=s.slice(0,firstMoney);
+      const nums=[...s.matchAll(/(?:^|\s)(\d{1,2})(?=\s|[|,;:]|$)/g)].map(m=>Number(m[1])).filter(n=>n>=1&&n<=50);
+      if(nums.length)return nums[0];
+    }
+    return null;
+  }
+  function applyNumericCellEvidence(block,row,entry){
+    if(!entry)return row;
+    const Q=rawQuantityCandidates(entry.quantity_ocr);
+    const existingQ=(row.quantity!==null&&row.quantity!==undefined&&Number.isFinite(Number(row.quantity)))?Number(row.quantity):null;
+    let q=existingQ!==null?existingQ:((Q[0]&&Q[0].votes>=2)?Q[0].value:recoverQuantityFromBlock(block,row));
+    const U=rawMoneyCandidates(entry.unit_price_ocr);
+    const A=rawMoneyCandidates(entry.amount_ocr);
+    const uExisting=Number.isFinite(Number(row.unit_price))&&row.unit_price!==null?Number(row.unit_price):null;
+    const aExisting=Number.isFinite(Number(row.amount))&&row.amount!==null?Number(row.amount):null;
+    if(uExisting!==null)U.unshift({value:uExisting,votes:100});
+    if(aExisting!==null)A.unshift({value:aExisting,votes:100});
+    let best=null;
+    if(q){
+      for(const u of U.slice(0,8)){
+        for(const a of A.slice(0,8)){
+          if(Math.abs(q*u.value-a.value)<=Math.max(.02,Math.abs(a.value)*.002)){
+            const score=u.votes+a.votes;
+            if(!best||score>best.score)best={score,unit:u.value,amount:a.value,method:'cell-ocr-arithmetic'};
+          }
+        }
+      }
+      if(!best&&U[0]&&U[0].votes>=2)best={score:U[0].votes,unit:U[0].value,amount:q*U[0].value,method:'cell-ocr-unit-derived-amount'};
+      if(A[0]&&A[0].votes>=2){
+        const candidate={score:A[0].votes,unit:A[0].value/q,amount:A[0].value,method:'cell-ocr-amount-derived-unit'};
+        if(!best||candidate.score>best.score)best=candidate;
+      }
+    }
+    if(!best)return row;
+    const cellText=[
+      ...(entry.quantity_ocr||[]).map(x=>x?.text||x),
+      ...(entry.unit_price_ocr||[]).map(x=>x?.text||x),
+      ...(entry.amount_ocr||[]).map(x=>x?.text||x)
+    ].filter(Boolean).join(' | ');
+    return {
+      ...row,
+      quantity:q,
+      unit_price:Number(best.unit.toFixed(2)),
+      amount:Number(best.amount.toFixed(2)),
+      evidence:{...(row.evidence||{}),economics:cellText||row.evidence?.economics||''},
+      cellOcrRecovery:{
+        ordinal:block?.ordinal??null,
+        method:best.method,
+        quantityCandidates:Q.slice(0,5),
+        unitCandidates:U.slice(0,5),
+        amountCandidates:A.slice(0,5),
+        anchorText:clean(entry.anchor_text||'')
+      }
+    };
+  }
+
   function run(raw='',opts={}){
     const extraction=selectExtractionCandidate(raw,opts);
     raw=extraction.text;
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
+    const cellEvidence=Array.isArray(opts.numericCellOcrEvidence)?opts.numericCellOcrEvidence:[];
+    if(cellEvidence.length){
+      rows=rows.map((r,i)=>{
+        const ord=blocks[i]?.ordinal??rowOrdinal(blocks[i]?.lines?.[0]||'');
+        const ev=cellEvidence.find(x=>Number(x?.ordinal)===Number(ord));
+        return applyNumericCellEvidence(blocks[i],r,ev);
+      });
+    }
     rows=rows.map(r=>{
       const withMethod={...r,extractionMethod:extraction.method,extractionPreprocess:extraction.preprocess};
       const enriched={...withMethod,provenance:buildFieldProvenance(raw,withMethod),validation:{arithmetic:rowArithmetic(withMethod)}};
@@ -960,6 +1061,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,verificationIdentityConflicts,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,verificationIdentityConflicts,rawQuantityCandidates,rawMoneyCandidates,applyNumericCellEvidence,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
