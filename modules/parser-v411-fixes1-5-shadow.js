@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r6';
+  const VERSION='4.1.1-shadow-fixes1-5-r7';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -19,11 +19,11 @@
     .replace(/\bBRACKCT\b/ig,'bracket');
   const key=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
-  const EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub|trolley|rolling\s+stand|av\s+cart)\b/i;
+  const EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub|trolleys?|rolling\s+stands?|av\s+carts?)\b/i;
   const SERVICE=/\b(?:labou?r|installation\s+(?:work|service)|service\s+(?:fee|charge|work)|dismantl(?:e|ing|ed)|dismount|relocat(?:e|ion|ing)|re-?instat(?:e|ement|ing)|repair(?:ing|ed)?|testing\s+and\s+commissioning|commissioning|programming|training|delivery\s+(?:fee|service|charge)|freight|courier|transport\s+fee)\b/i;
   const SERVICE_CODE=/^(?:[A-Z0-9]+[-_/])?(?:INSTALLATION|INSTALL|LABOU?R|SERVICE|DELIVERY|FREIGHT|DISMANTLE|DISMOUNT|RELOCATE|REINSTATE|RE-INSTATE|REPAIR|TESTING|COMMISSIONING)\b/i;
   const ACCESSORY=/\b(?:security\s+lock|safety\s+wire|mounting\s+bracket|bracket|cable|lamp\s+kit|cart|trolley|stand|mount)\b/i;
-  const CORE_EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub)\b/i;
+  const CORE_EQUIPMENT=/\b(?:projectors?|visuali[sz]ers?|document\s+cameras?|cameras?|microphones?|wireless|transmitters?|receivers?|speakers?|loudspeakers?|monitors?|mixers?|consoles?|amplifiers?|processors?|controllers?|control\s+panels?|displays?|screens?|players?|receptacles?|testers?|switchers?|matri(?:x|ces)|scalers?|nvr|dvr|ideahub)\b/i;
   const META=/\b(?:tax\s+invoice|invoice\s*(?:no|number|date)?|customer|sold\s+to|bill\s+to|ship\s+to|delivered\s+to|attention|attn\.?|company\s+reg|gst\s+reg|uen|address|telephone|tel\.?|fax|e-?mail|email|website|reference|ref\.?\s*no|p\/?o\s*no|purchase\s+order|delivery\s+order|quotation|payment\s+advice|subtotal|sub\s+total|amount\s+due|invoice\s+total|grand\s+total|total\s+local|page\s+\d+|warranty|in\s+stock|signature|company\s+stamp|shipment\s*(?:no|number))\b/i;
   const PROHIBITED_TITLE=/^(?:PURCHASE\s+ORDER|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+LIST|QUOTATION|QUOTE|PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|SERVICE\s+REPORT|SERVICE\s+INVOICE|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT)\b/i;
 
@@ -208,7 +208,20 @@
           const identityBoundary=!cur.seenEconomics&&!!newSku&&!!curSku&&key(newSku)!==key(curSku);
           if(cur.seenEconomics||newOrdinal||numberedAfterUnnumbered||identityBoundary)close();
         }
-        if(!cur)cur={start:i,end:i,ordinal:ord,lines:[],seenEconomics:false,sequential:true,modelPriced};
+        if(!cur){
+          let start=i,prefix=[];
+          if(ord===null){
+            for(let d=1;d<=4&&i-d>=0;d++){
+              const prev=lines[i-d];
+              if(PROHIBITED_TITLE.test(prev)||isPhysical(prev)||isPureService(prev)||isAccessoryOnly(prev))break;
+              const prevOrd=rowOrdinal(prev),prevMoney=moneyTokens(prev);
+              if(prevOrd!==null&&prevMoney.length>=2){
+                start=i-d;prefix=lines.slice(start,i);break;
+              }
+            }
+          }
+          cur={start,end:i,ordinal:ord,lines:prefix,seenEconomics:prefix.some(x=>amountAnchors([x]).length>0),sequential:true,modelPriced};
+        }
       }
       if(!cur)continue;
       if(ord!==null&&cur.lines.length&&cur.ordinal!==null&&ord!==cur.ordinal){
@@ -280,6 +293,10 @@
       if(m){
         const toks=(m[1].match(/[A-Z0-9][A-Z0-9+._\/-]{2,41}/gi)||[]).filter(plausibleSku);
         if(toks.length)votes.push({value:toks[toks.length-1],line,rank:100});
+        else {
+          const direct=clean(m[1]).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g,'');
+          if(/^[A-Za-z][A-Za-z-]{2,31}$/.test(direct)&&!/^(?:MODEL|UNKNOWN|NONE|NIL|NA)$/i.test(direct))votes.push({value:direct,line,rank:96});
+        }
       }
     }
     for(const line of eligible){
@@ -317,10 +334,11 @@
         if(derived!==null&&Math.abs(derived-money[0].value)<=0.001)q=money[0].value;
       }else if(money.length>=2){unit=money[money.length-2].value;amount=money[money.length-1].value;}
       else if(money.length===1){amount=money[0].value;}
-      if(q===null&&unit!==null&&amount!==null){
+      if(q===null&&unit!==null&&amount!==null&&unit>0){
         const derived=amount/unit;
         const exact=qCandidates.find(x=>Math.abs(x.value-derived)<=0.001);
         if(exact)q=exact.value;
+        else if(derived>0&&derived<=999&&Math.abs(derived-Math.round(derived))<=0.001)q=Math.round(derived);
       }
       if(q===null&&qCandidates.length)q=qCandidates[qCandidates.length-1].value;
       const calc=(q&&unit!==null&&amount!==null)?Math.abs(q*unit-amount):Infinity;
