@@ -9,8 +9,14 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r2';
+  const VERSION='4.1.1-shadow-fixes1-5-r3';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
+  const ocrLex=v=>clean(v)
+    .replace(/\bSPEAKA\b/ig,'speaker')
+    .replace(/\bCONFIOL\b/ig,'control')
+    .replace(/\bPROJCC?TOR\b/ig,'projector')
+    .replace(/\bWONK\b/ig,'work')
+    .replace(/\bBRACKCT\b/ig,'bracket');
   const key=v=>clean(v).toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const linesOf=v=>String(v||'').replace(/\r/g,'\n').split(/\n+/).map(clean).filter(Boolean);
   const EQUIPMENT=/\b(?:projector|visuali[sz]er|document\s+camera|camera|microphone|wireless|transmitter|receiver|speaker|loudspeaker|monitor|mixer|console|amplifier|processor|controller|control\s+panel|display|screen|player|receptacle|tester|switcher|matrix|scaler|nvr|dvr|ideahub|trolley|rolling\s+stand|av\s+cart)\b/i;
@@ -57,7 +63,7 @@
     return !s||isAddress(s)||META.test(s)||/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(s);
   }
   function isPureService(text=''){
-    const s=clean(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
+    const s=ocrLex(text),lead=s.replace(/^[^A-Za-z0-9]+/,'');
     if(SERVICE_CODE.test(lead))return true;
     // The object being supplied controls classification. Cable/bracket/mount/labour work
     // stays non-inventory even when an AV product is mentioned later as context.
@@ -69,7 +75,7 @@
     return true;
   }
   function isAccessoryOnly(text=''){
-    const s=clean(text);
+    const s=ocrLex(text);
     if(!ACCESSORY.test(s))return false;
     const core=s.search(CORE_EQUIPMENT),acc=s.search(ACCESSORY);
     if(core<0)return true;
@@ -78,7 +84,7 @@
     return false;
   }
   function isPhysical(text=''){
-    const s=clean(text);
+    const s=ocrLex(text);
     return !!s&&EQUIPMENT.test(s)&&!isMetadata(s)&&!isPureService(s)&&!isAccessoryOnly(s);
   }
   function pageAuthority(text=''){
