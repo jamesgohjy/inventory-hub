@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-10-r11-regression';
+  const VERSION='4.1.1-shadow-fixes1-10-r12-regression';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -188,10 +188,11 @@
     return plausibleSku(repaired)?repaired:'';
   }
   function leadingSku(line=''){
-    const tokens=clean(line).split(/\s+/).slice(0,4);
-    if(tokens.length>=2){
-      const joined=(tokens[0]||'')+(tokens[1]||'');
-      if(/[A-Za-z]-[A-Za-z]$/i.test(tokens[0]||'')&&/^[A-Za-z]*\d[A-Za-z0-9+._\/-]*$/i.test(tokens[1]||'')){
+    const all=clean(line).split(/\s+/);
+    const tokens=all.slice(0,3);
+    if(all.length>=2){
+      const joined=(all[0]||'')+(all[1]||'');
+      if(/[A-Za-z]-[A-Za-z]$/i.test(all[0]||'')&&/^[A-Za-z]*\d[A-Za-z0-9+._\/-]*$/i.test(all[1]||'')){
         const repaired=normalizeSkuCandidate(joined);
         if(repaired)return repaired;
       }
@@ -241,7 +242,9 @@
           if(ord===null){
             for(let d=1;d<=4&&i-d>=0;d++){
               const prev=lines[i-d];
-              if(PROHIBITED_TITLE.test(prev)||isPhysical(prev)||isPureService(prev)||isAccessoryOnly(prev))break;
+              const hardBoundary=/\bDESCRIPTION\b.*\b(?:QTY|QUANTITY)\b.*\b(?:UNIT\s+PRICE|PRICE)\b/i.test(prev)
+                ||/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?|IN\s+STOCK|WARRANTY)\b/i.test(prev);
+              if(hardBoundary||PROHIBITED_TITLE.test(prev)||isPhysical(prev)||isPureService(prev)||isAccessoryOnly(prev))break;
               const prevOrd=rowOrdinal(prev),prevMoney=moneyTokens(prev);
               const cleanEconomicPrelude=d>=2&&prevMoney.length>=2
                 &&!isMetadata(prev)&&!isPureService(prev)&&!isAccessoryOnly(prev)
