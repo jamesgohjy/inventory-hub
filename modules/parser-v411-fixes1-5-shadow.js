@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-5-r23-concept-actual';
+  const VERSION='4.1.1-shadow-fixes1-5-r24-concept-actual';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -666,7 +666,9 @@
     return null;
   }
   function applyNumericCellEvidence(block,row,entry){
-    if(!entry)return row;
+    if(!entry)return {...row,item_name:sanitizeItemName(row.item_name),description:sanitizeItemName(row.description||row.item_name)};
+    const desc=descriptionCellCandidate(entry.description_ocr);
+    row={...row,item_name:desc?.text||sanitizeItemName(row.item_name),description:desc?.text||sanitizeItemName(row.description||row.item_name)};
     const Q=rawQuantityCandidates(entry.quantity_ocr);
     const existingQ=(row.quantity!==null&&row.quantity!==undefined&&Number.isFinite(Number(row.quantity)))?Number(row.quantity):null;
     let q=existingQ!==null?existingQ:((Q[0]&&Q[0].votes>=2)?Q[0].value:recoverQuantityFromBlock(block,row));
@@ -709,6 +711,27 @@
         anchorText:clean(entry.anchor_text||'')
       }
     };
+  }
+
+  function sanitizeItemName(v=''){
+    let s=clean(v).replace(/^\|+\s*/,'').replace(/\s*\|+$/,'').trim();
+    s=s.replace(/\s*\|\s*\d{1,3}\s*(?:\|\s*)+$/,'').trim();
+    return s.replace(/\s*\|\s*/g,' ').replace(/\s{2,}/g,' ').trim();
+  }
+  function descriptionCellCandidate(entries=[]){
+    const count=new Map();
+    for(const e of (Array.isArray(entries)?entries:[])){
+      for(const line of linesOf(e?.text??e)){
+        const s=sanitizeItemName(line);
+        if(!s||isMetadata(s)||isPureService(s)||isAccessoryOnly(s))continue;
+        if(!isPhysical(s))continue;
+        const k=key(s);
+        const prev=count.get(k)||{text:s,votes:0};
+        prev.votes++; if(s.length<prev.text.length)prev.text=s;
+        count.set(k,prev);
+      }
+    }
+    return [...count.values()].sort((a,b)=>b.votes-a.votes||a.text.length-b.text.length)[0]||null;
   }
 
   function run(raw='',opts={}){
