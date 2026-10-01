@@ -46,4 +46,39 @@ for(const a of ['1 Raffles Institution Lane Singapore 575954','Blk 2023 Bukit Ba
 const fakePhysical='TAX INVOICE\nSupply labour to dismantle existing AV projector 1 700.00 700.00\nSupply labour to reinstate existing AV projector 1 3100.00 3100.00';
 assert.equal(A.classifyContent({evidence:fakePhysical,rawRows:[{item_name:'Projector',quantity:1,unit_price:700,amount:700}]}).type,'service','unsupported contaminated physical row must not promote service invoice');
 
+
+// Unseen-document stress matrix: title variants and service wording must not depend on supplier/model.
+for(const text of [
+  'PURCHASE ORDER\nInvoice No INV-9\nPT-VW540 Projector 1 804.00 804.00',
+  'DELIVERY NOTE\nCQ12T Digital Mixer 1 1400.00 1400.00',
+  'DELIVERY SLIP\nSLXD24/SM58 Wireless Microphone 2 950.00 1900.00',
+  'SERVICE REPORT\nPT-VW540 Projector 1 804.00 804.00',
+  'SERVICE INVOICE\nCQ12T Digital Mixer 1 1400.00 1400.00'
+]){
+  const r=core.classifyInvoicePage(text);
+  assert.equal(r.allowed,false,'prohibited document title escaped page authority: '+text.split('\\n')[0]);
+}
+
+for(const desc of [
+  'Supply labour to dismantle the existing projector',
+  'Labour to relocate existing AV system',
+  'Dismount and reinstate existing display',
+  'Testing and commissioning of existing audio system',
+  'Repair service for existing mixer',
+  'On-site support for wireless microphone system'
+]){
+  const ev='TAX INVOICE\nPRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT\nSERVICE '+desc+' 1 500.00 500.00';
+  const r=A.classifyContent({evidence:ev,rawRows:[{sku:'SERVICE',item_name:desc,description:desc,quantity:1,unit_price:500,amount:500}]});
+  assert.equal(r.type,'service','service wording containing equipment escaped: '+desc);
+}
+
+for(const row of [
+  {sku:'CQ12T',item_name:'Allen & Heath Digital Mixer',quantity:1,unit_price:1400,amount:1400},
+  {sku:'PT-VW540',item_name:'Panasonic Projector',quantity:1,unit_price:804,amount:804},
+  {sku:'SLXD24/SM58',item_name:'Shure Wireless Microphone System',quantity:2,unit_price:950,amount:1900}
+]){
+  const ev='TAX INVOICE\n'+row.sku+' '+row.item_name+' '+row.quantity+' '+row.unit_price.toFixed(2)+' '+row.amount.toFixed(2);
+  assert.equal(A.classifyContent({evidence:ev,rawRows:[row]}).type,'equipment','real physical equipment was falsely rejected: '+row.sku);
+}
+
 console.log('V4.1.1 RECOVERY1 DOCUMENT AUTHORITY: SIMULATION PASS');
