@@ -185,6 +185,7 @@
     const variants=kind==='quantity'?[
       {canvas:thresholdCanvas(scaleCanvas(source,2),150),psm:block,label:'q-s2-t150-block'},
       {canvas:thresholdCanvas(scaleCanvas(source,3),150),psm:block,label:'q-s3-t150-block'},
+      {canvas:thresholdCanvas(scaleCanvas(source,4),135),psm:block,label:'q-s4-t135-block'},
       {canvas:thresholdCanvas(scaleCanvas(source,4),140),psm:block,label:'q-s4-t140-block'},
       {canvas:thresholdCanvas(scaleCanvas(source,4),150),psm:block,label:'q-s4-t150-block'}
     ]:[
