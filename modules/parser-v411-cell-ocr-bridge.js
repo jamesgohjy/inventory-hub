@@ -178,7 +178,9 @@
       {canvas:thresholdCanvas(scaleCanvas(source,4),150),psm:block,label:'q-s4-t150-block'}
     ]:[
       {canvas:thresholdCanvas(source,80),psm:block,label:'m-t80-block'},
+      {canvas:thresholdCanvas(source,85),psm:block,label:'m-t85-block'},
       {canvas:thresholdCanvas(source,90),psm:block,label:'m-t90-block'},
+      {canvas:thresholdCanvas(source,90),psm:Tesseract?.PSM?.SPARSE_TEXT??'11',label:'m-t90-sparse'},
       {canvas:morphCloseCanvas(source,90,3,2),psm:block,label:'m-t90-close-block'},
       {canvas:morphCloseCanvas(source,105,3,2),psm:block,label:'m-t105-close-block'},
       {canvas:morphCloseCanvas(source,110,3,2),psm:block,label:'m-t110-close-block'},
