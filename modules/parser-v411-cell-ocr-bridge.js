@@ -12,8 +12,8 @@
     const m=clean(v).match(/^[|)\]}>;,:\s]*(\d{1,2})\b/);
     return m?Number(m[1]):null;
   };
-  const center=item=>Number(item?.x||0)+(Number(item?.width??item?.w||0)/2);
-  const itemHeight=item=>Number(item?.height??item?.h||0)||18;
+  const center=item=>Number(item?.x||0)+(Number(item?.width??item?.w??0)/2);
+  const itemHeight=item=>Number(item?.height??item?.h??0)||18;
 
   function findHeader(layout={}){
     const rows=layout.rows||[];
