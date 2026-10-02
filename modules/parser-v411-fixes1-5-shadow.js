@@ -981,15 +981,17 @@
       let s=clean(e?.text??e).replace(/\s+/g,'');
       if(!s)continue;
       let matched=false;
-      // Standard money with optional thousands separators.
-      for(const m of s.matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?!\d)/g)){
+      // Standard money with optional thousands separators. Targeted cell OCR may
+      // append stray digits after the two real cents (e.g. 950.0077 => 950.00).
+      // Keep the first two fractional digits and ignore the OCR tail.
+      for(const m of s.matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\d*/g)){
         matched=true;
         const v=Number(m[1].replace(/,/g,'')+'.'+m[2]);
         if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
       }
       // Decimal comma form when no decimal point is present.
       if(!s.includes('.')){
-        for(const m of s.matchAll(/(\d+),(\d{2})(?!\d)/g)){
+        for(const m of s.matchAll(/(\d+),(\d{2})\d*/g)){
           matched=true;
           const v=Number(m[1]+'.'+m[2]);
           if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
