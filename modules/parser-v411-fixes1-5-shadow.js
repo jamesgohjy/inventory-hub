@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r13-review';
+  const VERSION='4.1.1-shadow-fixes1-15-r14-critic';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -642,17 +642,23 @@
     const economicsText=clean(row.evidence?.economics||'');
     const descriptionText=clean(row.item_name||'');
     const serialText=serialEvidenceLine(row.sourceText||'');
-    const prov=(field,value,text,method)=>({
-      field,
-      value:value??null,
-      sourceBlockId:row.sourceBlockId||null,
-      sourceRange:Array.isArray(row.sourceRange)?[...row.sourceRange]:null,
-      page:pageForEvidence(raw,text||row.sourceText||''),
-      text:clean(text||''),
-      method:(row.extractionMethod?row.extractionMethod+':':'')+method,
-      preprocess:row.extractionPreprocess||null,
-      evidenceBound:!!clean(text||'')
-    });
+    const prov=(field,value,text,method)=>{
+      const evidenceText=clean(text||'');
+      const evidenceToken=evidenceKey(evidenceText);
+      const sourceToken=evidenceKey(row.sourceText||'');
+      const rowLocal=!!evidenceText&&!!evidenceToken&&sourceToken.includes(evidenceToken);
+      return {
+        field,
+        value:value??null,
+        sourceBlockId:row.sourceBlockId||null,
+        sourceRange:Array.isArray(row.sourceRange)?[...row.sourceRange]:null,
+        page:rowLocal?pageForEvidence(raw,evidenceText||row.sourceText||''):null,
+        text:evidenceText,
+        method:(row.extractionMethod?row.extractionMethod+':':'')+method,
+        preprocess:row.extractionPreprocess||null,
+        evidenceBound:rowLocal
+      };
+    };
     return {
       sku:prov('sku',row.sku,identityText,'row-local-identity'),
       model:prov('model',row.model,identityText,'row-local-identity'),
@@ -1429,15 +1435,16 @@
       });
     }
     rows=applyDescriptionConsensus(rows,verificationTextsEarly);
-    rows=rows.map(r=>{
+    const enrichRows=inputRows=>(inputRows||[]).map(r=>{
       const withMethod={...r,extractionMethod:extraction.method,extractionPreprocess:extraction.preprocess};
       const enriched={...withMethod,provenance:buildFieldProvenance(raw,withMethod),validation:{arithmetic:rowArithmetic(withMethod)}};
       enriched.confidence=fieldConfidence(enriched);
       enriched.correctionSuggestions=correctionMemorySuggestions(enriched,opts,raw);
       return canonicalizeRow(enriched);
     });
+    rows=enrichRows(rows);
     const columnar=columnarTableRecovery(raw);
-    if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=columnar.rows;}
+    if(columnar&&columnar.rows.length>rows.length){blocks=columnar.blocks;rows=enrichRows(columnar.rows);}
     const failures=[];
     for(let i=0;i<blocks.length;i++){
       const issues=sourceCompleteness(blocks[i],rows[i]);
