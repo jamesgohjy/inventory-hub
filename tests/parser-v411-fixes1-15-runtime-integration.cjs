@@ -75,6 +75,31 @@ assert(p.atomicSave.partialWriteAllowed===false,'partial-write flag changed on b
 p=Parser.run('PURCHASE ORDER\n1 Projector Model: PT-VMZ71 1 100.00 100.00',{transactionId:'integration-po'});
 assert(!p.ready&&p.rows.length===0&&!p.atomicSave.canCommit,'purchase order was not rejected');
 
+// Independent-critic regression: columnar fallback must not bypass Fixes 6/8/10/14,
+// and synthetic columnar economics must not masquerade as row-local provenance.
+p=Parser.run([
+  'TAX INVOICE',
+  'PRODUCT NO',
+  'PT-VW540',
+  'AVS320',
+  'Panasonic Projector',
+  '5000 ANSI lumens',
+  'Abtus Control Panel',
+  'HDMI controller',
+  '804.00',
+  '350.00',
+  '804.00',
+  '350.00',
+  'SUBTOTAL 1154.00',
+  'GST 103.86',
+  'TOTAL 1257.86'
+].join('\n'),{transactionId:'integration-columnar'});
+assert(p.rows.length===2,'columnar critic fixture did not recover two equipment rows');
+assert(p.rows.every(r=>r.provenance&&r.confidence&&r.canonical),'columnar rows bypassed provenance/confidence/canonical enrichment');
+assert(p.rows.every(r=>Array.isArray(r.correctionSuggestions)),'columnar rows bypassed correction-memory evaluation');
+assert(p.rows.every(r=>r.provenance.unit_price?.evidenceBound===false&&r.provenance.amount?.evidenceBound===false),'synthetic columnar economics were incorrectly marked as row-local provenance');
+assert(!p.reviewGate.allClear&&!p.atomicSave.canCommit,'unproven columnar economics incorrectly cleared Review/atomic-save gate');
+
 console.log(JSON.stringify({
   ok:true,
   parserVersion:Parser.VERSION,
