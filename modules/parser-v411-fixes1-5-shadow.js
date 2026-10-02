@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r11-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r12-critic';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -94,14 +94,45 @@
     const s=ocrLex(text);
     return !!s&&EQUIPMENT.test(s)&&!isMetadata(s)&&!isPureService(s)&&!isAccessoryOnly(s);
   }
+  function withinOneEdit(a='',b=''){
+    a=String(a||'');b=String(b||'');
+    if(a===b)return true;
+    if(Math.abs(a.length-b.length)>1)return false;
+    if(a.length===b.length){
+      let mismatches=0;
+      for(let i=0;i<a.length;i++)if(a[i]!==b[i]&&++mismatches>1)return false;
+      return true;
+    }
+    if(a.length>b.length){const t=a;a=b;b=t;}
+    let i=0,j=0,skips=0;
+    while(i<a.length&&j<b.length){
+      if(a[i]===b[j]){i++;j++;continue;}
+      if(++skips>1)return false;
+      j++;
+    }
+    return true;
+  }
+  function taxInvoiceHeadingLike(text=''){
+    const compact=String(text||'').toUpperCase().replace(/0/g,'O').replace(/1/g,'I').replace(/[^A-Z]/g,'');
+    const target='TAXINVOICE';
+    if(compact.includes(target))return true;
+    let pos=compact.indexOf('TAX');
+    while(pos>=0){
+      for(const len of [target.length-1,target.length,target.length+1]){
+        const candidate=compact.slice(pos,pos+len);
+        if(candidate.length===len&&withinOneEdit(candidate,target))return true;
+      }
+      pos=compact.indexOf('TAX',pos+3);
+    }
+    return false;
+  }
   function pageAuthority(text=''){
     const ls=linesOf(text).slice(0,120);
     const titles=ls.map(clean);
     if(titles.some(x=>PROHIBITED_TITLE.test(x)))return 'reject';
-    const invoiceHeading=titles.some(x=>{
-      const u=String(x||'').toUpperCase();
-      const compact=u.replace(/0/g,'O').replace(/1/g,'I').replace(/[^A-Z]/g,'');
-      if(compact.includes('TAXINVOICE'))return true;
+    const invoiceHeading=titles.some((x,i)=>{
+      if(taxInvoiceHeadingLike(x))return true;
+      if(taxInvoiceHeadingLike(x+' '+(titles[i+1]||'')))return true;
       return /^INVOICE\b/i.test(x);
     });
     if(invoiceHeading)return 'invoice';
@@ -473,13 +504,34 @@
     ranked.sort((a,b)=>b.score-a.score||b.line.length-a.line.length);
     return ranked[0]?.line||'';
   }
+  function sanitizeSerialToken(v=''){
+    const raw=clean(v);
+    if(!raw||/^N\/?A$/i.test(raw))return '';
+    const first=raw.match(/^([A-Z0-9][A-Z0-9._\/-]{2,})/i);
+    if(!first)return '';
+    let value=first[1],rest=raw.slice(first[0].length);
+    // Conservative OCR repair for a split printed serial such as
+    // "320-T 1-08078". Do not merge ordinary whitespace-separated serials.
+    if(/[\/-]/.test(value)){
+      const continuation=rest.match(/^\s+(\d[A-Z0-9._\/-]{1,})\b/i);
+      if(continuation){value+=continuation[1];rest=rest.slice(continuation[0].length);}
+    }
+    value=value.replace(/^[._\/-]+|[._\/-]+$/g,'');
+    if(value.length<4||!/\d/.test(value))return '';
+    // Discard only obvious OCR specks/punctuation after a strong serial.
+    // Substantive trailing alphanumerics remain unsanitized for later review.
+    const tail=clean(rest);
+    const obviousOcrNoise=/^(?:[A-Za-z]|[-+|._/])(?:\s+(?:[A-Za-z]|[-+|._/])){0,7}$/i;
+    if(tail&&!obviousOcrNoise.test(tail)&&!/^(?:[-+|._/]\s*)+$/i.test(tail))return raw;
+    return value;
+  }
   function serials(blockText=''){
     const out=[];
     for(const line of linesOf(blockText)){
       const m=line.match(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?\s*(.+)$/i)
         ||line.match(/^\s*S\s*[\/\\|]\s*[A-Za-z0-9]{1,2}\s*[:#-]?\s*(.+)$/i);
       if(!m)continue;
-      for(const t of m[1].split(/[,;]\s*/).map(clean).filter(Boolean))if(!/^N\/?A$/i.test(t))out.push(t);
+      for(const t of m[1].split(/[,;]\s*/).map(sanitizeSerialToken).filter(Boolean))out.push(t);
     }
     return [...new Set(out)];
   }
@@ -1463,6 +1515,10 @@
     if(!memRow||memRow.sku!=='CQ12T'||!memRow.correctionSuggestions?.some(x=>x.field==='sku'&&x.suggested==='CQ12T-CANON')||memoryRun.correctionMemory.autoAppliedCount!==0)f.push('correction memory safety');
     const bad=run(['TAX INVOICE','1 Digital Mixer Model: CQ12T 2 100.00 250.00','SUBTOTAL 250.00','GST 22.50','TOTAL 272.50'].join('\n'));
     if(!bad.failures.some(x=>x.issue==='row-arithmetic-mismatch'))f.push('arithmetic mismatch gate');
+    if(pageAuthority('GST Reg. No. M2-0110202-2 TAX I NVO | C E -.')!=='invoice')f.push('one-edit OCR tax-invoice authority');
+    if(taxInvoiceHeadingLike('TAX AMOUNT SGD 124.18'))f.push('tax heading false positive');
+    const noisySerial=serials('S/N: 320-T 1-08078 z - + j');
+    if(noisySerial.length!==1||noisySerial[0]!=='320-T1-08078')f.push('serial trailing OCR-noise cleanup');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
     if(!r.ready||r.failures.length)f.push('shadow readiness gate');
     return {ok:!f.length,failures:f,metrics:r.metrics};
