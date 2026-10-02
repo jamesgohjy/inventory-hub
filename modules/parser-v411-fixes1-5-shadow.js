@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r3';
+  const VERSION='4.1.1-shadow-fixes1-15-r4-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -645,7 +645,7 @@
     const issues=[];
     const printed=printedIdentityInBlock(block.text);
     if(printed&&!row.sku)issues.push('printed-identity-missing');
-    if(row.sku&&!presentInBlock(row.sku,block.text))issues.push('cross-row-identity-contamination');
+    if(row.sku&&!presentInBlock(row.sku,block.text)&&!row.identityConsensus?.resolved)issues.push('cross-row-identity-contamination');
     const econ=economics(block.text);
     if(econ.quantity!==null&&row.quantity===null)issues.push('quantity-missing');
     if(econ.unit_price!==null&&row.unit_price===null)issues.push('unit-price-missing');
@@ -846,6 +846,50 @@
     let hit=0; for(const x of A)if(B.has(x))hit++;
     return hit/Math.max(1,Math.min(A.size,B.size));
   }
+  function identityConsensusForRow(row={},texts=[]){
+    if(!row||!texts?.length)return null;
+    const votes=new Map(),evidence=new Map();
+    const add=(sku,line,source)=>{
+      const k=key(sku);if(!k)return;
+      votes.set(k,(votes.get(k)||0)+1);
+      if(!evidence.has(k))evidence.set(k,{sku,line,source});
+    };
+    if(row.sku)add(row.sku,row.evidence?.identity||row.sourceText||'','primary');
+    for(let ti=0;ti<texts.length;ti++){
+      const text=String(texts[ti]||'');if(!text.trim())continue;
+      const candidates=sourceBlocks(text).map(parseBlock).filter(v=>{
+        const physicalLines=linesOf(v.sourceText||'').filter(x=>isPhysical(x));
+        return physicalLines.length<=1&&v.sku;
+      });
+      const ranked=candidates.map(v=>({v,sim:descSimilarity(row.item_name,v.item_name)}))
+        .filter(x=>x.sim>=0.6).sort((a,b)=>b.sim-a.sim);
+      if(!ranked.length)continue;
+      const best=ranked[0];
+      add(best.v.sku,best.v.evidence?.identity||best.v.sourceText||'','witness-'+(ti+1));
+    }
+    const ordered=[...votes.entries()].sort((a,b)=>b[1]-a[1]);
+    if(!ordered.length)return null;
+    const winnerKey=ordered[0][0],winnerVotes=ordered[0][1],runnerVotes=ordered[1]?.[1]||0;
+    const currentKey=key(row.sku||'');
+    if(winnerKey===currentKey)return null;
+    if(winnerVotes<2||winnerVotes<=runnerVotes)return null;
+    const ev=evidence.get(winnerKey);
+    return {resolved:true,from:row.sku||'',to:ev?.sku||'',votes:winnerVotes,runnerVotes,evidence:ev};
+  }
+  function applyIdentityConsensus(rows=[],texts=[]){
+    return rows.map(row=>{
+      const consensus=identityConsensusForRow(row,texts);
+      if(!consensus?.resolved||!consensus.to)return row;
+      return {
+        ...row,
+        sku:consensus.to,
+        model:consensus.to,
+        evidence:{...(row.evidence||{}),identity:consensus.evidence?.line||row.evidence?.identity||''},
+        identityConsensus:consensus
+      };
+    });
+  }
+
   function verificationIdentityConflicts(rows=[],texts=[]){
     const out=[];
     for(const text of texts){
@@ -856,7 +900,7 @@
         return physicalLines.length<=1;
       });
       for(const row of rows){
-        if(!row.sku)continue;
+        if(!row.sku||row.identityConsensus?.resolved)continue;
         const matches=vRows
           .map(v=>({v,sim:descSimilarity(row.item_name,v.item_name)}))
           .filter(x=>x.sim>=0.6&&x.v.sku);
@@ -1193,6 +1237,11 @@
     raw=extraction.text;
     let blocks=sourceBlocks(raw);
     let rows=blocks.map(parseBlock).map((r,i)=>recoverMissingFields(r,blocks[i]));
+    const verificationTextsEarly=[
+      ...(Array.isArray(opts.verificationTexts)?opts.verificationTexts:[]),
+      ...(Array.isArray(opts.ocrCandidates)?opts.ocrCandidates.map(x=>x?.text).filter(Boolean):[])
+    ].filter(x=>String(x||'').trim()&&String(x)!==String(raw));
+    rows=applyIdentityConsensus(rows,verificationTextsEarly);
     const cellEvidence=Array.isArray(opts.numericCellOcrEvidence)?opts.numericCellOcrEvidence:[];
     if(cellEvidence.length){
       rows=rows.map((r,i)=>{
@@ -1307,6 +1356,6 @@
     return {ok:!f.length,failures:f,metrics:r.metrics};
   }
   root.InventoryHubV411Fixes1to5Shadow=Object.freeze({
-    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,verificationIdentityConflicts,rawQuantityCandidates,rawMoneyCandidates,applyNumericCellEvidence,buildCandidateLedger,scoreCandidate,buildReviewGate,canonicalizeRow,prepareAtomicSave,run,selfTest
+    VERSION,sourceBlocks,explicitIdentity,economics,description,parseBlock,recoverMissingFields,sourceCompleteness,buildFieldProvenance,rowArithmetic,invoiceArithmetic,fieldConfidence,extractionCandidateScore,selectExtractionCandidate,correctionMemorySuggestions,identityConsensusForRow,applyIdentityConsensus,verificationIdentityConflicts,rawQuantityCandidates,rawMoneyCandidates,applyNumericCellEvidence,buildCandidateLedger,scoreCandidate,buildReviewGate,canonicalizeRow,prepareAtomicSave,run,selfTest
   });
 })(typeof window!=='undefined'?window:globalThis);
