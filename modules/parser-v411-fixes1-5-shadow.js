@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r4-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r5-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -628,8 +628,10 @@
   function presentInBlock(value,blockText){const k=evidenceKey(value);return !k||evidenceKey(blockText).includes(k);}
   function printedIdentityInBlock(blockText=''){return explicitIdentity(blockText).value;}
   function descriptionContaminated(v=''){
-    const s=clean(v);
+    let s=clean(v);
     if(!s)return false;
+    // Remove benign OCR/table delimiters before judging contamination.
+    s=s.replace(/^\|+\s*/,'').replace(/\s*\|+$/,'').replace(/\s*\|\s*\d{1,3}\s*(?:\|\s*)+$/,'').replace(/\s*\|\s*/g,' ').replace(/\s{2,}/g,' ').trim();
     const suspiciousSymbols=(s.match(/[¥€£©®<>\\{}@$%]/g)||[]).length;
     if(suspiciousSymbols>=2)return true;
     const nonWord=(s.match(/[^A-Za-z0-9\s.,()\/_+:-]/g)||[]).length;
@@ -941,10 +943,21 @@
       if(!s)continue;
       if(s.includes(',')&&!s.includes('.'))s=s.replace(/,/g,'.');
       const re=/(\d{1,5})[.,](\d{2})(?:\d)?/g;
-      let m;
+      let m,matched=false;
       while((m=re.exec(s))){
+        matched=true;
         const v=Number(m[1]+'.'+m[2]);
         if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
+      }
+      // Targeted money-cell OCR can lose only the decimal mark while retaining all digits,
+      // e.g. "95000" for "950.00". Interpret the final two digits as cents only when
+      // the cell contains a single 3-7 digit numeric token and no ordinary money match.
+      if(!matched){
+        const digitOnly=s.replace(/[^0-9]/g,'');
+        if(/^\d{3,7}$/.test(digitOnly)){
+          const v=Number(digitOnly.slice(0,-2)+'.'+digitOnly.slice(-2));
+          if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
+        }
       }
     }
     const count=new Map();
