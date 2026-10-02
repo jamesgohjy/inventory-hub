@@ -52,7 +52,7 @@
     if(!header)return null;
     const items=header.items||[];
     const desc=items.find(x=>/description/i.test(x.text||''));
-    let qty=items.find(x=>/^(?:qty|quantity|units?)$/i.test(clean(x.text)));
+    let qty=items.find(x=>/^(?:qty|quantity|units)$/i.test(clean(x.text)));
     const amount=[...items].reverse().find(x=>/amount/i.test(x.text||''));
     let price=[...items].reverse().find(x=>/price/i.test(x.text||''));
     if(!price){
