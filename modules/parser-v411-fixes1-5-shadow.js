@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r8-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r9-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -98,7 +98,13 @@
     const ls=linesOf(text).slice(0,120);
     const titles=ls.map(clean);
     if(titles.some(x=>PROHIBITED_TITLE.test(x)))return 'reject';
-    if(titles.some(x=>/\bTAX\s+INVOICE\b/i.test(x))||titles.some(x=>/^INVOICE\b/i.test(x)))return 'invoice';
+    const invoiceHeading=titles.some(x=>{
+      const u=String(x||'').toUpperCase();
+      const compact=u.replace(/0/g,'O').replace(/1/g,'I').replace(/[^A-Z]/g,'');
+      if(compact.includes('TAXINVOICE'))return true;
+      return /^INVOICE\b/i.test(x);
+    });
+    if(invoiceHeading)return 'invoice';
     return 'unknown';
   }
   function splitPages(text=''){
