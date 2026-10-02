@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r6-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r7-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -1048,7 +1048,10 @@
   function sanitizeItemName(v=''){
     let s=clean(v).replace(/^\|+\s*/,'').replace(/\s*\|+$/,'').trim();
     s=s.replace(/\s*\|\s*\d{1,3}\s*(?:\|\s*)+$/,'').trim();
-    return s.replace(/\s*\|\s*/g,' ').replace(/\s{2,}/g,' ').trim();
+    s=s.replace(/\bMODEL\s*:\s*.*$/i,'').trim();
+    s=s.replace(/\s+\d{1,2}\s+[A-Za-z]\s*[_-]+\s*$/,'').trim();
+    s=s.replace(/\s*\|\s*/g,' ').replace(/\s{2,}/g,' ').trim();
+    return s;
   }
   function descriptionCellCandidate(entries=[]){
     const count=new Map();
