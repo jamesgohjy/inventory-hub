@@ -1285,14 +1285,65 @@
   function stripRowNameArtifacts(name='',row={}){
     let s=sanitizeItemName(name);
     const sku=clean(row.sku||row.model||'');
-    if(sku){
-      const esc=sku.replace(/[.*+?^$()|[\]{}\\]/g,'\\  function run(raw='',opts={}){');
-      s=s.replace(new RegExp('^'+esc+'\\s+','i'),'').trim();
-    }
+    if(sku&&s.toUpperCase().startsWith(sku.toUpperCase()+' '))s=s.slice(sku.length).trim();
     const q=Number(row.quantity);
     if(Number.isFinite(q)&&q>0){
-      const qs=String(q).replace(/[.*+?^$()|[\]{}\\]/g,'\\  function run(raw='',opts={}){');
-      s=s.replace(new RegExp('\\s+'+qs+'(?:\\.0+)?
+      const parts=s.split(/\s+/);
+      const last=parts[parts.length-1];
+      if(last&&Number.isFinite(Number(last))&&Math.abs(Number(last)-q)<0.0001){parts.pop();s=parts.join(' ').trim();}
+    }
+    s=s.replace(/\s+[a-z]$/,'').trim();
+    return s;
+  }
+  function descriptionConsensusForRow(row={},texts=[]){
+    const candidates=[];
+    const push=(name,evidence,method)=>{
+      const value=stripRowNameArtifacts(name,row);
+      if(!value||!isPhysical(value))return;
+      candidates.push({value,evidence:clean(evidence||name),method});
+    };
+    push(row.item_name,row.evidence?.description||row.sourceText||'','selected');
+    const currentKey=key(row.sku||row.model||''),currentSkeleton=ocrIdentitySkeleton(row.sku||row.model||'');
+    for(const [i,text] of texts.entries()){
+      if(!String(text||'').trim())continue;
+      const vRows=sourceBlocks(String(text)).map(parseBlock);
+      let matches=vRows.filter(v=>{
+        const vk=key(v.sku||v.model||'');
+        if(currentKey&&vk)return vk===currentKey||ocrIdentitySkeleton(vk)===currentSkeleton;
+        return descSimilarity(row.item_name,v.item_name)>=0.65;
+      });
+      if(!matches.length)continue;
+      matches=matches.sort((a,b)=>descSimilarity(row.item_name,b.item_name)-descSimilarity(row.item_name,a.item_name));
+      const v=matches[0];
+      push(v.item_name,v.evidence?.description||v.sourceText||'','ocr-witness-'+(i+1));
+    }
+    if(!candidates.length)return null;
+    const groups=new Map();
+    for(const x of candidates){
+      const k=key(x.value);
+      const g=groups.get(k)||{value:x.value,count:0,evidence:x.evidence,method:x.method};
+      g.count++;
+      if(x.value.length<g.value.length){g.value=x.value;g.evidence=x.evidence;g.method=x.method;}
+      groups.set(k,g);
+    }
+    return [...groups.values()].sort((a,b)=>b.count-a.count||a.value.length-b.value.length)[0];
+  }
+  function applyDescriptionConsensus(rows=[],texts=[]){
+    return rows.map(row=>{
+      const best=descriptionConsensusForRow(row,texts);
+      if(!best)return row;
+      return {
+        ...row,
+        rawItemNameBeforeConsensus:row.rawItemNameBeforeConsensus||row.item_name,
+        item_name:best.value,
+        description:best.value,
+        descriptionConsensus:{value:best.value,support:best.count,method:best.method},
+        evidence:{...(row.evidence||{}),description:best.evidence||row.evidence?.description||row.sourceText||''}
+      };
+    });
+  }
+
+  function run(raw='',opts={}){
     const extraction=selectExtractionCandidate(raw,opts);
     raw=extraction.text;
     let blocks=sourceBlocks(raw);
