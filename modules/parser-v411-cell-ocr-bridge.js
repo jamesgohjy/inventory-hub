@@ -5,7 +5,7 @@
  */
 (function(global){
   'use strict';
-  const VERSION='4.1.1-cell-ocr-bridge-r1';
+  const VERSION='4.1.1-cell-ocr-bridge-r2';
   const clean=v=>String(v??'').replace(/\s+/g,' ').trim();
   const moneyCount=v=>(String(v||'').match(/\d[\d,]*[.,]\d{2}/g)||[]).length;
   const rowOrdinal=v=>{
@@ -15,23 +15,46 @@
   const center=item=>Number(item?.x||0)+(Number(item?.width??item?.w??0)/2);
   const itemHeight=item=>Number(item?.height??item?.h??0)||18;
 
+  function inferQuantityCenter(layout={},header={},descCenter=0,priceCenter=0){
+    const rows=(layout.rows||[]).filter(r=>Number(r.y)<Number(header.y));
+    const vals=[];
+    for(const r of rows){
+      for(const item of (r.items||[])){
+        const cx=center(item),t=clean(item.text);
+        if(cx<=descCenter+80||cx>=priceCenter-70)continue;
+        if(!/^\d{1,3}$/.test(t))continue;
+        const n=Number(t);if(!(n>=1&&n<=999))continue;
+        vals.push(cx);
+      }
+    }
+    if(!vals.length)return null;
+    const mid=(descCenter+priceCenter)/2;
+    const right=vals.filter(x=>x>mid);
+    const pool=right.length>=2?right:vals;
+    pool.sort((a,b)=>a-b);
+    return pool[Math.floor(pool.length/2)]||null;
+  }
+
   function findHeader(layout={}){
     const rows=layout.rows||[];
-    let header=rows.find(r=>/\bdescription\b/i.test(r.text||'')&&/\b(?:qty|quantity|units?)\b/i.test(r.text||'')&&/\bprice\b/i.test(r.text||'')&&/\bamount\b/i.test(r.text||''));
+    let header=rows.find(r=>/\bdescription\b/i.test(r.text||'')&&/\bprice\b/i.test(r.text||'')&&/\bamount\b/i.test(r.text||''));
     if(!header)return null;
     const items=header.items||[];
     const desc=items.find(x=>/description/i.test(x.text||''));
-    const qty=items.find(x=>/^(?:qty|quantity|units?)$/i.test(clean(x.text)));
+    let qty=items.find(x=>/^(?:qty|quantity|units?)$/i.test(clean(x.text)));
     const amount=[...items].reverse().find(x=>/amount/i.test(x.text||''));
     let price=[...items].reverse().find(x=>/price/i.test(x.text||''));
     if(!price){
       const unit=items.find(x=>/^unit$/i.test(clean(x.text)));
       if(unit)price=unit;
     }
-    if(!desc||!qty||!price||!amount)return null;
-    const dc=center(desc),qc=center(qty),pc=center(price),ac=center(amount);
+    if(!desc||!price||!amount)return null;
+    const dc=center(desc),pc=center(price),ac=center(amount);
+    let qc=qty?center(qty):inferQuantityCenter(layout,header,dc,pc);
+    if(!Number.isFinite(qc))return null;
+    if(!qty)qty={text:'INFERRED_QTY',x:qc-1,w:2,height:Number(desc.height??desc.h??18)};
     if(!(dc<qc&&qc<pc&&pc<ac))return null;
-    return {row:header,desc,qty,price,amount,centers:{desc:dc,qty:qc,price:pc,amount:ac}};
+    return {row:header,desc,qty,price,amount,centers:{desc:dc,qty:qc,price:pc,amount:ac},qtyInferred:clean(qty.text)==='INFERRED_QTY'};
   }
 
   function planTableCells(layout={}){
@@ -47,23 +70,33 @@
     const amountLeft=(c.price+c.amount)/2;
     const amountRight=Math.min(W,c.amount+Math.max(100,(c.amount-c.price)*0.85));
     const descLeft=Math.max(0,Number(header.desc.x||0)-40);
-    const plans=[];
+    const numbered=[];
     for(const r of rows){
       if(Number(r.y)<=stopY)continue;
-      const ord=rowOrdinal(r.text);
-      if(ord===null)continue;
-      // Only expensive-fallback rows whose whole-row OCR is economically incomplete.
-      if(moneyCount(r.text)>=2)continue;
-      const items=r.items||[];
-      if(!items.length)continue;
+      const ord=rowOrdinal(r.text);if(ord===null)continue;
+      const items=r.items||[];if(!items.length)continue;
+      numbered.push({ord,r});
+    }
+    const plans=[];
+    for(let i=0;i<numbered.length;i++){
+      const {ord,r}=numbered[i],items=r.items||[];
       const tops=items.map(x=>H-Number(x.y||0)).filter(Number.isFinite);
       const hs=items.map(itemHeight).filter(x=>x>0);
       const top=Math.max(0,Math.min(...tops)-Math.max(8,(Math.max(...hs)||18)*0.45));
-      const h=Math.min(H-top,Math.max(38,(Math.max(...hs)||18)*2.1));
+      const next=numbered.slice(i+1).find(x=>Number(x.r.y)<Number(r.y)-Math.max(6,Number(layout.yTolerance)||4));
+      let bottom=next?Math.min(...(next.r.items||[]).map(x=>H-Number(x.y||0)).filter(Number.isFinite))-8:top+Math.max(80,(Math.max(...hs)||18)*5.5);
+      if(!Number.isFinite(bottom))bottom=top+120;
+      bottom=Math.min(H,Math.max(bottom,top+60));
+      const h=bottom-top;
       const box=(x0,x1)=>({x:Math.max(0,Math.floor(x0)),y:Math.max(0,Math.floor(top)),w:Math.max(10,Math.ceil(x1-x0)),h:Math.max(20,Math.ceil(h))});
+      // Run targeted fallback when the row is incomplete OR its visible economics are suspicious.
+      const m=moneyCount(r.text);
+      const compact=clean(r.text);
+      const suspicious=m<2||/[A-Za-z][0-9][0-9.,]|[0-9][A-Za-z][0-9.,]/.test(compact);
+      if(!suspicious&&m>=2)continue;
       plans.push({
         ordinal:ord,
-        rowText:clean(r.text),
+        rowText:compact,
         description:box(descLeft,qtyLeft),
         quantity:box(qtyLeft,unitLeft),
         unit_price:box(unitLeft,amountLeft),
@@ -90,26 +123,61 @@
     }
     ctx.putImageData(img,0,0);return c;
   }
+  function morphCloseCanvas(source,threshold=90,kx=3,ky=2){
+    const base=thresholdCanvas(source,threshold),ctx=base.getContext('2d',{willReadFrequently:true});
+    const img=ctx.getImageData(0,0,base.width,base.height),src=img.data,w=base.width,h=base.height;
+    const bin=new Uint8Array(w*h);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)bin[y*w+x]=src[(y*w+x)*4]<128?0:255;
+    const dil=new Uint8Array(w*h),out=new Uint8Array(w*h);
+    const ax=Math.floor(kx/2),ay=Math.floor(ky/2);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      let v=255;
+      for(let yy=0;yy<ky;yy++)for(let xx=0;xx<kx;xx++){
+        const sx=x+xx-ax,sy=y+yy-ay;if(sx<0||sy<0||sx>=w||sy>=h)continue;
+        if(bin[sy*w+sx]===0){v=0;yy=ky;break;}
+      }
+      dil[y*w+x]=v;
+    }
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      let v=0;
+      for(let yy=0;yy<ky;yy++)for(let xx=0;xx<kx;xx++){
+        const sx=x+xx-ax,sy=y+yy-ay;if(sx<0||sy<0||sx>=w||sy>=h){v=255;yy=ky;break;}
+        if(dil[sy*w+sx]===255){v=255;yy=ky;break;}
+      }
+      out[y*w+x]=v;
+    }
+    for(let i=0;i<out.length;i++){const v=out[i],j=i*4;src[j]=src[j+1]=src[j+2]=v;src[j+3]=255;}
+    ctx.putImageData(img,0,0);return base;
+  }
   async function recognize(worker,canvas,psm,Tesseract,meta={}){
     await worker.setParameters({
       tessedit_pageseg_mode:psm,
       preserve_interword_spaces:'1',
-      user_defined_dpi:'300'
+      user_defined_dpi:'300',
+      tessedit_char_whitelist:meta.numeric?'0123456789.,':''
     });
     const r=await worker.recognize(canvas,{}, {text:true});
     const text=clean(r?.data?.text||'');
     return text?{text,confidence:Number(r?.data?.confidence||0),...meta}:null;
   }
-  async function numericEnsemble(worker,source,Tesseract){
-    const out=[],line=Tesseract?.PSM?.SINGLE_LINE??'7',block=Tesseract?.PSM?.SINGLE_BLOCK??'6';
-    const variants=[
-      {canvas:source,psm:line,label:'raw-line'},
-      {canvas:thresholdCanvas(source,165),psm:line,label:'t165-line'},
-      {canvas:thresholdCanvas(source,195),psm:line,label:'t195-line'},
-      {canvas:thresholdCanvas(source,210),psm:block,label:'t210-block'}
+  async function numericEnsemble(worker,source,Tesseract,kind='money'){
+    const out=[],line=Tesseract?.PSM?.SINGLE_LINE??'7',block=Tesseract?.PSM?.SINGLE_BLOCK??'6',word=Tesseract?.PSM?.SINGLE_WORD??'8';
+    const variants=kind==='quantity'?[
+      {canvas:thresholdCanvas(source,120),psm:block,label:'q-t120-block'},
+      {canvas:thresholdCanvas(source,140),psm:block,label:'q-t140-block'},
+      {canvas:thresholdCanvas(source,150),psm:block,label:'q-t150-block'},
+      {canvas:morphCloseCanvas(source,140,3,2),psm:word,label:'q-t140-close-word'}
+    ]:[
+      {canvas:thresholdCanvas(source,80),psm:block,label:'m-t80-block'},
+      {canvas:thresholdCanvas(source,90),psm:block,label:'m-t90-block'},
+      {canvas:morphCloseCanvas(source,90,3,2),psm:block,label:'m-t90-close-block'},
+      {canvas:morphCloseCanvas(source,105,3,2),psm:block,label:'m-t105-close-block'},
+      {canvas:morphCloseCanvas(source,110,3,2),psm:block,label:'m-t110-close-block'},
+      {canvas:thresholdCanvas(source,120),psm:block,label:'m-t120-block'},
+      {canvas:morphCloseCanvas(source,130,3,2),psm:block,label:'m-t130-close-block'}
     ];
     for(const v of variants){
-      const hit=await recognize(worker,v.canvas,v.psm,Tesseract,{variant:v.label});
+      const hit=await recognize(worker,v.canvas,v.psm,Tesseract,{variant:v.label,numeric:true});
       if(hit)out.push(hit);
     }
     return out;
@@ -129,9 +197,9 @@
         page:pageNumber,
         anchor_text:plan.rowText,
         description_ocr:desc?[desc]:[],
-        quantity_ocr:await numericEnsemble(worker,qtyCanvas,Tesseract),
-        unit_price_ocr:await numericEnsemble(worker,unitCanvas,Tesseract),
-        amount_ocr:await numericEnsemble(worker,amountCanvas,Tesseract)
+        quantity_ocr:await numericEnsemble(worker,qtyCanvas,Tesseract,'quantity'),
+        unit_price_ocr:await numericEnsemble(worker,unitCanvas,Tesseract,'money'),
+        amount_ocr:await numericEnsemble(worker,amountCanvas,Tesseract,'money')
       });
     }
     return out;
@@ -153,6 +221,18 @@
     const failures=[];
     if(p.length!==1||p[0].ordinal!==4)failures.push('incomplete-row-planning');
     if(!p[0]?.unit_price||p[0].unit_price.w<=0)failures.push('unit-price-box');
+    const corruptHeader={width:1200,height:1800,rows:[
+      {y:1500,text:'No. Description x Unit Price Amount',items:[
+        {text:'Description',x:120,y:1500,w:180,h:24},{text:'x',x:650,y:1500,w:20,h:24},
+        {text:'Price',x:820,y:1500,w:70,h:24},{text:'Amount',x:1020,y:1500,w:100,h:24}]},
+      {y:1400,text:'1 Projector 1',items:[{text:'1',x:40,y:1400,w:20,h:24},{text:'Projector',x:130,y:1400,w:120,h:24},{text:'1',x:650,y:1400,w:20,h:24}]},
+      {y:1320,text:'4 Wireless Microphone corrupted',items:[{text:'4',x:40,y:1320,w:20,h:24},{text:'Wireless',x:130,y:1320,w:100,h:24}]},
+      {y:1200,text:'5 Monitor 1',items:[{text:'5',x:40,y:1200,w:20,h:24},{text:'Monitor',x:130,y:1200,w:100,h:24},{text:'1',x:650,y:1200,w:20,h:24}]},
+      {y:500,text:'SUBTOTAL 100.00',items:[{text:'SUBTOTAL',x:800,y:500,w:100,h:24}]}
+    ]};
+    const h=findHeader(corruptHeader),cp=planTableCells(corruptHeader);
+    if(!h?.qtyInferred||Math.abs(h.centers.qty-660)>80)failures.push('corrupt-qty-header-inference');
+    if(!cp.some(x=>x.ordinal===4&&x.quantity.h>=60))failures.push('multi-line-row-span');
     return {ok:failures.length===0,failures};
   }
 
