@@ -473,13 +473,30 @@
     ranked.sort((a,b)=>b.score-a.score||b.line.length-a.line.length);
     return ranked[0]?.line||'';
   }
+  function serialTokenCandidates(text=''){
+    const stop=/^(?:N\/?A|NA|INVOICE|DELIVERY|WARRANTY|DESCRIPTION|QUANTITY|SUBTOTAL|TOTAL|GST|TAX|DATE|PAGE|STOCK)$/i;
+    return String(text||'').split(/[\s,;]+/).map(x=>clean(x).replace(/^[([{]+|[\])}.:,;]+$/g,'')).filter(x=>{
+      if(!x||stop.test(x)||/^\d+(?:[.,]\d{1,2})?$/.test(x))return false;
+      if(!/^[A-Z0-9][A-Z0-9._\/-]{5,31}$/i.test(x))return false;
+      return /\d/.test(x);
+    });
+  }
   function serials(blockText=''){
-    const out=[];
-    for(const line of linesOf(blockText)){
-      const m=line.match(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?\s*(.+)$/i)
-        ||line.match(/^\s*S\s*[\/\\|]\s*[A-Za-z0-9]{1,2}\s*[:#-]?\s*(.+)$/i);
+    const ls=linesOf(blockText),out=[];
+    const label=/\b(?:S\/N|SN|SERIAL(?:\s*(?:NO\.?|NUMBER(?:S)?))?)\s*[:#-]?\s*(.*)$/i;
+    for(let i=0;i<ls.length;i++){
+      const m=ls[i].match(label)||ls[i].match(/^\s*S\s*[\/\\|]\s*[A-Za-z0-9]{1,2}\s*[:#-]?\s*(.*)$/i);
       if(!m)continue;
-      for(const t of m[1].split(/[,;]\s*/).map(clean).filter(Boolean))if(!/^N\/?A$/i.test(t))out.push(t);
+      out.push(...serialTokenCandidates(m[1]||''));
+      for(let j=i+1;j<ls.length;j++){
+        const line=ls[j];
+        if(label.test(line))break;
+        if(/\b(?:WARRANTY|IN\s+STOCK|SUB\s*TOTAL|SUBTOTAL|GST|AMOUNT\s+DUE|INVOICE\s+TOTAL|TOTAL)\b/i.test(line))break;
+        if(moneyTokens(line).length||isPhysical(line)||isPureService(line)||isAccessoryOnly(line))break;
+        const tokens=serialTokenCandidates(line);
+        if(!tokens.length)break;
+        out.push(...tokens);
+      }
     }
     return [...new Set(out)];
   }
@@ -496,7 +513,15 @@
     return null;
   }
   function serialEvidenceLine(blockText=''){
-    return linesOf(blockText).find(x=>/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?/i.test(x))||'';
+    const ls=linesOf(blockText),label=/\b(?:S\/N|SN|SERIAL(?:\s*(?:NO\.?|NUMBER(?:S)?))?)\s*[:#-]?/i;
+    const i=ls.findIndex(x=>label.test(x));if(i<0)return '';
+    const evidence=[ls[i]];
+    for(let j=i+1;j<ls.length;j++){
+      const line=ls[j],tokens=serialTokenCandidates(line);
+      if(!tokens.length)break;
+      evidence.push(line);
+    }
+    return evidence.join(' ');
   }
   function nearMoney(a,b,tolerance=0.02){
     if(!Number.isFinite(a)||!Number.isFinite(b))return false;
