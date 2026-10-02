@@ -1322,6 +1322,36 @@
     s=s.replace(/\s+[a-z]$/,'').trim();
     return s;
   }
+  function stableDescriptionPrefix(candidates=[],row={}){
+    const values=(candidates||[]).map(x=>stripRowNameArtifacts(x.value,row)).filter(v=>v&&isPhysical(v));
+    if(values.length<2)return null;
+    const tokenized=values.map(v=>v.split(/\s+/).filter(Boolean));
+    let prefix=[];
+    const max=Math.min(...tokenized.map(x=>x.length));
+    for(let i=0;i<max;i++){
+      const base=tokenized[0][i];
+      const norm=t=>String(t||'').toLowerCase().replace(/[^a-z0-9&+/-]+/g,'');
+      const n=norm(base);
+      if(!n)break;
+      if(tokenized.every(ts=>norm(ts[i])===n))prefix.push(base);else break;
+    }
+    if(prefix.length<3)return null;
+    let value=stripRowNameArtifacts(prefix.join(' '),row);
+    const q=Number(row.quantity);
+    if(Number.isFinite(q)&&q>0){
+      const parts=value.split(/\s+/),last=parts[parts.length-1];
+      if(last&&Number(last)===q){parts.pop();value=parts.join(' ').trim();}
+    }
+    if(!value||!isPhysical(value)||descriptionContaminated(value))return null;
+    const supporting=values.filter(v=>{
+      const nv=v.toLowerCase().replace(/\s+/g,' ').trim();
+      const np=value.toLowerCase().replace(/\s+/g,' ').trim();
+      return nv===np||nv.startsWith(np+' ');
+    });
+    if(supporting.length<2)return null;
+    return {value,count:supporting.length,evidence:supporting[0],method:'stable-multi-witness-prefix',clean:true};
+  }
+
   function descriptionConsensusForRow(row={},texts=[]){
     const candidates=[];
     const push=(name,evidence,method)=>{
@@ -1345,6 +1375,7 @@
       push(v.item_name,v.evidence?.description||v.sourceText||'','ocr-witness-'+(i+1));
     }
     if(!candidates.length)return null;
+    const stable=stableDescriptionPrefix(candidates,row);
     const groups=new Map();
     for(const x of candidates){
       const k=key(x.value);
@@ -1353,7 +1384,13 @@
       if(x.value.length<g.value.length){g.value=x.value;g.evidence=x.evidence;g.method=x.method;}
       groups.set(k,g);
     }
-    return [...groups.values()].sort((a,b)=>b.count-a.count||a.value.length-b.value.length)[0];
+    const ranked=[...groups.values()].map(g=>({...g,clean:!descriptionContaminated(g.value)}))
+      .sort((a,b)=>(Number(b.clean)-Number(a.clean))||b.count-a.count||a.value.length-b.value.length);
+    if(stable){
+      const best=ranked[0];
+      if(!best||!best.clean||stable.count>=Math.max(2,best.count))return stable;
+    }
+    return ranked[0]||stable;
   }
   function applyDescriptionConsensus(rows=[],texts=[]){
     return rows.map(row=>{
