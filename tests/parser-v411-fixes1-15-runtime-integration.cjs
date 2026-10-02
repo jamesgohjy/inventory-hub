@@ -3,8 +3,10 @@ const fs=require('fs');
 const path=require('path');
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
 
-const Parser=require('../modules/parser-v411-fixes1-5-shadow.js');
-const Cell=require('../modules/parser-v411-cell-ocr-bridge.js');
+require('../modules/parser-v411-fixes1-5-shadow.js');
+require('../modules/parser-v411-cell-ocr-bridge.js');
+const Parser=globalThis.InventoryHubV411Fixes1to5Shadow;
+const Cell=globalThis.InventoryHubV411CellOcrBridge;
 const app=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 const runtime=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.14z.js'),'utf8');
 const parserSrc=fs.readFileSync(path.join(__dirname,'..','modules/parser-v411-fixes1-5-shadow.js'),'utf8');
