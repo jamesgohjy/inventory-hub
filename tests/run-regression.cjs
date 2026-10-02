@@ -269,9 +269,9 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
 // when a corroborating numbered price schedule is attached.
 assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
-assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
+assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('const ocrAllowed=modes.some')&&runtime.includes('if((nativeAllowed||ocrAllowed)&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to pages positively authorised as invoices by native or OCR evidence');
 assert(runtime.includes("applyParsedFixes?.(normalized,recoveryRaw,sources.slice(1))"),'Normal import finalizer must run common invoice-evidence recovery before V2/V3');
-assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("filterInvoicePages([hiText],[])")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, and re-apply the invoice-page gate');
+assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("filterInvoicePages([hiText],[hiLayout])")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK")&&runtime.includes("InventoryHubV411CellOcrBridge.extractPage"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, re-apply invoice authority, and expose targeted cell evidence');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
 const richMixedText=['TAX INVOICE','No. Description Qty Unit Price Amount','1 Mixer 1 100.00 100.00','SCHEDULES OF PRICES AND TECHNICAL DATA','1 Mixer ABC-1 UK 1 $100.00 $100.00'].join(String.fromCharCode(10));
 const oldStrongNativeGate=5000<80||(1===0&&60<20);
