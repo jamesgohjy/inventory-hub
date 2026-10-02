@@ -28,10 +28,21 @@
       }
     }
     if(!vals.length)return null;
-    const mid=(descCenter+priceCenter)/2;
-    const right=vals.filter(x=>x>mid);
-    const pool=right.length>=2?right:vals;
-    pool.sort((a,b)=>a-b);
+    vals.sort((a,b)=>a-b);
+    const clusters=[];
+    for(const x of vals){
+      let best=null,bestD=Infinity;
+      for(const g of clusters){
+        const d=Math.abs(x-g.center);
+        if(d<=55&&d<bestD){best=g;bestD=d;}
+      }
+      if(!best){best={values:[],center:x};clusters.push(best);}
+      best.values.push(x);
+      best.center=best.values.reduce((a,v)=>a+v,0)/best.values.length;
+    }
+    clusters.sort((a,b)=>b.values.length-a.values.length||Math.abs(a.center-(priceCenter-260))-Math.abs(b.center-(priceCenter-260)));
+    const best=clusters[0];if(!best)return null;
+    const pool=[...best.values].sort((a,b)=>a-b);
     return pool[Math.floor(pool.length/2)]||null;
   }
 
