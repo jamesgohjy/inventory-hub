@@ -72,6 +72,8 @@ jobs:
           node --check modules/parser-v3/engine.js
           node --check modules/parser-v4-review-bridge.js
           node --check modules/parser-v4_1-shadow.js
+          node --check modules/parser-v411-cell-ocr-bridge.js
+          node --check modules/parser-v411-fixes1-5-shadow.js
           node --check modules/parser-table.js
           node --check modules/grouped-company-ui.js
           node --check modules/backup-verification-ui.js
@@ -100,6 +102,7 @@ jobs:
           node tests/parser-v4_1-stacked-row-local-identity-shadow.cjs
           node tests/parser-v4_1-stacked-row-preprod-parity.cjs
           node tests/parser-v4_1-final-live-production-parity-shadow.cjs
+          node tests/parser-v411-fixes1-15-runtime-integration.cjs
           node tests/parser-v4_1-lta-aerospace-concept-multitest.cjs
           node tests/merge-dialog-close-regression.cjs
           node tests/recent-inventory-futuristic-artwork.cjs
