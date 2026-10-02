@@ -21,7 +21,7 @@
     for(const r of rows){
       for(const item of (r.items||[])){
         const cx=center(item),t=clean(item.text);
-        if(cx<=descCenter+80||cx>=priceCenter-70)continue;
+        if(cx<=descCenter+80||cx>=priceCenter-110)continue;
         if(!/^\d{1,3}$/.test(t))continue;
         const n=Number(t);if(!(n>=1&&n<=999))continue;
         vals.push(cx);
