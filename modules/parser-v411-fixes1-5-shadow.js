@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r11-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r12-cell-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -1013,11 +1013,17 @@
     row={...row,item_name:desc?.text||sanitizeItemName(row.item_name),description:desc?.text||sanitizeItemName(row.description||row.item_name)};
     const Q=rawQuantityCandidates(entry.quantity_ocr);
     const existingQ=(row.quantity!==null&&row.quantity!==undefined&&Number.isFinite(Number(row.quantity)))?Number(row.quantity):null;
-    let q=existingQ!==null?existingQ:((Q[0]&&Q[0].votes>=2)?Q[0].value:recoverQuantityFromBlock(block,row));
-    const U=rawMoneyCandidates(entry.unit_price_ocr);
-    const A=rawMoneyCandidates(entry.amount_ocr);
     const uExisting=Number.isFinite(Number(row.unit_price))&&row.unit_price!==null?Number(row.unit_price):null;
     const aExisting=Number.isFinite(Number(row.amount))&&row.amount!==null?Number(row.amount):null;
+    const existingArithmeticOk=existingQ!==null&&uExisting!==null&&aExisting!==null
+      &&Math.abs(existingQ*uExisting-aExisting)<=Math.max(.02,Math.abs(aExisting)*.002);
+    const qLead=Q[0]||null,qRunner=Q[1]||null;
+    const strongCellQ=!!qLead&&qLead.votes>=3&&qLead.votes>=(Number(qRunner?.votes)||0)+1;
+    let q=existingQ;
+    if(q===null)q=strongCellQ?qLead.value:((qLead&&qLead.votes>=2)?qLead.value:recoverQuantityFromBlock(block,row));
+    else if(!existingArithmeticOk&&strongCellQ&&Number(qLead.value)!==existingQ)q=Number(qLead.value);
+    const U=rawMoneyCandidates(entry.unit_price_ocr);
+    const A=rawMoneyCandidates(entry.amount_ocr);
     if(uExisting!==null)U.unshift({value:uExisting,votes:100});
     if(aExisting!==null)A.unshift({value:aExisting,votes:100});
     let best=null;
