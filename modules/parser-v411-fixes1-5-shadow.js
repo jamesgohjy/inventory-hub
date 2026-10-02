@@ -534,6 +534,23 @@
     const expected=subtotal.value+gst.value,ok=nearMoney(expected,total.value,0.005);
     return {status:ok?'pass':'fail',subtotal,gst,total,expected,actual:total.value,delta:total.value-expected};
   }
+  function invoiceArithmeticConsensus(raw='',witnesses=[]){
+    const primary=invoiceArithmetic(raw);
+    if(primary.status==='pass')return {...primary,source:'primary'};
+    const groups=new Map();
+    for(const text0 of (Array.isArray(witnesses)?witnesses:[])){
+      const text=String(text0||'').trim();if(!text||text===String(raw||''))continue;
+      const r=invoiceArithmetic(text);if(r.status!=='pass')continue;
+      const k=[r.subtotal?.value,r.gst?.value,r.total?.value].map(v=>Number(v).toFixed(2)).join('|');
+      const g=groups.get(k)||{count:0,result:r};g.count++;groups.set(k,g);
+    }
+    const agreed=[...groups.entries()].filter(([,g])=>g.count>=2).sort((a,b)=>b[1].count-a[1].count);
+    if(agreed.length){
+      const [consensusKey,g]=agreed[0];
+      return {...g.result,source:'authorized-ocr-consensus',consensusKey,witnessCount:g.count,primaryConflict:primary.status==='fail'?primary:null};
+    }
+    return primary;
+  }
 
   function confidenceBand(score){
     return score>=0.9?'high':(score>=0.7?'medium':'low');
@@ -1408,12 +1425,12 @@
         if(populated&&cf.score<0.6)failures.push({blockId:row.sourceBlockId,issue:'low-field-confidence',field,confidence:cf});
       }
     }
-    const invoiceValidation=invoiceArithmetic(raw);
-    if(invoiceValidation.status==='fail')failures.push({issue:'invoice-total-arithmetic-mismatch',detail:invoiceValidation});
     const verificationTexts=[
       ...(Array.isArray(opts.verificationTexts)?opts.verificationTexts:[]),
       ...(Array.isArray(opts.ocrCandidates)?opts.ocrCandidates.map(x=>x?.text).filter(Boolean):[])
     ].filter(x=>String(x||'').trim()&&String(x)!==String(raw));
+    const invoiceValidation=invoiceArithmeticConsensus(raw,verificationTexts);
+    if(invoiceValidation.status==='fail')failures.push({issue:'invoice-total-arithmetic-mismatch',detail:invoiceValidation});
     failures.push(...verificationIdentityConflicts(rows,verificationTexts));
     const printedIdentityCount=blocks.filter(b=>printedIdentityInBlock(b.text)).length;
     const recoveredPrintedIdentityCount=blocks.filter((b,i)=>printedIdentityInBlock(b.text)&&rows[i]?.sku).length;
