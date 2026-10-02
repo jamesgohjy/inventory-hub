@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r7-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r8-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -899,7 +899,9 @@
     const out=[];
     for(const row of rows){
       if(!row.sku||row.identityConsensus?.resolved)continue;
-      const currentKey=key(row.sku),currentSkeleton=ocrIdentitySkeleton(row.sku),alternates=[];
+      const currentKey=key(row.sku),currentSkeleton=ocrIdentitySkeleton(row.sku);
+      let currentSupport=1;
+      const material=new Map();
       for(const text of texts){
         if(!String(text||'').trim())continue;
         const vBlocks=sourceBlocks(String(text));
@@ -912,19 +914,25 @@
           .filter(x=>x.sim>=0.6&&x.v.sku)
           .sort((a,b)=>b.sim-a.sim);
         const top=matches[0];
-        if(top&&key(top.v.sku)!==currentKey)alternates.push({sku:top.v.sku,sim:top.sim});
+        if(!top)continue;
+        const alt=top.v.sku,altKey=key(alt),altSkeleton=ocrIdentitySkeleton(alt);
+        if(altKey===currentKey||altSkeleton===currentSkeleton){currentSupport++;continue;}
+        // Ignore obviously truncated OCR fragments that are not comparable to the current identity.
+        if(altKey.length<Math.max(4,Math.floor(currentKey.length*0.65)))continue;
+        const rec=material.get(altKey)||{sku:alt,count:0,maxSim:0};
+        rec.count++;rec.maxSim=Math.max(rec.maxSim,top.sim);material.set(altKey,rec);
       }
-      // Single-character OCR confusions such as I/1 or O/0 are not treated as
-      // conflicts when they reduce to the same identity skeleton.
-      const material=alternates.filter(x=>ocrIdentitySkeleton(x.sku)!==currentSkeleton);
-      if(material.length){
-        const top=material[0];
+      const alternatives=[...material.values()].sort((a,b)=>b.count-a.count||b.maxSim-a.maxSim);
+      const topAlt=alternatives[0];
+      // A conflicting identity must itself have repeated support and at least match
+      // the support for the selected/current identity. One-off OCR mutations stay informational.
+      if(topAlt&&topAlt.count>=2&&topAlt.count>=currentSupport){
         out.push({
           blockId:row.sourceBlockId,
           issue:'identity-conflict-between-extractions',
           current:row.sku,
-          alternate:top.sku,
-          similarity:Number(top.sim.toFixed(3))
+          alternate:topAlt.sku,
+          similarity:Number(topAlt.maxSim.toFixed(3))
         });
       }
     }
