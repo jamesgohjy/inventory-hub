@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r12-critic';
+  const VERSION='4.1.1-shadow-fixes1-15-r13-review';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -1267,19 +1267,34 @@
 
   function buildReviewGate(rows=[],failures=[],ledger=[]){
     const byBlock=new Map(ledger.filter(x=>x.status==='accepted').map(x=>[x.sourceBlockId,x]));
+    const reviewOnlyIssues=new Set([
+      'low-field-confidence','quantity-unresolved','unit-price-unresolved','amount-unresolved',
+      'description-contaminated','identity-conflict-between-extractions'
+    ]);
     const decisions=rows.map(row=>{
       const candidate=byBlock.get(row.sourceBlockId)||{text:row.sourceText,exclusionReasons:[]};
       const evidenceScore=scoreCandidate(candidate,row);
       const rowFailures=failures.filter(f=>!f.blockId||f.blockId===row.sourceBlockId);
-      const hard=rowFailures.filter(f=>!['low-field-confidence'].includes(f.issue));
-      const review=rowFailures.filter(f=>['low-field-confidence'].includes(f.issue));
+      const hard=rowFailures.filter(f=>!reviewOnlyIssues.has(f.issue));
+      const review=rowFailures.filter(f=>reviewOnlyIssues.has(f.issue));
       const printedIdentity=!!printedIdentityInBlock(row.sourceText||'');
-      const unresolved=[row.item_name,row.quantity,row.unit_price,row.amount].some(v=>v===null||v===undefined||v==='')
-        ||(printedIdentity&&(row.sku===null||row.sku===undefined||row.sku===''));
+      const missingIdentity=!row.item_name||(printedIdentity&&!clean(row.sku||row.model||''));
+      const unresolvedEconomics=[row.quantity,row.unit_price,row.amount].some(v=>v===null||v===undefined||v==='');
+      const strongPhysicalIdentity=!!row.item_name&&isPhysical(row.item_name||row.sourceText||'')
+        &&(!printedIdentity||!!clean(row.sku||row.model||''));
       let status='auto-accept';
       const reasons=[];
-      if(hard.length||unresolved||evidenceScore.score<0.7){status='reject';reasons.push(...hard.map(x=>x.issue));if(unresolved)reasons.push('unresolved-required-field');if(evidenceScore.score<0.7)reasons.push('candidate-score-low');}
-      else if(review.length||evidenceScore.score<0.9){status='review';reasons.push(...review.map(x=>x.issue));if(evidenceScore.score<0.9)reasons.push('candidate-score-medium');}
+      if(hard.length||missingIdentity||(evidenceScore.score<0.7&&!strongPhysicalIdentity)){
+        status='reject';
+        reasons.push(...hard.map(x=>x.issue));
+        if(missingIdentity)reasons.push('unresolved-identity');
+        if(evidenceScore.score<0.7&&!strongPhysicalIdentity)reasons.push('candidate-score-low');
+      }else if(review.length||unresolvedEconomics||evidenceScore.score<0.9){
+        status='review';
+        reasons.push(...review.map(x=>x.issue));
+        if(unresolvedEconomics)reasons.push('targeted-numeric-review');
+        if(evidenceScore.score<0.9)reasons.push('candidate-score-medium');
+      }
       return {sourceBlockId:row.sourceBlockId,status,reasons:[...new Set(reasons)],evidenceScore};
     });
     return {
@@ -1519,6 +1534,16 @@
     if(taxInvoiceHeadingLike('TAX AMOUNT SGD 124.18'))f.push('tax heading false positive');
     const noisySerial=serials('S/N: 320-T 1-08078 z - + j');
     if(noisySerial.length!==1||noisySerial[0]!=='320-T1-08078')f.push('serial trailing OCR-noise cleanup');
+    const numericReview=run([
+      'TAX INVOICE','No Description Qty Unit Price Amount',
+      '4 Single Channel Digital Wireless Handheld Microphone System',
+      'Model: Shure SLXD24/SM58',
+      '5 Monitor Speaker at the console','Model: Yamaha MS101-4',
+      '6 Dual CD and MP3 player with USB supported Playback 1 corrupted corrupted',
+      'Model: Omnitronic XDP-3002'
+    ].join('\n'),{transactionId:'numeric-review-selftest'});
+    if(numericReview.reviewGate.decisions.length!==3||numericReview.reviewGate.decisions.some(x=>x.status!=='review'))f.push('targeted numeric Review routing');
+    if(numericReview.atomicSave.canCommit||numericReview.atomicSave.committedOperations!==0||numericReview.atomicSave.partialWriteAllowed)f.push('numeric Review atomic-save fail-closed');
     if(r.metrics.crossRowContaminationCount)f.push('cross-row');
     if(!r.ready||r.failures.length)f.push('shadow readiness gate');
     return {ok:!f.length,failures:f,metrics:r.metrics};
