@@ -172,6 +172,13 @@
 
     const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|SERVICE\s+INVOICE|INSTALLATION\s+REPORT|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
     const nonInvoiceTitles=[...new Set(earlyPhrases.filter(x=>nonInvoiceRe.test(x)))];
+    // OCR can fragment PACKING/DELIVERY SLIP into spaced letter groups
+    // (e.g. "PACKI N G/D E LIVE RY iS LI p"). Detect only in the early
+    // heading region and only when the compact line begins with the title.
+    const compactEarly=earlyHead.map(line=>exactHeadingText(line).replace(/[^A-Z0-9]+/g,''));
+    if(compactEarly.some(x=>/^(?:PACKING)?DELIVERYI?SLIP/.test(x)||/^PACKINGDELIVERYI?SLIP/.test(x))){
+      nonInvoiceTitles.push('PACKING/DELIVERY SLIP');
+    }
 
     // A heading can be merged into surrounding header text by PDF extraction. Accept TAX INVOICE
     // when it appears as a heading phrase on a reasonably short header line, not only as an exact line.
