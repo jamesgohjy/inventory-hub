@@ -9,7 +9,7 @@
  */
 (function(root){
   'use strict';
-  const VERSION='4.1.1-shadow-fixes1-15-r5-parity';
+  const VERSION='4.1.1-shadow-fixes1-15-r6-parity';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim();
   const ocrLex=v=>clean(v)
     .replace(/\bSPEAKA\b/ig,'speaker')
@@ -892,32 +892,40 @@
     });
   }
 
+  function ocrIdentitySkeleton(v=''){
+    return key(v).replace(/[IL]/g,'1').replace(/O/g,'0').replace(/S/g,'5').replace(/B/g,'8');
+  }
   function verificationIdentityConflicts(rows=[],texts=[]){
     const out=[];
-    for(const text of texts){
-      if(!String(text||'').trim())continue;
-      const vBlocks=sourceBlocks(String(text));
-      const vRows=vBlocks.map(parseBlock).filter(v=>{
-        const physicalLines=linesOf(v.sourceText||'').filter(x=>isPhysical(x));
-        return physicalLines.length<=1;
-      });
-      for(const row of rows){
-        if(!row.sku||row.identityConsensus?.resolved)continue;
+    for(const row of rows){
+      if(!row.sku||row.identityConsensus?.resolved)continue;
+      const currentKey=key(row.sku),currentSkeleton=ocrIdentitySkeleton(row.sku),alternates=[];
+      for(const text of texts){
+        if(!String(text||'').trim())continue;
+        const vBlocks=sourceBlocks(String(text));
+        const vRows=vBlocks.map(parseBlock).filter(v=>{
+          const physicalLines=linesOf(v.sourceText||'').filter(x=>isPhysical(x));
+          return physicalLines.length<=1;
+        });
         const matches=vRows
           .map(v=>({v,sim:descSimilarity(row.item_name,v.item_name)}))
-          .filter(x=>x.sim>=0.6&&x.v.sku);
-        for(const {v,sim} of matches){
-          if(key(v.sku)!==key(row.sku)){
-            out.push({
-              blockId:row.sourceBlockId,
-              issue:'identity-conflict-between-extractions',
-              current:row.sku,
-              alternate:v.sku,
-              similarity:Number(sim.toFixed(3))
-            });
-            break;
-          }
-        }
+          .filter(x=>x.sim>=0.6&&x.v.sku)
+          .sort((a,b)=>b.sim-a.sim);
+        const top=matches[0];
+        if(top&&key(top.v.sku)!==currentKey)alternates.push({sku:top.v.sku,sim:top.sim});
+      }
+      // Single-character OCR confusions such as I/1 or O/0 are not treated as
+      // conflicts when they reduce to the same identity skeleton.
+      const material=alternates.filter(x=>ocrIdentitySkeleton(x.sku)!==currentSkeleton);
+      if(material.length){
+        const top=material[0];
+        out.push({
+          blockId:row.sourceBlockId,
+          issue:'identity-conflict-between-extractions',
+          current:row.sku,
+          alternate:top.sku,
+          similarity:Number(top.sim.toFixed(3))
+        });
       }
     }
     return out;
@@ -941,20 +949,28 @@
     for(const e of (Array.isArray(entries)?entries:[])){
       let s=clean(e?.text??e).replace(/\s+/g,'');
       if(!s)continue;
-      if(s.includes(',')&&!s.includes('.'))s=s.replace(/,/g,'.');
-      const re=/(\d{1,5})[.,](\d{2})(?:\d)?/g;
-      let m,matched=false;
-      while((m=re.exec(s))){
+      let matched=false;
+      // Standard money with optional thousands separators.
+      for(const m of s.matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?!\d)/g)){
         matched=true;
-        const v=Number(m[1]+'.'+m[2]);
+        const v=Number(m[1].replace(/,/g,'')+'.'+m[2]);
         if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
       }
+      // Decimal comma form when no decimal point is present.
+      if(!s.includes('.')){
+        for(const m of s.matchAll(/(\d+),(\d{2})(?!\d)/g)){
+          matched=true;
+          const v=Number(m[1]+'.'+m[2]);
+          if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
+        }
+      }
       // Targeted money-cell OCR can lose only the decimal mark while retaining all digits,
-      // e.g. "95000" for "950.00". Interpret the final two digits as cents only when
-      // the cell contains a single 3-7 digit numeric token and no ordinary money match.
+      // e.g. "95000" for "950.00". Interpret final two digits as cents only for a
+      // single compact numeric token and only when no ordinary money match exists.
       if(!matched){
-        const digitOnly=s.replace(/[^0-9]/g,'');
-        if(/^\d{3,7}$/.test(digitOnly)){
+        const tokens=(s.match(/\d{3,7}/g)||[]);
+        if(tokens.length===1){
+          const digitOnly=tokens[0];
           const v=Number(digitOnly.slice(0,-2)+'.'+digitOnly.slice(-2));
           if(Number.isFinite(v)&&v>=1&&v<=100000)vals.push(v);
         }
