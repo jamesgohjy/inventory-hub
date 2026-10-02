@@ -1027,7 +1027,9 @@
   function applyNumericCellEvidence(block,row,entry){
     if(!entry)return {...row,item_name:sanitizeItemName(row.item_name),description:sanitizeItemName(row.description||row.item_name)};
     const desc=descriptionCellCandidate(entry.description_ocr);
-    row={...row,item_name:desc?.text||sanitizeItemName(row.item_name),description:desc?.text||sanitizeItemName(row.description||row.item_name)};
+    const existingName=sanitizeItemName(row.item_name),existingDesc=sanitizeItemName(row.description||row.item_name);
+    const descFallback=(!existingName||descriptionContaminated(existingName))&&desc?.text?desc.text:existingName;
+    row={...row,item_name:descFallback,description:(!existingDesc||descriptionContaminated(existingDesc))&&desc?.text?desc.text:existingDesc};
     const Q=rawQuantityCandidates(entry.quantity_ocr);
     const existingQ=(row.quantity!==null&&row.quantity!==undefined&&Number.isFinite(Number(row.quantity)))?Number(row.quantity):null;
     const uExisting=Number.isFinite(Number(row.unit_price))&&row.unit_price!==null?Number(row.unit_price):null;
