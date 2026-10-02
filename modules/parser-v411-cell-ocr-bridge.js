@@ -113,6 +113,15 @@
     ctx.drawImage(source,box.x,box.y,box.w,box.h,0,0,c.width,c.height);
     return c;
   }
+  function scaleCanvas(source,scale=1){
+    if(!(scale>1))return source;
+    const c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(source.width*scale));c.height=Math.max(1,Math.round(source.height*scale));
+    const ctx=c.getContext('2d',{willReadFrequently:true});
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(source,0,0,c.width,c.height);
+    return c;
+  }
   function thresholdCanvas(source,threshold){
     const c=document.createElement('canvas');c.width=source.width;c.height=source.height;
     const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0);
@@ -163,10 +172,10 @@
   async function numericEnsemble(worker,source,Tesseract,kind='money'){
     const out=[],line=Tesseract?.PSM?.SINGLE_LINE??'7',block=Tesseract?.PSM?.SINGLE_BLOCK??'6',word=Tesseract?.PSM?.SINGLE_WORD??'8';
     const variants=kind==='quantity'?[
-      {canvas:thresholdCanvas(source,120),psm:block,label:'q-t120-block'},
-      {canvas:thresholdCanvas(source,140),psm:block,label:'q-t140-block'},
-      {canvas:thresholdCanvas(source,150),psm:block,label:'q-t150-block'},
-      {canvas:morphCloseCanvas(source,140,3,2),psm:word,label:'q-t140-close-word'}
+      {canvas:thresholdCanvas(scaleCanvas(source,2),150),psm:block,label:'q-s2-t150-block'},
+      {canvas:thresholdCanvas(scaleCanvas(source,3),150),psm:block,label:'q-s3-t150-block'},
+      {canvas:thresholdCanvas(scaleCanvas(source,4),140),psm:block,label:'q-s4-t140-block'},
+      {canvas:thresholdCanvas(scaleCanvas(source,4),150),psm:block,label:'q-s4-t150-block'}
     ]:[
       {canvas:thresholdCanvas(source,80),psm:block,label:'m-t80-block'},
       {canvas:thresholdCanvas(source,90),psm:block,label:'m-t90-block'},
