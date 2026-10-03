@@ -74,6 +74,16 @@ jobs:
           name: inventory-hub-certification-vendor
           path: /tmp/cert-vendor
           retention-days: 1
+      - name: Package standalone certification Chromium
+        run: |
+          PLAYWRIGHT_BROWSERS_PATH=/tmp/pw-browsers npx --yes playwright@1.55.0 install chromium
+          tar -C /tmp -czf /tmp/inventory-hub-certification-chromium.tgz pw-browsers
+      - name: Upload standalone certification Chromium
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-hub-certification-chromium
+          path: /tmp/inventory-hub-certification-chromium.tgz
+          retention-days: 1
       - name: Syntax-check direct runtime and backup verifier
         run: |
           node --check app.js
