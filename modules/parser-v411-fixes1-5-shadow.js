@@ -526,12 +526,30 @@
     return value;
   }
   function serials(blockText=''){
-    const out=[];
+    const out=[];let collecting=false;
+    const parseSerialList=(text='')=>{
+      const parts=clean(text).replace(/[,;]\s*$/,'').split(/[,;]\s*/).map(clean).filter(Boolean);
+      if(!parts.length)return [];
+      const values=parts.map(sanitizeSerialToken);
+      // Continuation lines must be serial-only. This prevents descriptions,
+      // prices or metadata from being absorbed merely because they contain digits.
+      if(values.some(v=>!v||/\s/.test(v)))return [];
+      return values;
+    };
     for(const line of linesOf(blockText)){
       const m=line.match(/\b(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:#-]?\s*(.+)$/i)
         ||line.match(/^\s*S\s*[\/\\|]\s*[A-Za-z0-9]{1,2}\s*[:#-]?\s*(.+)$/i);
-      if(!m)continue;
-      for(const t of m[1].split(/[,;]\s*/).map(sanitizeSerialToken).filter(Boolean))out.push(t);
+      if(m){
+        const values=parseSerialList(m[1]);for(const v of values)out.push(v);
+        collecting=/[,;]\s*$/.test(clean(m[1]));
+        continue;
+      }
+      if(!collecting)continue;
+      if(isPureService(line)||isAccessoryOnly(line)||isPhysical(line)||isMetadata(line)||moneyTokens(line).length||/\b(?:SUBTOTAL|SUB\s+TOTAL|GST|TOTAL|AMOUNT\s+DUE|WARRANTY|IN\s+STOCK)\b/i.test(line)){collecting=false;continue;}
+      const values=parseSerialList(line);
+      if(!values.length){collecting=false;continue;}
+      for(const v of values)out.push(v);
+      collecting=/[,;]\s*$/.test(clean(line));
     }
     return [...new Set(out)];
   }
@@ -1541,6 +1559,8 @@
     if(taxInvoiceHeadingLike('TAX AMOUNT SGD 124.18'))f.push('tax heading false positive');
     const noisySerial=serials('S/N: 320-T 1-08078 z - + j');
     if(noisySerial.length!==1||noisySerial[0]!=='320-T1-08078')f.push('serial trailing OCR-noise cleanup');
+    const wrappedSerials=serials('S/N: IntlE251100449, Intle251100452,\nIntle251000719, Intle251100448');
+    if(wrappedSerials.length!==4||wrappedSerials[2]!=='Intle251000719'||wrappedSerials[3]!=='Intle251100448')f.push('wrapped serial continuation recovery');
     const numericReview=run([
       'TAX INVOICE','No Description Qty Unit Price Amount',
       '4 Single Channel Digital Wireless Handheld Microphone System',
