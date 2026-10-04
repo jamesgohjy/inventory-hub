@@ -159,6 +159,7 @@ const canEdit=()=>['admin','editor'].includes(currentRole());
 const canManageRoles=()=>currentRole()==='admin';
 const requireEdit=()=>{if(canEdit())return true;toast('Viewer access is read-only.');return false;};
 const num=(v)=>v===null||v===undefined||v===''?null:Number(String(v).replace(/,/g,''));
+const hasNumericValue=(v)=>v!==null&&v!==undefined&&String(v).trim()!==''&&Number.isFinite(Number(v));
 const parseSerials=(s='')=>String(s).split(/[,;\n]+/).map(x=>x.trim()).filter(x=>x&&!/^n\/?a$/i.test(x));
 function safeFilePart(v,fallback='Unknown'){
   return String(v||'').normalize('NFKD').replace(/[’']/g,'').replace(/&/g,' and ').replace(/\b(?:pte\.?\s*ld?t\.?|pte\.?\s*ltd\.?|private\s+limited|limited)\b/gi,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/-{2,}/g,'-')||fallback;
@@ -1521,9 +1522,9 @@ function validParsedItems(items=[]){return (items||[]).filter(x=>String(x.item_n
 function invoiceParseQuality(parsed){
   const d=parsed?.doc||{},items=validParsedItems(parsed?.items||[]);let score=0;
   if(d.supplier_name)score+=20;if(d.invoice_number)score+=25;if(d.invoice_date)score+=20;if(d.reference_number)score+=6;if(d.currency)score+=4;
-  if(Number.isFinite(Number(d.subtotal)))score+=15;if(Number.isFinite(Number(d.gst)))score+=15;if(Number.isFinite(Number(d.total_amount)))score+=15;
+  if(hasNumericValue(d.subtotal))score+=15;if(hasNumericValue(d.gst))score+=15;if(hasNumericValue(d.total_amount))score+=15;
   score+=invoiceItemsQuality(items,d.subtotal);
-  if(Number.isFinite(Number(d.subtotal))&&Number.isFinite(Number(d.gst))&&Number.isFinite(Number(d.total_amount))&&Math.abs((Number(d.subtotal)+Number(d.gst))-Number(d.total_amount))<0.02)score+=35;
+  if([d.subtotal,d.gst,d.total_amount].every(hasNumericValue)&&Math.abs((Number(d.subtotal)+Number(d.gst))-Number(d.total_amount))<0.02)score+=35;
   return score;
 }
 function parseBestInvoice(primaryText){
@@ -1552,18 +1553,18 @@ function parseBestInvoice(primaryText){
     if(uniqueConfirmed.length===1&&!conflictingVotes.length)confirmedDate=uniqueConfirmed[0];
   }
   doc.invoice_date=confirmedDate;
-  const completeMoney=results.find(r=>['subtotal','gst','total_amount'].every(k=>Number.isFinite(Number(r.parsed.doc?.[k])))&&Math.abs((Number(r.parsed.doc.subtotal)+Number(r.parsed.doc.gst))-Number(r.parsed.doc.total_amount))<0.02);
+  const completeMoney=results.find(r=>['subtotal','gst','total_amount'].every(k=>hasNumericValue(r.parsed.doc?.[k]))&&Math.abs((Number(r.parsed.doc.subtotal)+Number(r.parsed.doc.gst))-Number(r.parsed.doc.total_amount))<0.02);
   if(completeMoney){doc.subtotal=completeMoney.parsed.doc.subtotal;doc.gst=completeMoney.parsed.doc.gst;doc.total_amount=completeMoney.parsed.doc.total_amount;}
-  else for(const field of ['subtotal','gst','total_amount'])if(!Number.isFinite(Number(doc[field]))){const hit=results.find(r=>Number.isFinite(Number(r.parsed.doc?.[field])));if(hit)doc[field]=hit.parsed.doc[field];}
+  else for(const field of ['subtotal','gst','total_amount'])if(!hasNumericValue(doc[field])){const hit=results.find(r=>hasNumericValue(r.parsed.doc?.[field]));if(hit)doc[field]=hit.parsed.doc[field];}
   const choices=results.map(r=>({r,items:validParsedItems(r.parsed.items),q:invoiceItemsQuality(validParsedItems(r.parsed.items),doc.subtotal)})).sort((a,b)=>b.q-a.q),itemChoice=choices[0];
   const extractedItems=attachSerialBlocks(itemChoice?.items||[],itemChoice?.r?.text||best.text);
   const items=sanitizeParsedInventoryItems(inventoryOnlyItems(extractedItems),itemChoice?.r?.text||best.text);
-  if(items.length&&(!Number.isFinite(Number(doc.subtotal))||Number(doc.subtotal)<=0))doc.subtotal=Math.round(items.reduce((n,x)=>n+(Number(x.amount)||0),0)*100)/100;
+  if(items.length&&(!hasNumericValue(doc.subtotal)||Number(doc.subtotal)<=0))doc.subtotal=Math.round(items.reduce((n,x)=>n+(Number(x.amount)||0),0)*100)/100;
   const allText=results.map(r=>r.text).join('\n'),rateMatch=allText.match(/\bGST\s*@?\s*(\d+(?:\.\d+)?)\s*%/i),rate=rateMatch?Number(rateMatch[1]):null;
-  if(!Number.isFinite(Number(doc.gst))&&Number.isFinite(Number(doc.subtotal))&&Number.isFinite(rate))doc.gst=Math.round(Number(doc.subtotal)*rate)/100;
-  if(!Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.gst)))doc.total_amount=Math.round((Number(doc.subtotal)+Number(doc.gst))*100)/100;
-  if(!Number.isFinite(Number(doc.gst))&&Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.subtotal)))doc.gst=Math.round((Number(doc.total_amount)-Number(doc.subtotal))*100)/100;
-  if(!Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.gst)))doc.subtotal=Math.round((Number(doc.total_amount)-Number(doc.gst))*100)/100;
+  if(!hasNumericValue(doc.gst)&&hasNumericValue(doc.subtotal)&&Number.isFinite(rate))doc.gst=Math.round(Number(doc.subtotal)*rate)/100;
+  if(!hasNumericValue(doc.total_amount)&&hasNumericValue(doc.subtotal)&&hasNumericValue(doc.gst))doc.total_amount=Math.round((Number(doc.subtotal)+Number(doc.gst))*100)/100;
+  if(!hasNumericValue(doc.gst)&&hasNumericValue(doc.total_amount)&&hasNumericValue(doc.subtotal))doc.gst=Math.round((Number(doc.total_amount)-Number(doc.subtotal))*100)/100;
+  if(!hasNumericValue(doc.subtotal)&&hasNumericValue(doc.total_amount)&&hasNumericValue(doc.gst))doc.subtotal=Math.round((Number(doc.total_amount)-Number(doc.gst))*100)/100;
   const chosen=itemChoice?.r||best;state.pdfLayout=chosen.layout||best.layout||originalLayout;if(!confirmedDate){const strongLayoutDate=detectInvoiceDateFromLayout();if(strongLayoutDate){confirmedDate=strongLayoutDate;doc.invoice_date=strongLayoutDate;}}recoverAvMediaHeader(doc,chosen.text);v661RepairInvoiceMoneyFromLayout(doc);if(doc.invoice_date)confirmedDate=doc.invoice_date;
   const invoiceClassification=classifyInvoiceDocument(chosen.text,extractedItems,items);
   const serviceOnlyInvoice=invoiceClassification.type==='service';
@@ -1619,7 +1620,7 @@ function parseInvoice(text){
   if(/^(?:DATE|INVOICE|INVOICE\s*NO|P\/?O|TERMS)$/i.test(reference))reference='';
   const currency=/\bSGD\b/i.test(flat)?'SGD':(first(/\b(USD|EUR|GBP|MYR|CNY|RMB)\b/i,flat)||'SGD').toUpperCase();
   let subtotal=labelledMoney(flat,'\\b(?:Sub\\s*Total|Subtotal)\\b');
-  let gst=labelledMoney(flat,'\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b');
+  let gst=labelledMoney(flat,'(?:\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b|\\bTotal\\s+Local\\s+Supply\\b[^\\n]*?\\b\\d+(?:\\.\\d+)?\\s*%)');
   let total=labelledMoney(flat,'\\b(?:Invoice\\s*Total|Grand\\s*Total|Total\\s*Amount|Amount\\s*Due)\\b');
   if(total===null){
     const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
@@ -1649,7 +1650,7 @@ function parseInvoice(text){
     reference=reference||layoutHeaderValue(/(?:Reference(?:\s*(?:No\.?|Number|#))?|Ref\.?\s*(?:No\.?|Number|#)?)/i,/[A-Z0-9][A-Z0-9._\/-]*/i);
     if(/^(?:DATE|INVOICE|INVOICE\s*NO|P\/?O|TERMS)$/i.test(reference))reference='';
     const lSubtotal=layoutMoneyForLabel(/\b(?:Sub\s*Total|Subtotal)\b/i);
-    const lGst=layoutMoneyForLabel(/\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?%)?\b/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i});
+    const lGst=layoutMoneyForLabel(/(?:\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?%)?\b|\bTotal\s+Local\s+Supply\b.*?\b\d+(?:\.\d+)?\s*%)/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i});
     const lTotal=layoutMoneyForLabel(/^(?:Total\b|Grand\s*Total\b|Invoice\s*Total\b|Amount\s*Due\b)/i,{exclude:/Sub\s*Total|Subtotal/i});
     if(lSubtotal!==null)subtotal=lSubtotal;
     if(lGst!==null)gst=lGst;
@@ -1943,11 +1944,11 @@ function v662MoneyNumber(v=''){const z=String(v||'').replace(/(?:SGD|S\$|\$)/gi,
 function v662RecoverMoneyFromText(doc={},text=''){
   const lines=normalizePdfText(text).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
   const pick=(re)=>{for(const l of lines){if(!re.test(l))continue;const vals=[...l.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*[.]\d{2})/gi)].map(m=>v662MoneyNumber(m[1])).filter(Number.isFinite);if(vals.length)return vals[vals.length-1];}return null;};
-  const s=pick(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i),g=pick(/\bGST(?:\s*\d+(?:\.\d+)?\s*%)?\b/i),t=pick(/\b(?:AMOUNT\s+DUE|GRAND\s+TOTAL|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i);
+  const s=pick(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i),g=pick(/(?:\bGST(?:\s*\d+(?:\.\d+)?\s*%)?\b|\bTOTAL\s+LOCAL\s+SUPPLY\b.*?\b\d+(?:\.\d+)?\s*%)/i),t=pick(/\b(?:AMOUNT\s+DUE|GRAND\s+TOTAL|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i);
   if(s!==null)doc.subtotal=s;if(g!==null)doc.gst=g;if(t!==null)doc.total_amount=t;
-  let a=Number(doc.subtotal),b=Number(doc.gst),c=Number(doc.total_amount);
+  let a=hasNumericValue(doc.subtotal)?Number(doc.subtotal):NaN,b=hasNumericValue(doc.gst)?Number(doc.gst):NaN,c=hasNumericValue(doc.total_amount)?Number(doc.total_amount):NaN;
   if(Number.isFinite(c)&&Number.isFinite(b)&&(!Number.isFinite(a)||Math.abs((a+b)-c)>.06)){const x=Math.round((c-b)*100)/100;if(x>=0)doc.subtotal=x;}
-  a=Number(doc.subtotal);b=Number(doc.gst);c=Number(doc.total_amount);
+  a=hasNumericValue(doc.subtotal)?Number(doc.subtotal):NaN;b=hasNumericValue(doc.gst)?Number(doc.gst):NaN;c=hasNumericValue(doc.total_amount)?Number(doc.total_amount):NaN;
   if(Number.isFinite(a)&&Number.isFinite(b)&&(!Number.isFinite(c)||Math.abs((a+b)-c)>.06))doc.total_amount=Math.round((a+b)*100)/100;
   return doc;
 }
@@ -2751,15 +2752,15 @@ function v661LayoutMoney(labelRe,{exclude=null}={}){
   return null;
 }
 function v661RepairInvoiceMoneyFromLayout(doc={}){
-  const s=v661LayoutMoney(/\b(?:Sub\s*Total|Subtotal)\b/i),g=v661LayoutMoney(/\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?\s*%|\s*\d+\s*%)?\b/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i}),t=v661LayoutMoney(/\b(?:Amount\s+Due|Grand\s*Total|Invoice\s*Total|Total\s*Amount)\b/i,{exclude:/Sub\s*Total|Subtotal/i});
+  const s=v661LayoutMoney(/\b(?:Sub\s*Total|Subtotal)\b/i),g=v661LayoutMoney(/(?:\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?\s*%|\s*\d+\s*%)?\b|\bTotal\s+Local\s+Supply\b.*?\b\d+(?:\.\d+)?\s*%)/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i}),t=v661LayoutMoney(/\b(?:Amount\s+Due|Grand\s*Total|Invoice\s*Total|Total\s*Amount)\b/i,{exclude:/Sub\s*Total|Subtotal/i});
   if(s!==null)doc.subtotal=Number(s);if(g!==null)doc.gst=Number(g);if(t!==null)doc.total_amount=Number(t);
-  let sn=Number(doc.subtotal),gn=Number(doc.gst),tn=Number(doc.total_amount);
+  let sn=hasNumericValue(doc.subtotal)?Number(doc.subtotal):NaN,gn=hasNumericValue(doc.gst)?Number(doc.gst):NaN,tn=hasNumericValue(doc.total_amount)?Number(doc.total_amount):NaN;
   if(Number.isFinite(tn)&&Number.isFinite(gn)){
     const calc=Math.round((tn-gn)*100)/100;
     if(calc>=0&&(!Number.isFinite(sn)||Math.abs((sn+gn)-tn)>.05)){doc.subtotal=calc;sn=calc;doc.moneyRecovery='amount_due_minus_gst';}
   }
   if(Number.isFinite(sn)&&Number.isFinite(gn)&&!Number.isFinite(tn)){doc.total_amount=Math.round((sn+gn)*100)/100;doc.moneyRecovery='subtotal_plus_gst';}
-  if([Number(doc.subtotal),Number(doc.gst),Number(doc.total_amount)].every(Number.isFinite)&&Math.abs((Number(doc.subtotal)+Number(doc.gst))-Number(doc.total_amount))>.05)doc.total_amount=null;
+  if([doc.subtotal,doc.gst,doc.total_amount].every(hasNumericValue)&&Math.abs((Number(doc.subtotal)+Number(doc.gst))-Number(doc.total_amount))>.05)doc.total_amount=null;
   return doc;
 }
 function needsDeepRecovery(parsed={}){
@@ -2768,7 +2769,7 @@ function needsDeepRecovery(parsed={}){
   // Treat extreme quantity/price splits as a reason to obtain independent image OCR evidence, never as a reason to auto-correct.
   const needsIndependentRowCheck=items.some(x=>{const q=Number(x.quantity),p=Number(x.unit_price),a=Number(x.amount);return x.quantityReviewRequired||x.priceReviewRequired||x.amountReviewRequired||(q>=100&&p>0&&p<10&&a>=100);});
   if(needsIndependentRowCheck)return true;
-  const a=Number(d.subtotal),b=Number(d.gst),z=Number(d.total_amount),moneyOk=[a,b,z].every(Number.isFinite)&&Math.abs((a+b)-z)<=.06;
+  const a=hasNumericValue(d.subtotal)?Number(d.subtotal):NaN,b=hasNumericValue(d.gst)?Number(d.gst):NaN,z=hasNumericValue(d.total_amount)?Number(d.total_amount):NaN,moneyOk=[a,b,z].every(Number.isFinite)&&Math.abs((a+b)-z)<=.06;
   // Service-only invoices do not need inventory rows, but their invoice number/date/totals still do.
   if(c==='service')return !d.invoice_number||!d.invoice_date||!moneyOk;
   if(!d.supplier_name||!d.invoice_number||!d.invoice_date||!items.length||c==='uncertain')return true;
@@ -3035,7 +3036,8 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     };
     for(const x of state.ocrCandidates||[])add(x.text,'runtime-'+String(x.source||x.label||'ocr'),'180dpi');
     for(const x of sources||[])if(String(x.kind||'').toLowerCase()==='ocr')add(x.text,'runtime-'+String(x.source||'ocr-evidence'),String(x.source||'').includes('hires')?'300dpi':'180dpi');
-    certifiedResult=certified.run(sourceText,{
+    const certifiedSourceText=String((sources||[]).find(x=>String(x?.source||'')==='native-invoice-pages')?.text||sourceText);
+    certifiedResult=certified.run(certifiedSourceText,{
       rawMethod:'runtime-primary',
       ocrCandidates,
       numericCellOcrEvidence:Array.isArray(state.v411NumericCellOcrEvidence)?state.v411NumericCellOcrEvidence:[],
