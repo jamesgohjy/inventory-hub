@@ -106,6 +106,11 @@ assert(!p.reviewGate.allClear&&!p.atomicSave.canCommit,'unproven columnar econom
 const runtimeSource=fs.readFileSync(path.join(ROOT,'runtime-v7.03.3.14z.js'),'utf8');
 assert(runtimeSource.includes("classifyContent?.({evidence,rawRows,inventoryRows:inventoryItems});"),'browser-classification authority argument regression');
 assert(!runtimeSource.includes("classifyContent?.({evidence,rawRows,inventoryRows});"),'undefined inventoryRows shorthand reintroduced');
+
+const runtimeSource2=fs.readFileSync(path.join(ROOT,'runtime-v7.03.3.14z.js'),'utf8');
+assert(runtimeSource2.includes("source==='native-invoice-pages'")||runtimeSource2.includes("source||'')==='native-invoice-pages'"),'browser Fixes 1-15 boundary lost page-separated native evidence');
+assert(runtimeSource2.includes('hasNumericValue'),'browser money gate must distinguish null from numeric zero');
+assert(/Total\\s\+Local/.test(runtimeSource2),'local-supply tax summary recognition regression');
 console.log(JSON.stringify({
   ok:true,
   parserVersion:Parser.VERSION,
