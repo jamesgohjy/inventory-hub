@@ -2491,7 +2491,7 @@ function classifyInvoiceDocument(text='',extractedItems=[],inventoryItems=[]){
   const evidence=v661EvidenceSources(text).map(x=>x.text).join('\n'),t=normalizePdfText(evidence).replace(/\s+/g,' ').trim();
   let rawRows=[];for(const src of v661EvidenceSources(text)){rawRows.push(...parseAvMediaTextItems(src.text),...v661ParseGenericPricedRows(src.text),...v690ParseNumberedPricedRows(src.text),...v662ParsePhysicalEvidenceRows(src.text));}
   rawRows=[...(extractedItems||[]),...rawRows];
-  const recoveryAuthority=window.InventoryHubDocumentAuthorityV411Recovery1?.classifyContent?.({evidence,rawRows,inventoryRows});
+  const recoveryAuthority=window.InventoryHubDocumentAuthorityV411Recovery1?.classifyContent?.({evidence,rawRows,inventoryRows:inventoryItems});
   if(recoveryAuthority)return recoveryAuthority;
   const accessoryRows=rawRows.filter(isExcludedInventoryAccessoryLine);
   let rows=sanitizeParsedInventoryItems(rawRows,evidence);
