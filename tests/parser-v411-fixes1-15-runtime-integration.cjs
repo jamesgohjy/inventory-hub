@@ -100,6 +100,12 @@ assert(p.rows.every(r=>Array.isArray(r.correctionSuggestions)),'columnar rows by
 assert(p.rows.every(r=>r.provenance.unit_price?.evidenceBound===false&&r.provenance.amount?.evidenceBound===false),'synthetic columnar economics were incorrectly marked as row-local provenance');
 assert(!p.reviewGate.allClear&&!p.atomicSave.canCommit,'unproven columnar economics incorrectly cleared Review/atomic-save gate');
 
+
+// Browser-path regression: classifyInvoiceDocument must pass its inventoryItems parameter
+// to the document-authority gate instead of referencing an undefined inventoryRows symbol.
+const runtimeSource=fs.readFileSync(path.join(ROOT,'runtime-v7.03.3.14z.js'),'utf8');
+assert(runtimeSource.includes("classifyContent?.({evidence,rawRows,inventoryRows:inventoryItems});"),'browser-classification authority argument regression');
+assert(!runtimeSource.includes("classifyContent?.({evidence,rawRows,inventoryRows});"),'undefined inventoryRows shorthand reintroduced');
 console.log(JSON.stringify({
   ok:true,
   parserVersion:Parser.VERSION,
