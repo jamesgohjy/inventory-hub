@@ -25,7 +25,7 @@ assert(runtime.includes('state.v411NumericCellOcrEvidence=[]'),'PDF extraction d
 assert(runtime.includes('InventoryHubV411CellOcrBridge.extractPage'),'runtime does not invoke targeted cell OCR bridge');
 assert(runtime.includes("ocrAllowed=modes.some"),'OCR-authorised scanned invoice pages cannot enter high-res recovery');
 assert(runtime.includes('InventoryHubV411Fixes1to5Shadow'),'runtime does not reference certified fixes 1-15');
-assert(runtime.includes('certified.run(sourceText'),'runtime does not invoke fixes 1-15 at Review boundary');
+assert(runtime.includes('certified.run(certifiedSourceText'),'runtime does not invoke fixes 1-15 at Review boundary');
 assert(runtime.includes('numericCellOcrEvidence:Array.isArray(state.v411NumericCellOcrEvidence)'), 'runtime does not pass targeted cell evidence to fixes 1-15');
 
 // Review/save boundary must be fail-closed.
