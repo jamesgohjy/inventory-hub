@@ -103,6 +103,32 @@ assert(!p.reviewGate.allClear&&!p.atomicSave.canCommit,'unproven columnar econom
 
 // Browser-path regression: classifyInvoiceDocument must pass its inventoryItems parameter
 // to the document-authority gate instead of referencing an undefined inventoryRows symbol.
+
+const conceptCell=Parser.run([
+  'TAX INVOICE',
+  'No Description Qty Unit Price Amount',
+  '4 Single Channel Digital Wireless Handheld Microphone System',
+  'Model: Shure SLXD24/SM58',
+  '5 Monitor Speaker at the console',
+  'Model: Yamaha MS101-4',
+  '6 Dual CD and MP3 player with USB supported Playback',
+  'Model: Omnitronic XDP-3002',
+  'SUBTOTAL 3050.00',
+  'GST 274.50',
+  'TOTAL 3324.50'
+].join('\n'),{
+  transactionId:'integration-concept-cell-economics',
+  numericCellOcrEvidence:[
+    {ordinal:4,quantity_ocr:[{text:'2'},{text:'2'}],unit_price_ocr:[{text:'950.00'},{text:'950.00'}],amount_ocr:[{text:'1900.00'},{text:'1900.00'}]},
+    {ordinal:5,quantity_ocr:[{text:'1'},{text:'1'}],unit_price_ocr:[{text:'200.00'},{text:'200.00'}],amount_ocr:[{text:'200.00'},{text:'200.00'}]},
+    {ordinal:6,quantity_ocr:[{text:'1'},{text:'1'}],unit_price_ocr:[{text:'950.00'},{text:'950.00'}],amount_ocr:[{text:'950.00'},{text:'950.00'}]}
+  ]
+});
+const conceptBySku=Object.fromEntries(conceptCell.rows.map(r=>[String(r.sku||''),r]));
+assert(conceptBySku['SLXD24/SM58']?.quantity===2&&conceptBySku['SLXD24/SM58']?.unit_price===950&&conceptBySku['SLXD24/SM58']?.amount===1900,'Concept SLXD24/SM58 cell economics recovery regression');
+assert(conceptBySku['MS101-4']?.quantity===1&&conceptBySku['MS101-4']?.unit_price===200&&conceptBySku['MS101-4']?.amount===200,'Concept MS101-4 cell economics recovery regression');
+assert(conceptBySku['XDP-3002']?.quantity===1&&conceptBySku['XDP-3002']?.unit_price===950&&conceptBySku['XDP-3002']?.amount===950,'Concept XDP-3002 cell economics recovery regression');
+
 const runtimeSource=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.14z.js'),'utf8');
 assert(runtimeSource.includes("classifyContent?.({evidence,rawRows,inventoryRows:inventoryItems});"),'browser-classification authority argument regression');
 assert(!runtimeSource.includes("classifyContent?.({evidence,rawRows,inventoryRows});"),'undefined inventoryRows shorthand reintroduced');
