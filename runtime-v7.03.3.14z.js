@@ -152,13 +152,14 @@ class SupabaseDB{
   async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
 }
 
-const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,v2FullDocumentEvidence:null,importHumanReviewApproved:false,masterDuplicateAutoMergeError:null};
+const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,v2FullDocumentEvidence:null,v411NumericCellOcrEvidence:null,importHumanReviewApproved:false,masterDuplicateAutoMergeError:null};
 const prettyEmailName=(email='')=>{const base=String(email||'').split('@')[0];return base.replace(/[._-]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase()).trim()||'Team Member';};
 const currentRole=()=>CFG.mode==='supabase'?String(state.profile?.role||'viewer').trim().toLowerCase():'admin';
 const canEdit=()=>['admin','editor'].includes(currentRole());
 const canManageRoles=()=>currentRole()==='admin';
 const requireEdit=()=>{if(canEdit())return true;toast('Viewer access is read-only.');return false;};
 const num=(v)=>v===null||v===undefined||v===''?null:Number(String(v).replace(/,/g,''));
+const hasNumericValue=(v)=>v!==null&&v!==undefined&&String(v).trim()!==''&&Number.isFinite(Number(v));
 const parseSerials=(s='')=>String(s).split(/[,;\n]+/).map(x=>x.trim()).filter(x=>x&&!/^n\/?a$/i.test(x));
 function safeFilePart(v,fallback='Unknown'){
   return String(v||'').normalize('NFKD').replace(/[’']/g,'').replace(/&/g,' and ').replace(/\b(?:pte\.?\s*ld?t\.?|pte\.?\s*ltd\.?|private\s+limited|limited)\b/gi,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/-{2,}/g,'-')||fallback;
@@ -651,6 +652,7 @@ async function extractPdf(file){
   setProgress(5,'Loading PDF…');
   state.ocrCandidates=null;
   state.v2FullDocumentEvidence=[];
+  state.v411NumericCellOcrEvidence=[];
   const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
   const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;
@@ -719,9 +721,12 @@ async function extractPdf(file){
     const invoiceModelPages=[];
     for(let i=0;i<pdf.numPages;i++){
       const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed;
+      const ocrAllowed=modes.some(m=>{
+        try{return !!globalThis.V7033Patch?.classifyInvoicePage?.(m.texts[i]||'')?.allowed;}catch(_e){return false;}
+      });
       const modelLabelRe=/\b(?:MODEL(?:\s*(?:NO\.?|NUMBER))?|M\/N)\s*[:#-]?\s*[A-Z0-9]/gi;
       const modelRich=((pages[i]||'').match(modelLabelRe)||[]).length>=2||modes.some(m=>((m.texts[i]||'').match(modelLabelRe)||[]).length>=2);
-      if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1);
+      if((nativeAllowed||ocrAllowed)&&modelRich)invoiceModelPages.push(i+1);
     }
     if(invoiceModelPages.length){
       const hiWorker=await Tesseract.createWorker('eng');
@@ -735,9 +740,25 @@ async function extractPdf(file){
         await page.render({canvasContext:canvas.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;
         for(const mode of hiModes){
           await hiWorker.setParameters({tessedit_pageseg_mode:mode.psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});
-          const result=await hiWorker.recognize(canvas,{}, {text:true}),hiText=String(result.data?.text||'');
-          const hiGate=globalThis.V7033Patch?.filterInvoicePages([hiText],[]);
-          if(hiGate?.texts?.length)state.v2FullDocumentEvidence.push({source:'invoice-hires-'+mode.key+'-p'+pageNo,kind:'ocr',text:hiGate.texts[0],layout:[]});
+          const result=await hiWorker.recognize(canvas,{}, {text:true,tsv:true,hocr:true,blocks:true}),hiText=String(result.data?.text||'');
+          const hiLayout=ocrResultToLayout(result.data||{},pageNo,canvas.height,canvas.width);
+          const hiGate=globalThis.V7033Patch?.filterInvoicePages([hiText],[hiLayout]);
+          if(hiGate?.texts?.length){
+            state.v2FullDocumentEvidence.push({source:'invoice-hires-'+mode.key+'-p'+pageNo,kind:'ocr',text:hiGate.texts[0],layout:[hiLayout]});
+            if(mode.key==='column'&&globalThis.InventoryHubV411CellOcrBridge?.extractPage){
+              try{
+                const cells=await globalThis.InventoryHubV411CellOcrBridge.extractPage({
+                  canvas,layout:hiLayout,worker:hiWorker,Tesseract,pageNumber:pageNo
+                });
+                for(const ev of cells||[]){
+                  const old=state.v411NumericCellOcrEvidence.find(x=>Number(x.page)===Number(ev.page)&&Number(x.ordinal)===Number(ev.ordinal));
+                  if(old){
+                    for(const k of ['description_ocr','quantity_ocr','unit_price_ocr','amount_ocr'])old[k]=[...(old[k]||[]),...(ev[k]||[])];
+                  }else state.v411NumericCellOcrEvidence.push(ev);
+                }
+              }catch(cellErr){console.warn('V4.1.1 targeted table-cell OCR bridge failed safely.',cellErr);}
+            }
+          }
         }
       }}finally{await hiWorker.terminate();}
     }
@@ -1501,9 +1522,9 @@ function validParsedItems(items=[]){return (items||[]).filter(x=>String(x.item_n
 function invoiceParseQuality(parsed){
   const d=parsed?.doc||{},items=validParsedItems(parsed?.items||[]);let score=0;
   if(d.supplier_name)score+=20;if(d.invoice_number)score+=25;if(d.invoice_date)score+=20;if(d.reference_number)score+=6;if(d.currency)score+=4;
-  if(Number.isFinite(Number(d.subtotal)))score+=15;if(Number.isFinite(Number(d.gst)))score+=15;if(Number.isFinite(Number(d.total_amount)))score+=15;
+  if(hasNumericValue(d.subtotal))score+=15;if(hasNumericValue(d.gst))score+=15;if(hasNumericValue(d.total_amount))score+=15;
   score+=invoiceItemsQuality(items,d.subtotal);
-  if(Number.isFinite(Number(d.subtotal))&&Number.isFinite(Number(d.gst))&&Number.isFinite(Number(d.total_amount))&&Math.abs((Number(d.subtotal)+Number(d.gst))-Number(d.total_amount))<0.02)score+=35;
+  if([d.subtotal,d.gst,d.total_amount].every(hasNumericValue)&&Math.abs((Number(d.subtotal)+Number(d.gst))-Number(d.total_amount))<0.02)score+=35;
   return score;
 }
 function parseBestInvoice(primaryText){
@@ -1532,18 +1553,18 @@ function parseBestInvoice(primaryText){
     if(uniqueConfirmed.length===1&&!conflictingVotes.length)confirmedDate=uniqueConfirmed[0];
   }
   doc.invoice_date=confirmedDate;
-  const completeMoney=results.find(r=>['subtotal','gst','total_amount'].every(k=>Number.isFinite(Number(r.parsed.doc?.[k])))&&Math.abs((Number(r.parsed.doc.subtotal)+Number(r.parsed.doc.gst))-Number(r.parsed.doc.total_amount))<0.02);
+  const completeMoney=results.find(r=>['subtotal','gst','total_amount'].every(k=>hasNumericValue(r.parsed.doc?.[k]))&&Math.abs((Number(r.parsed.doc.subtotal)+Number(r.parsed.doc.gst))-Number(r.parsed.doc.total_amount))<0.02);
   if(completeMoney){doc.subtotal=completeMoney.parsed.doc.subtotal;doc.gst=completeMoney.parsed.doc.gst;doc.total_amount=completeMoney.parsed.doc.total_amount;}
-  else for(const field of ['subtotal','gst','total_amount'])if(!Number.isFinite(Number(doc[field]))){const hit=results.find(r=>Number.isFinite(Number(r.parsed.doc?.[field])));if(hit)doc[field]=hit.parsed.doc[field];}
+  else for(const field of ['subtotal','gst','total_amount'])if(!hasNumericValue(doc[field])){const hit=results.find(r=>hasNumericValue(r.parsed.doc?.[field]));if(hit)doc[field]=hit.parsed.doc[field];}
   const choices=results.map(r=>({r,items:validParsedItems(r.parsed.items),q:invoiceItemsQuality(validParsedItems(r.parsed.items),doc.subtotal)})).sort((a,b)=>b.q-a.q),itemChoice=choices[0];
   const extractedItems=attachSerialBlocks(itemChoice?.items||[],itemChoice?.r?.text||best.text);
   const items=sanitizeParsedInventoryItems(inventoryOnlyItems(extractedItems),itemChoice?.r?.text||best.text);
-  if(items.length&&(!Number.isFinite(Number(doc.subtotal))||Number(doc.subtotal)<=0))doc.subtotal=Math.round(items.reduce((n,x)=>n+(Number(x.amount)||0),0)*100)/100;
+  if(items.length&&(!hasNumericValue(doc.subtotal)||Number(doc.subtotal)<=0))doc.subtotal=Math.round(items.reduce((n,x)=>n+(Number(x.amount)||0),0)*100)/100;
   const allText=results.map(r=>r.text).join('\n'),rateMatch=allText.match(/\bGST\s*@?\s*(\d+(?:\.\d+)?)\s*%/i),rate=rateMatch?Number(rateMatch[1]):null;
-  if(!Number.isFinite(Number(doc.gst))&&Number.isFinite(Number(doc.subtotal))&&Number.isFinite(rate))doc.gst=Math.round(Number(doc.subtotal)*rate)/100;
-  if(!Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.gst)))doc.total_amount=Math.round((Number(doc.subtotal)+Number(doc.gst))*100)/100;
-  if(!Number.isFinite(Number(doc.gst))&&Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.subtotal)))doc.gst=Math.round((Number(doc.total_amount)-Number(doc.subtotal))*100)/100;
-  if(!Number.isFinite(Number(doc.subtotal))&&Number.isFinite(Number(doc.total_amount))&&Number.isFinite(Number(doc.gst)))doc.subtotal=Math.round((Number(doc.total_amount)-Number(doc.gst))*100)/100;
+  if(!hasNumericValue(doc.gst)&&hasNumericValue(doc.subtotal)&&Number.isFinite(rate))doc.gst=Math.round(Number(doc.subtotal)*rate)/100;
+  if(!hasNumericValue(doc.total_amount)&&hasNumericValue(doc.subtotal)&&hasNumericValue(doc.gst))doc.total_amount=Math.round((Number(doc.subtotal)+Number(doc.gst))*100)/100;
+  if(!hasNumericValue(doc.gst)&&hasNumericValue(doc.total_amount)&&hasNumericValue(doc.subtotal))doc.gst=Math.round((Number(doc.total_amount)-Number(doc.subtotal))*100)/100;
+  if(!hasNumericValue(doc.subtotal)&&hasNumericValue(doc.total_amount)&&hasNumericValue(doc.gst))doc.subtotal=Math.round((Number(doc.total_amount)-Number(doc.gst))*100)/100;
   const chosen=itemChoice?.r||best;state.pdfLayout=chosen.layout||best.layout||originalLayout;if(!confirmedDate){const strongLayoutDate=detectInvoiceDateFromLayout();if(strongLayoutDate){confirmedDate=strongLayoutDate;doc.invoice_date=strongLayoutDate;}}recoverAvMediaHeader(doc,chosen.text);v661RepairInvoiceMoneyFromLayout(doc);if(doc.invoice_date)confirmedDate=doc.invoice_date;
   const invoiceClassification=classifyInvoiceDocument(chosen.text,extractedItems,items);
   const serviceOnlyInvoice=invoiceClassification.type==='service';
@@ -1599,7 +1620,7 @@ function parseInvoice(text){
   if(/^(?:DATE|INVOICE|INVOICE\s*NO|P\/?O|TERMS)$/i.test(reference))reference='';
   const currency=/\bSGD\b/i.test(flat)?'SGD':(first(/\b(USD|EUR|GBP|MYR|CNY|RMB)\b/i,flat)||'SGD').toUpperCase();
   let subtotal=labelledMoney(flat,'\\b(?:Sub\\s*Total|Subtotal)\\b');
-  let gst=labelledMoney(flat,'\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b');
+  let gst=labelledMoney(flat,'(?:\\b(?:Add\\s+)?GST(?:\\s*@?\\s*\\d+(?:\\.\\d+)?%)?\\b|\\bTotal\\s+Local\\s+Supply\\b[^\\n]*?\\b\\d+(?:\\.\\d+)?\\s*%)');
   let total=labelledMoney(flat,'\\b(?:Invoice\\s*Total|Grand\\s*Total|Total\\s*Amount|Amount\\s*Due)\\b');
   if(total===null){
     const lines=flat.split('\n').map(x=>x.trim()).filter(Boolean);
@@ -1629,7 +1650,7 @@ function parseInvoice(text){
     reference=reference||layoutHeaderValue(/(?:Reference(?:\s*(?:No\.?|Number|#))?|Ref\.?\s*(?:No\.?|Number|#)?)/i,/[A-Z0-9][A-Z0-9._\/-]*/i);
     if(/^(?:DATE|INVOICE|INVOICE\s*NO|P\/?O|TERMS)$/i.test(reference))reference='';
     const lSubtotal=layoutMoneyForLabel(/\b(?:Sub\s*Total|Subtotal)\b/i);
-    const lGst=layoutMoneyForLabel(/\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?%)?\b/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i});
+    const lGst=layoutMoneyForLabel(/(?:\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?%)?\b|\bTotal\s+Local\s+Supply\b.*?\b\d+(?:\.\d+)?\s*%)/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i});
     const lTotal=layoutMoneyForLabel(/^(?:Total\b|Grand\s*Total\b|Invoice\s*Total\b|Amount\s*Due\b)/i,{exclude:/Sub\s*Total|Subtotal/i});
     if(lSubtotal!==null)subtotal=lSubtotal;
     if(lGst!==null)gst=lGst;
@@ -1923,11 +1944,11 @@ function v662MoneyNumber(v=''){const z=String(v||'').replace(/(?:SGD|S\$|\$)/gi,
 function v662RecoverMoneyFromText(doc={},text=''){
   const lines=normalizePdfText(text).split('\n').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
   const pick=(re)=>{for(const l of lines){if(!re.test(l))continue;const vals=[...l.matchAll(/(?:SGD\s*|S?\$\s*)?(\d[\d,]*[.]\d{2})/gi)].map(m=>v662MoneyNumber(m[1])).filter(Number.isFinite);if(vals.length)return vals[vals.length-1];}return null;};
-  const s=pick(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i),g=pick(/\bGST(?:\s*\d+(?:\.\d+)?\s*%)?\b/i),t=pick(/\b(?:AMOUNT\s+DUE|GRAND\s+TOTAL|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i);
+  const s=pick(/\b(?:SUB\s*TOTAL|SUBTOTAL)\b/i),g=pick(/(?:\bGST(?:\s*\d+(?:\.\d+)?\s*%)?\b|\bTOTAL\s+LOCAL\s+SUPPLY\b.*?\b\d+(?:\.\d+)?\s*%)/i),t=pick(/\b(?:AMOUNT\s+DUE|GRAND\s+TOTAL|INVOICE\s+TOTAL|TOTAL\s+AMOUNT)\b/i);
   if(s!==null)doc.subtotal=s;if(g!==null)doc.gst=g;if(t!==null)doc.total_amount=t;
-  let a=Number(doc.subtotal),b=Number(doc.gst),c=Number(doc.total_amount);
+  let a=hasNumericValue(doc.subtotal)?Number(doc.subtotal):NaN,b=hasNumericValue(doc.gst)?Number(doc.gst):NaN,c=hasNumericValue(doc.total_amount)?Number(doc.total_amount):NaN;
   if(Number.isFinite(c)&&Number.isFinite(b)&&(!Number.isFinite(a)||Math.abs((a+b)-c)>.06)){const x=Math.round((c-b)*100)/100;if(x>=0)doc.subtotal=x;}
-  a=Number(doc.subtotal);b=Number(doc.gst);c=Number(doc.total_amount);
+  a=hasNumericValue(doc.subtotal)?Number(doc.subtotal):NaN;b=hasNumericValue(doc.gst)?Number(doc.gst):NaN;c=hasNumericValue(doc.total_amount)?Number(doc.total_amount):NaN;
   if(Number.isFinite(a)&&Number.isFinite(b)&&(!Number.isFinite(c)||Math.abs((a+b)-c)>.06))doc.total_amount=Math.round((a+b)*100)/100;
   return doc;
 }
@@ -2471,7 +2492,7 @@ function classifyInvoiceDocument(text='',extractedItems=[],inventoryItems=[]){
   const evidence=v661EvidenceSources(text).map(x=>x.text).join('\n'),t=normalizePdfText(evidence).replace(/\s+/g,' ').trim();
   let rawRows=[];for(const src of v661EvidenceSources(text)){rawRows.push(...parseAvMediaTextItems(src.text),...v661ParseGenericPricedRows(src.text),...v690ParseNumberedPricedRows(src.text),...v662ParsePhysicalEvidenceRows(src.text));}
   rawRows=[...(extractedItems||[]),...rawRows];
-  const recoveryAuthority=window.InventoryHubDocumentAuthorityV411Recovery1?.classifyContent?.({evidence,rawRows,inventoryRows});
+  const recoveryAuthority=window.InventoryHubDocumentAuthorityV411Recovery1?.classifyContent?.({evidence,rawRows,inventoryRows:inventoryItems});
   if(recoveryAuthority)return recoveryAuthority;
   const accessoryRows=rawRows.filter(isExcludedInventoryAccessoryLine);
   let rows=sanitizeParsedInventoryItems(rawRows,evidence);
@@ -2696,7 +2717,7 @@ function currentReviewPhysicalItems14x(){
   }).filter(x=>String(x.item_name||x.description||'').trim()&&Number(x.quantity)>0&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)&&!v676IsSupportCoverageLine(x));
 }
 function renderImportEligibility(){
-  const parsed=state.parsed,detected=parsed?.invoiceClassification?.type||'uncertain',hasItems=(parsed?.items||[]).some(x=>String(x?.item_name||x?.description||'').trim()&&Number(x?.quantity)>0&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)&&!v676IsSupportCoverageLine(x))||currentReviewPhysicalItems14x().length>0,pendingV2=parserV2Pending14y().length>0,pendingV3=parserV3UnresolvedConflicts14y().length>0,missingInvoice=!String(parsed?.doc?.invoice_number||'').trim(),incompleteEquipment=detected==='equipment'&&(!hasItems||missingInvoice),isVault=typeof v70339IsVaultDate==='function'&&v70339IsVaultDate(parsed?.doc?.invoice_date||''),effective=incompleteEquipment?(state.importClassificationChoice||'uncertain'):effectiveInvoiceType(),saveBtn=$('saveImportBtn');
+  const parsed=state.parsed,detected=parsed?.invoiceClassification?.type||'uncertain',hasItems=(parsed?.items||[]).some(x=>String(x?.item_name||x?.description||'').trim()&&Number(x?.quantity)>0&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x)&&!v676IsSupportCoverageLine(x))||currentReviewPhysicalItems14x().length>0,pendingV2=parserV2Pending14y().length>0,pendingV3=parserV3UnresolvedConflicts14y().length>0,pendingV411=!!parsed?.v411ReviewGate&&!parsed.v411ReviewGate.allClear||!!parsed?.v411AtomicSave&&!parsed.v411AtomicSave.canCommit,missingInvoice=!String(parsed?.doc?.invoice_number||'').trim(),incompleteEquipment=detected==='equipment'&&(!hasItems||missingInvoice),isVault=typeof v70339IsVaultDate==='function'&&v70339IsVaultDate(parsed?.doc?.invoice_date||''),effective=incompleteEquipment?(state.importClassificationChoice||'uncertain'):effectiveInvoiceType(),saveBtn=$('saveImportBtn');
   let note=$('invoiceEligibilityWarning');if(!note&&$('parsedItems')){note=document.createElement('div');note.id='invoiceEligibilityWarning';$('parsedItems').parentNode.insertBefore(note,$('parsedItems'));}
   const setStyle=(kind)=>{if(!note)return;const map={danger:['#f5c2c0','#fff1f0','#912018'],warn:['#f6d88a','#fff8df','#854d0e'],info:['#b9d9ff','#eff7ff','#175cd3']},v=map[kind];note.style.cssText=`margin:0 0 14px;padding:12px 14px;border:1px solid ${v[0]};border-radius:10px;background:${v[1]};color:${v[2]};font-size:12px;line-height:1.45`};
   if(note){
@@ -2707,7 +2728,7 @@ function renderImportEligibility(){
     else if((detected==='uncertain'||incompleteEquipment||state.importClassificationChoice==='equipment')&&effective==='equipment'){note.classList.add('hidden');note.innerHTML='';}
     else{note.classList.add('hidden');note.innerHTML='';}
   }
-  if(saveBtn){const pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized,blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2Blocking||pendingV3;saveBtn.disabled=blocked||!!state.importSaving;saveBtn.title=pendingV3?'One or more parser conflicts still need confirmation before saving.':pendingV2Blocking?'One or more invoice items could not be materialized for review.':effective==='service'?'Service-only invoices cannot be imported.':effective==='noninventory'?'This invoice contains no tracked equipment.':effective==='uncertain'?'Confirm the invoice type before saving.':(!isVault&&!hasItems)?'No physical inventory line item is available to review and save.':'';saveBtn.setAttribute('aria-disabled',blocked?'true':'false');}
+  if(saveBtn){const pendingV2Blocking=pendingV2&&!parsed?.v4ReviewMaterialized,blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2Blocking||pendingV3||pendingV411;saveBtn.disabled=blocked||!!state.importSaving;saveBtn.title=pendingV411?'Fixes 1-15 review/atomic gate has not cleared this invoice.':pendingV3?'One or more parser conflicts still need confirmation before saving.':pendingV2Blocking?'One or more invoice items could not be materialized for review.':effective==='service'?'Service-only invoices cannot be imported.':effective==='noninventory'?'This invoice contains no tracked equipment.':effective==='uncertain'?'Confirm the invoice type before saving.':(!isVault&&!hasItems)?'No physical inventory line item is available to review and save.':'';saveBtn.setAttribute('aria-disabled',blocked?'true':'false');}
   const eq=$('chooseEquipmentInvoiceBtn'),svc=$('chooseServiceInvoiceBtn'),chg=$('changeInvoiceTypeBtn');
   if(eq)eq.onclick=async()=>{eq.disabled=true;await reprocessConfirmedEquipmentInvoice();};
   if(svc)svc.onclick=()=>{state.importClassificationChoice='service';renderImportEligibility();const box=$('v703VerificationNotice');if(box){box.classList.add('hidden');box.textContent='';}toast('Marked as service invoice. Saving to inventory is disabled.');};
@@ -2731,15 +2752,15 @@ function v661LayoutMoney(labelRe,{exclude=null}={}){
   return null;
 }
 function v661RepairInvoiceMoneyFromLayout(doc={}){
-  const s=v661LayoutMoney(/\b(?:Sub\s*Total|Subtotal)\b/i),g=v661LayoutMoney(/\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?\s*%|\s*\d+\s*%)?\b/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i}),t=v661LayoutMoney(/\b(?:Amount\s+Due|Grand\s*Total|Invoice\s*Total|Total\s*Amount)\b/i,{exclude:/Sub\s*Total|Subtotal/i});
+  const s=v661LayoutMoney(/\b(?:Sub\s*Total|Subtotal)\b/i),g=v661LayoutMoney(/(?:\b(?:Add\s+)?GST(?:\s*@?\s*\d+(?:\.\d+)?\s*%|\s*\d+\s*%)?\b|\bTotal\s+Local\s+Supply\b.*?\b\d+(?:\.\d+)?\s*%)/i,{exclude:/GST\s+Reg(?:istration)?\s*(?:No|Number)?/i}),t=v661LayoutMoney(/\b(?:Amount\s+Due|Grand\s*Total|Invoice\s*Total|Total\s*Amount)\b/i,{exclude:/Sub\s*Total|Subtotal/i});
   if(s!==null)doc.subtotal=Number(s);if(g!==null)doc.gst=Number(g);if(t!==null)doc.total_amount=Number(t);
-  let sn=Number(doc.subtotal),gn=Number(doc.gst),tn=Number(doc.total_amount);
+  let sn=hasNumericValue(doc.subtotal)?Number(doc.subtotal):NaN,gn=hasNumericValue(doc.gst)?Number(doc.gst):NaN,tn=hasNumericValue(doc.total_amount)?Number(doc.total_amount):NaN;
   if(Number.isFinite(tn)&&Number.isFinite(gn)){
     const calc=Math.round((tn-gn)*100)/100;
     if(calc>=0&&(!Number.isFinite(sn)||Math.abs((sn+gn)-tn)>.05)){doc.subtotal=calc;sn=calc;doc.moneyRecovery='amount_due_minus_gst';}
   }
   if(Number.isFinite(sn)&&Number.isFinite(gn)&&!Number.isFinite(tn)){doc.total_amount=Math.round((sn+gn)*100)/100;doc.moneyRecovery='subtotal_plus_gst';}
-  if([Number(doc.subtotal),Number(doc.gst),Number(doc.total_amount)].every(Number.isFinite)&&Math.abs((Number(doc.subtotal)+Number(doc.gst))-Number(doc.total_amount))>.05)doc.total_amount=null;
+  if([doc.subtotal,doc.gst,doc.total_amount].every(hasNumericValue)&&Math.abs((Number(doc.subtotal)+Number(doc.gst))-Number(doc.total_amount))>.05)doc.total_amount=null;
   return doc;
 }
 function needsDeepRecovery(parsed={}){
@@ -2748,7 +2769,7 @@ function needsDeepRecovery(parsed={}){
   // Treat extreme quantity/price splits as a reason to obtain independent image OCR evidence, never as a reason to auto-correct.
   const needsIndependentRowCheck=items.some(x=>{const q=Number(x.quantity),p=Number(x.unit_price),a=Number(x.amount);return x.quantityReviewRequired||x.priceReviewRequired||x.amountReviewRequired||(q>=100&&p>0&&p<10&&a>=100);});
   if(needsIndependentRowCheck)return true;
-  const a=Number(d.subtotal),b=Number(d.gst),z=Number(d.total_amount),moneyOk=[a,b,z].every(Number.isFinite)&&Math.abs((a+b)-z)<=.06;
+  const a=hasNumericValue(d.subtotal)?Number(d.subtotal):NaN,b=hasNumericValue(d.gst)?Number(d.gst):NaN,z=hasNumericValue(d.total_amount)?Number(d.total_amount):NaN,moneyOk=[a,b,z].every(Number.isFinite)&&Math.abs((a+b)-z)<=.06;
   // Service-only invoices do not need inventory rows, but their invoice number/date/totals still do.
   if(c==='service')return !d.invoice_number||!d.invoice_date||!moneyOk;
   if(!d.supplier_name||!d.invoice_number||!d.invoice_date||!items.length||c==='uncertain')return true;
@@ -2988,31 +3009,72 @@ async function applyParserV3Countercheck14y(parsed,raw=''){
   }
 }
 function applyParserV41ProductionIntegrity14z(parsed,raw=''){
-  const api=window.InventoryHubParserV41Shadow;
+  const legacy=window.InventoryHubParserV41Shadow;
+  const certified=window.InventoryHubV411Fixes1to5Shadow;
   const patch=window.V7033Patch;
-  if(!api?.recoverRows)return {...parsed,v41ProductionIntegrity:{status:'unavailable',reason:'V4.1 evidence-integrity module is not loaded.'}};
   const sourceText=String(raw||parsed?.raw||parsed?.rawText||'');
   const sources=Array.isArray(state.v2FullDocumentEvidence)?state.v2FullDocumentEvidence:[];
   const originalIncoming=[...(parsed?.items||[])];
 
-  // Re-run the authoritative core normalizer at the exact live Review boundary.
-  // This makes Invoice/OCR recovery the base set rather than allowing upstream
-  // fragments to become authoritative merely because they arrived first.
+  // Preserve legacy V4.1 normalization/recovery first so existing metadata and diagnostics survive.
   const normalized=patch?.applyParsedFixes?patch.applyParsedFixes(parsed,sourceText,sources):parsed;
-  const result=api.recoverRows(normalized?.items||[],{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
-  const finalItems=Array.isArray(result.outputRows)?result.outputRows:(normalized?.items||[]);
-  const finalParsed={...normalized,items:finalItems};
+  let legacyParsed=normalized,legacyResult=null;
+  if(legacy?.recoverRows){
+    legacyResult=legacy.recoverRows(normalized?.items||[],{raw:sourceText,sources,layout:Array.isArray(state.pdfLayout)?state.pdfLayout:[]});
+    legacyParsed={...normalized,items:Array.isArray(legacyResult.outputRows)?legacyResult.outputRows:(normalized?.items||[])};
+  }
+
+  // Certified fixes 1-15 are the final line-item authority at the real Review boundary.
+  let finalParsed=legacyParsed,certifiedResult=null;
+  if(certified?.run){
+    const ocrCandidates=[];
+    const seen=new Set();
+    const add=(text,method,preprocess)=>{
+      const t=String(text||'').trim();if(!t)return;
+      const k=t.replace(/\s+/g,' ').slice(0,5000);if(seen.has(k)||t===sourceText)return;seen.add(k);
+      ocrCandidates.push({text:t,method,preprocess});
+    };
+    for(const x of state.ocrCandidates||[])add(x.text,'runtime-'+String(x.source||x.label||'ocr'),'180dpi');
+    for(const x of sources||[])if(String(x.kind||'').toLowerCase()==='ocr')add(x.text,'runtime-'+String(x.source||'ocr-evidence'),String(x.source||'').includes('hires')?'300dpi':'180dpi');
+    const certifiedSourceText=String((sources||[]).find(x=>String(x?.source||'')==='native-invoice-pages')?.text||sourceText);
+    certifiedResult=certified.run(certifiedSourceText,{
+      rawMethod:'runtime-primary',
+      ocrCandidates,
+      numericCellOcrEvidence:Array.isArray(state.v411NumericCellOcrEvidence)?state.v411NumericCellOcrEvidence:[],
+      transactionId:null
+    });
+    const prior=[...(legacyParsed.items||[])];
+    const merged=(certifiedResult.rows||[]).map(row=>{
+      const sku=String(row.sku||'').toUpperCase();
+      const old=prior.find(x=>sku&&String(x.sku||x.model||'').toUpperCase()===sku)
+        ||prior.find(x=>String(x.item_name||'').toLowerCase()===String(row.item_name||'').toLowerCase())
+        ||{};
+      return {
+        ...old,...row,
+        serials:Array.isArray(row.serials)?row.serials.join(', '):(row.serials||old.serials||''),
+        v411SourceBlockId:row.sourceBlockId,
+        v411Canonical:row.canonical,
+        v411Raw:row.raw
+      };
+    });
+    finalParsed={
+      ...legacyParsed,
+      items:merged,
+      v411CandidateLedger:certifiedResult.candidateLedger,
+      v411ReviewGate:certifiedResult.reviewGate,
+      v411AtomicSave:certifiedResult.atomicSave,
+      v411ParserDisposition:certifiedResult.disposition,
+      v411ParserReady:certifiedResult.ready,
+      v411ParserVersion:certified.VERSION
+    };
+  }
 
   const authoritativeRecovered=patch?.v703312jRecoverNumberedEquipmentRows?patch.v703312jRecoverNumberedEquipmentRows(sourceText,sources):[];
   const excludedService=patch?.v703312jIsServiceRow?originalIncoming.filter(patch.v703312jIsServiceRow):[];
   const excludedAccessory=patch?.v703312jIsAccessoryRow?originalIncoming.filter(patch.v703312jIsAccessoryRow):[];
   if(patch?.buildParserDiagnostics14l){
     finalParsed.v703314lDiagnostics=patch.buildParserDiagnostics14l(finalParsed,sourceText,{
-      incoming:originalIncoming,
-      excludedService,
-      excludedAccessory,
-      recovered:authoritativeRecovered,
-      evidenceSources:sources
+      incoming:originalIncoming,excludedService,excludedAccessory,recovered:authoritativeRecovered,evidenceSources:sources
     });
   }
   finalParsed.v703312jInventoryFilter={
@@ -3022,15 +3084,18 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   };
 
   const report={
-    version:api.VERSION||'4.1',
-    mode:'production-enforced',
-    status:Number(result.randomCharacterFailureCount||0)===0?'pass':'fail',
-    inputCount:Number(result.inputCount||0),
-    outputCount:finalItems.length,
-    targetedRecoveryCount:Number(result.targetedRecoveryCount||0),
-    unresolvedRecoveryCount:Number(result.unresolvedRecoveryCount||0),
-    randomCharacterFailureCount:Number(result.randomCharacterFailureCount||0),
-    reviewIssueCount:Number(result.reviewIssueCount||0)
+    version:certified?.VERSION||legacy?.VERSION||'4.1',
+    mode:'production-enforced-fixes1-15',
+    status:certifiedResult?(certifiedResult.ready?'pass':'blocked'):(Number(legacyResult?.randomCharacterFailureCount||0)===0?'pass':'fail'),
+    inputCount:Number(legacyResult?.inputCount??originalIncoming.length??0),
+    outputCount:(finalParsed.items||[]).length,
+    targetedRecoveryCount:Number(legacyResult?.targetedRecoveryCount||0),
+    unresolvedRecoveryCount:Number(legacyResult?.unresolvedRecoveryCount||0),
+    randomCharacterFailureCount:Number(legacyResult?.randomCharacterFailureCount||0),
+    reviewIssueCount:Number(certifiedResult?.reviewFailures?.length??legacyResult?.reviewIssueCount??0),
+    reviewGateClear:certifiedResult?!!certifiedResult.reviewGate?.allClear:null,
+    atomicSaveClear:certifiedResult?!!certifiedResult.atomicSave?.canCommit:null,
+    cellEvidenceCount:Array.isArray(state.v411NumericCellOcrEvidence)?state.v411NumericCellOcrEvidence.length:0
   };
   finalParsed.v41ProductionIntegrity=report;
   finalParsed.parseEvidence={...(finalParsed.parseEvidence||{}),v41ProductionIntegrity:report};
@@ -3550,7 +3615,7 @@ for(const id of ['pSupplier','pInvoice','pDate'])$(id)?.addEventListener('input'
   },220);
 },true);
 
-$('saveImportBtn').onclick=async()=>{if(state.importSaving)return;if(CFG.mode==='supabase'&&state.session?.user?.id&&state.db?.profileForUser){try{const freshProfile=await state.db.profileForUser(state.session.user.id);if(freshProfile){state.profile=freshProfile;setUserIdentity(state.session);}}catch(roleErr){console.warn('Could not refresh role before import save',roleErr);}}if(!requireEdit())return;collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{state.importSaving=true;const saveBtn=$('saveImportBtn');saveBtn.disabled=true;saveBtn.textContent='Saving…';setProgress(96,'Saving invoice and inventory…');d.invoice_date=d.invoice_date||null;const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date);if(dupe&&!state.allowDuplicate){renderDuplicateImportWarning14x(dupe,{focus:true});toast('Possible duplicate invoice detected. Choose View existing or Continue anyway before saving.');return;}const allSerials=state.parsed.items.flatMap(x=>parseSerials(x.serials));const repeated=allSerials.filter((x,i,a)=>a.findIndex(y=>norm(y)===norm(x))!==i);if(repeated.length)throw new Error('Duplicate serial number in this invoice: '+repeated[0]);if(state.db.duplicateSerials){const existing=await state.db.duplicateSerials(allSerials.join(','));if(existing.length)throw new Error('Serial number already exists in inventory: '+existing[0]);}if($('importSteps'))$('importSteps').dataset.step='save';const namedFile=await autoNamedPdf(state.file,d);await state.db.importPurchase({file_name:namedFile.name,mime_type:namedFile.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;state.lastImportFilename=namedFile.name;cleanupPdfPreview();$('importDialog').close();state.file=null;state.parsed=null;state.allowDuplicate=false;state.importHumanReviewApproved=false;await reload();if($('documentSearch'))$('documentSearch').value='';renderDocuments();showView('inventory');toast(`Invoice saved. ${state.lastImportCount||0} inventory item${state.lastImportCount===1?'':'s'} updated. PDF: ${state.lastImportFilename||'saved'}.`);}catch(err){console.error(err);toast(friendlyError(err,'import'));}finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}};
+$('saveImportBtn').onclick=async()=>{if(state.importSaving)return;if(state.parsed?.v411ReviewGate&&!state.parsed.v411ReviewGate.allClear||state.parsed?.v411AtomicSave&&!state.parsed.v411AtomicSave.canCommit){toast('Fixes 1-15 validation has not cleared this invoice. Save is blocked.');renderImportEligibility();return;}if(CFG.mode==='supabase'&&state.session?.user?.id&&state.db?.profileForUser){try{const freshProfile=await state.db.profileForUser(state.session.user.id);if(freshProfile){state.profile=freshProfile;setUserIdentity(state.session);}}catch(roleErr){console.warn('Could not refresh role before import save',roleErr);}}if(!requireEdit())return;collectParsed();const d=state.parsed.doc;if(!d.supplier_name||!d.invoice_number){toast('Supplier and invoice number are required.');return;}if(!state.parsed.items.length||state.parsed.items.some(x=>!x.item_name||!Number(x.quantity))){toast('Each line item needs an item name and quantity.');return;}try{state.importSaving=true;const saveBtn=$('saveImportBtn');saveBtn.disabled=true;saveBtn.textContent='Saving…';setProgress(96,'Saving invoice and inventory…');d.invoice_date=d.invoice_date||null;const dupe=await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date);if(dupe&&!state.allowDuplicate){renderDuplicateImportWarning14x(dupe,{focus:true});toast('Possible duplicate invoice detected. Choose View existing or Continue anyway before saving.');return;}const allSerials=state.parsed.items.flatMap(x=>parseSerials(x.serials));const repeated=allSerials.filter((x,i,a)=>a.findIndex(y=>norm(y)===norm(x))!==i);if(repeated.length)throw new Error('Duplicate serial number in this invoice: '+repeated[0]);if(state.db.duplicateSerials){const existing=await state.db.duplicateSerials(allSerials.join(','));if(existing.length)throw new Error('Serial number already exists in inventory: '+existing[0]);}if($('importSteps'))$('importSteps').dataset.step='save';const namedFile=await autoNamedPdf(state.file,d);await state.db.importPurchase({file_name:namedFile.name,mime_type:namedFile.type,supplier_name:d.supplier_name,invoice_number:d.invoice_number},d,prepareInventoryLinesForSave(state.parsed.items),namedFile);state.lastImportCount=state.parsed.items.length;state.lastImportFilename=namedFile.name;cleanupPdfPreview();$('importDialog').close();state.file=null;state.parsed=null;state.allowDuplicate=false;state.importHumanReviewApproved=false;await reload();if($('documentSearch'))$('documentSearch').value='';renderDocuments();showView('inventory');toast(`Invoice saved. ${state.lastImportCount||0} inventory item${state.lastImportCount===1?'':'s'} updated. PDF: ${state.lastImportFilename||'saved'}.`);}catch(err){console.error(err);toast(friendlyError(err,'import'));}finally{state.importSaving=false;const saveBtn=$('saveImportBtn');if(saveBtn){saveBtn.textContent='Confirm & save';}renderImportEligibility();if($('importProgress'))$('importProgress').classList.add('hidden');}};
 
 
 // V7.03 invoice-only + equipment-only + three-layer verification save gate.
