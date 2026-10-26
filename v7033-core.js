@@ -170,7 +170,7 @@
     const headingPhrases=[...normalizedHeading,...adjacentPhrases(normalizedHeading,3)];
     const earlyPhrases=[...normalizedEarly,...adjacentPhrases(normalizedEarly,3)];
 
-    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|SERVICE\s+INVOICE|INSTALLATION\s+REPORT|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
+    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|SERVICE\s+INVOICE|INSTALLATION\s+REPORT|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?(?:\s|$)/i;
     const nonInvoiceTitles=[...new Set(earlyPhrases.filter(x=>nonInvoiceRe.test(x)))];
 
     // A heading can be merged into surrounding header text by PDF extraction. Accept TAX INVOICE
@@ -1870,6 +1870,8 @@
     check('purchase order with invoice-like equipment is rejected before extraction',classifyInvoicePage(po).allowed,false);
     check('quotation with modelled equipment is rejected before extraction',classifyInvoicePage(quotation).allowed,false);
     check('delivery order with modelled equipment is rejected before extraction',classifyInvoicePage(delivery).allowed,false);
+    const packingMerged='PACKING/DELIVERY SLIP    28 Aug 2026    Ltd.\nInvoice Number INV LTA-00215840\nDescription Quantity\nXVive U35C Wireless System 4.00';
+    check('packing/delivery slip title remains hard-rejected when PDF extraction merges date/company text onto heading',classifyInvoicePage(packingMerged).allowed,false);
     const mixed=filterInvoicePages([invoice,po,quotation,delivery],[{page:1},{page:2},{page:3},{page:4}]);
     check('mixed PDF exposes only Invoice/Tax Invoice page text',mixed.texts.length===1&&mixed.texts[0]===invoice,true);
     check('mixed PDF rejects PO quotation and delivery pages',mixed.decisions.slice(1).every(x=>x.allowed===false),true);

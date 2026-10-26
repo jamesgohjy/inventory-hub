@@ -59,7 +59,7 @@ for(const [name,result] of Object.entries(suites)){
   assert(result.ok,name+' regression suite failed: '+(result.failures||[]).join(', '));
 }
 const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Object.values(suites).reduce((n,r)=>n+r.cases.filter(x=>x.pass).length,0);
-assert(total===88&&passed===88,'Expected 88/88 core regression checks, got '+passed+'/'+total);
+assert(total===89&&passed===89,'Expected 89/89 core regression checks, got '+passed+'/'+total);
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
 const avMediaDedupe=api.consolidateFragmentedParsedLineItems([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
@@ -269,9 +269,9 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
 // when a corroborating numbered price schedule is attached.
 assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
-assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
+assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('const ocrAllowed=modes.some')&&runtime.includes('if((nativeAllowed||ocrAllowed)&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to pages positively authorised as invoices by native or OCR evidence');
 assert(runtime.includes("applyParsedFixes?.(normalized,recoveryRaw,sources.slice(1))"),'Normal import finalizer must run common invoice-evidence recovery before V2/V3');
-assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("filterInvoicePages([hiText],[])")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, and re-apply the invoice-page gate');
+assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("filterInvoicePages([hiText],[hiLayout])")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK")&&runtime.includes("InventoryHubV411CellOcrBridge.extractPage"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, re-apply invoice authority, and expose targeted cell evidence');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
 const richMixedText=['TAX INVOICE','No. Description Qty Unit Price Amount','1 Mixer 1 100.00 100.00','SCHEDULES OF PRICES AND TECHNICAL DATA','1 Mixer ABC-1 UK 1 $100.00 $100.00'].join(String.fromCharCode(10));
 const oldStrongNativeGate=5000<80||(1===0&&60<20);
