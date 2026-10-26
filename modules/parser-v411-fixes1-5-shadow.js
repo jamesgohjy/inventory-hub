@@ -1306,6 +1306,11 @@
       const unresolvedEconomics=[row.quantity,row.unit_price,row.amount].some(v=>v===null||v===undefined||v==='');
       const strongPhysicalIdentity=!!row.item_name&&isPhysical(row.item_name||row.sourceText||'')
         &&(!printedIdentity||!!clean(row.sku||row.model||''));
+      // A source-line match emitted by the same OCR pass is not independent
+      // identity evidence. Operational words inside a SKU/model are therefore
+      // fail-closed: keep the row for review rather than auto-saving it.
+      const identity=clean(row.sku||row.model||'');
+      const suspectIdentity=/\b(?:SALE|SALES|SERVICE|INSTALL(?:ATION)?|LABOU?R|DELIVERY)\b/i.test(identity.replace(/[-_/]+/g,' '));
       let status='auto-accept';
       const reasons=[];
       if(hard.length||missingIdentity||(evidenceScore.score<0.7&&!strongPhysicalIdentity)){
@@ -1313,11 +1318,12 @@
         reasons.push(...hard.map(x=>x.issue));
         if(missingIdentity)reasons.push('unresolved-identity');
         if(evidenceScore.score<0.7&&!strongPhysicalIdentity)reasons.push('candidate-score-low');
-      }else if(review.length||unresolvedEconomics||evidenceScore.score<0.9){
+      }else if(review.length||unresolvedEconomics||evidenceScore.score<0.9||suspectIdentity){
         status='review';
         reasons.push(...review.map(x=>x.issue));
         if(unresolvedEconomics)reasons.push('targeted-numeric-review');
         if(evidenceScore.score<0.9)reasons.push('candidate-score-medium');
+        if(suspectIdentity)reasons.push('sku-confidence-unresolved');
       }
       return {sourceBlockId:row.sourceBlockId,status,reasons:[...new Set(reasons)],evidenceScore};
     });

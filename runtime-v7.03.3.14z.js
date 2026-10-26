@@ -3008,6 +3008,16 @@ async function applyParserV3Countercheck14y(parsed,raw=''){
     return bridge?.materializeAndDiagnose?bridge.materializeAndDiagnose(fallback,String(raw||fallback.raw||fallback.rawText||''),incoming,window.V7033Patch||null):fallback;
   }
 }
+function enforceSkuConfidenceReviewGate14aa(parsed){
+  const issues=Array.isArray(parsed?.skuConfidenceIssues)?parsed.skuConfidenceIssues:[];
+  if(!parsed?.skuConfidenceReviewRequired||!issues.length)return parsed;
+  const gate=parsed.v411ReviewGate||{decisions:[],autoAcceptCount:0,reviewCount:0,rejectCount:0,allClear:true};
+  const already=gate.decisions.some(x=>x?.reasons?.includes('sku-confidence-unresolved'));
+  const decisions=already?gate.decisions:[...gate.decisions,{sourceBlockId:'sku-confidence',status:'review',reasons:['sku-confidence-unresolved'],evidenceScore:{score:0,band:'review',reasons:['initial-ocr-identity-is-not-independently-trusted']}}];
+  const reviewGate={...gate,decisions,reviewCount:decisions.filter(x=>x.status==='review').length,autoAcceptCount:decisions.filter(x=>x.status==='auto-accept').length,rejectCount:decisions.filter(x=>x.status==='reject').length,allClear:false};
+  const atomic=parsed.v411AtomicSave||{atomic:true,blockers:[],committedOperations:0,partialWriteAllowed:false};
+  return {...parsed,v411ReviewGate:reviewGate,v411AtomicSave:{...atomic,canCommit:false,blockers:[...new Set([...(atomic.blockers||[]),'sku-confidence-unresolved'])]},v411ParserDisposition:'review',v411ParserReady:false};
+}
 function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   const legacy=window.InventoryHubParserV41Shadow;
   const certified=window.InventoryHubV411Fixes1to5Shadow;
@@ -3099,7 +3109,7 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   };
   finalParsed.v41ProductionIntegrity=report;
   finalParsed.parseEvidence={...(finalParsed.parseEvidence||{}),v41ProductionIntegrity:report};
-  return finalParsed;
+  return enforceSkuConfidenceReviewGate14aa(finalParsed);
 }
 
 function parserV3UnresolvedConflicts14y(){
@@ -3152,6 +3162,29 @@ function renderParserV2Verification14y(){
 
 async function startImport(file){if(!file)return;if(!requireEdit())return;cleanupPdfPreview();state.parsed=null;state.importClassificationChoice=null;state.importHumanReviewApproved=false;state.importSourceFile=file;$('dropZone')?.classList.add('hidden');state.file=file;state.pdfPreviewUrl=URL.createObjectURL(file);state.pdfPreviewPage=1;state.pdfPreviewZoom='page-width';updatePdfPreview();if($('importSteps'))$('importSteps').dataset.step='review';$('reviewArea').classList.add('hidden');$('importProgress').classList.remove('hidden');try{let text=await extractInvoiceFile(file);await ensureInvoiceDocument(file,text);let parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);if(parsedBest.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');if(needsDeepRecovery(parsedBest)){try{const recovered=await forceOcrRecovery(file);if(recovered)parsedBest=v661FinalizeParsedInvoice(parseBestInvoice(text),text);}catch(recoveryError){console.warn('Recovery OCR could not complete; keeping best verified parse.',recoveryError);}}state.parsed={...parsedBest,raw:parsedBest.rawText||text};if(state.parsed.invoiceClassification?.type==='service')throw new Error('Service invoice detected. Equipment invoices only; this document was not imported.');const d=state.parsed.doc;if($('supplierRuleStatus')){$('supplierRuleStatus').innerHTML=`<i data-lucide="scan-text"></i> ${esc(state.parsed.rule?.label||'Generic OCR rules')}`;$('supplierRuleStatus').classList.toggle('known',state.parsed.rule?.key!=='generic');}$('pSupplier').value=d.supplier_name;$('pInvoice').value=d.invoice_number;$('pDate').value=d.invoice_date;['pSupplier','pInvoice','pDate'].forEach(id=>$(id)?.classList.toggle('low-confidence',!$(id).value));if($('invoiceDateStatus')){const s=$('invoiceDateStatus');s.textContent=d.invoice_date?'Auto-detected from invoice: '+fmtDate(d.invoice_date)+' — verify against the PDF before saving.':'Invoice date was not confidently detected — please enter it manually.';s.className='date-status '+(d.invoice_date?'detected':'review');}$('pDo').value=d.delivery_order_number;$('pRef').value=d.reference_number;$('pCurrency').value=d.currency;$('pSubtotal').value=d.subtotal??'';$('pGst').value=d.gst??'';$('pTotal').value=d.total_amount??'';$('rawText').textContent=state.parsed.raw||text;console.info('Invoice OCR selection',state.parsed.ocrSelection||{source:'text-pdf'});state.parsed=window.InventoryHubCanonicalParser.fromPipeline(state.parsed,{raw:state.parsed.raw||state.parsed.rawText||text});state.parsed=await applyParserV2AuthoritativeVerification14y(state.parsed,state.parsed.raw||state.parsed.rawText||text);state.parsed=await applyParserV3Countercheck14y(state.parsed,state.parsed.raw||state.parsed.rawText||text);state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);applyParsedReviewToForm();renderParserV2Verification14y();renderParserV3Verification14y();v703RenderVerificationNotice();renderImportEligibility();if(state.parsed.invoiceClassification?.type==='service')toast('Equipment invoices only. This service-work invoice cannot be saved.');else if(state.parsed.invoiceClassification?.type==='uncertain')toast('Invoice type is uncertain. Confirm Equipment or Service before saving.');const dupe=d.supplier_name&&d.invoice_number?await state.db.duplicateInvoice(d.supplier_name,d.invoice_number,d.invoice_date):null;state.possibleDuplicate=dupe;$('duplicateWarning').classList.toggle('hidden',!dupe);$('duplicateWarning').innerHTML=dupe?`<strong>This invoice may already exist.</strong> Supplier, Invoice Number and Invoice Date match an existing purchase. <button type="button" id="viewDuplicateBtn">View existing</button> <button type="button" id="continueDuplicateBtn">Continue anyway</button>`:'';state.allowDuplicate=false;if(dupe){setTimeout(()=>{const v=$('viewDuplicateBtn'),c=$('continueDuplicateBtn');if(v)v.onclick=()=>showView('documents');if(c)c.onclick=()=>{state.allowDuplicate=true;$('duplicateWarning').innerHTML='<strong>Duplicate override enabled.</strong> Confirm & save will continue.';}},0);}setProgress(100,'Ready for review.');setTimeout(()=>$('importProgress').classList.add('hidden'),400);$('reviewArea').classList.remove('hidden');}catch(e){toast(e.message);$('importProgress').classList.add('hidden');$('dropZone')?.classList.remove('hidden');cleanupPdfPreview();}}
 
+// Preserve a suspicious identity found during the first extraction. A later
+// parse cannot silently erase that risk; it remains in Review until checked
+// against the PDF image.
+const startImportBeforeSkuConfidenceGate14aa=startImport;
+startImport=async function(file){
+  const originalFinalize=v661FinalizeParsedInvoice;
+  const issues=[];
+  const suspect=/\b(?:SALE|SALES|SERVICE|INSTALL(?:ATION)?|LABOU?R|DELIVERY)\b/i;
+  v661FinalizeParsedInvoice=function(...args){
+    const result=originalFinalize.apply(this,args);
+    for(const row of result?.items||[]){
+      const identity=String(row?.sku||row?.model||'').replace(/[-_/]+/g,' ').trim();
+      if(identity&&suspect.test(identity))issues.push({sku:String(row.sku||row.model||''),item_name:String(row.item_name||row.description||''),reason:'sku-confidence-unresolved'});
+    }
+    return result;
+  };
+  try{await startImportBeforeSkuConfidenceGate14aa(file);}finally{v661FinalizeParsedInvoice=originalFinalize;}
+  if(issues.length&&state.parsed){
+    state.parsed=enforceSkuConfidenceReviewGate14aa({...state.parsed,skuConfidenceReviewRequired:true,skuConfidenceIssues:issues});
+    renderImportEligibility();
+    toast('A disputed SKU/model was detected during extraction. Confirm & Save is disabled until it is reviewed against the PDF.');
+  }
+};
 function setUserIdentity(session){const email=session?.user?.email||'';const pretty=state.profile?.display_name||profileName(session?.user?.id)||session?.user?.user_metadata?.display_name||prettyEmailName(email||(CFG.mode==='supabase'?'Team Member':'Demo User'));if($('userName'))$('userName').textContent=pretty||'Team Member';if($('userEmail'))$('userEmail').textContent=email||'Local demo';if($('userRole'))$('userRole').textContent=currentRole().replace(/^./,c=>c.toUpperCase());if($('userAvatar'))$('userAvatar').textContent=(pretty||'AV').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();applyRoleUI();}
 function applyRoleUI(){
   const role=currentRole(),editable=canEdit(),admin=CFG.mode==='supabase'&&canManageRoles();

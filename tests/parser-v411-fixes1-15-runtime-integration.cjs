@@ -137,6 +137,21 @@ const runtimeSource2=fs.readFileSync(path.join(__dirname,'..','runtime-v7.03.3.1
 assert(runtimeSource2.includes("source==='native-invoice-pages'")||runtimeSource2.includes("source||'')==='native-invoice-pages'"),'browser Fixes 1-15 boundary lost page-separated native evidence');
 assert(runtimeSource2.includes('hasNumericValue'),'browser money gate must distinguish null from numeric zero');
 assert(/Total\\s\+Local/.test(runtimeSource2),'local-supply tax summary recognition regression');
+
+// AV Media / "Artspace" regression: a low-resolution OCR pass previously
+// promoted the corrupted identity "60100-SALES" into inventory.  This must
+// remain in Review and must never clear the atomic save gate automatically.
+const disputedSku=Parser.run([
+  'TAX INVOICE',
+  '60100-SALES Abtus Active Speaker in pair 1 90.00 90.00',
+  'SUBTOTAL 90.00',
+  'GST 8.10',
+  'TOTAL 98.10'
+].join('\n'),{transactionId:'artspace-disputed-sku'});
+const disputedDecision=disputedSku.reviewGate.decisions.find(d=>d.sourceBlockId===disputedSku.rows[0]?.sourceBlockId);
+assert(disputedDecision?.status==='review','disputed OCR SKU must route to Review, got '+JSON.stringify(disputedDecision));
+assert(disputedDecision?.reasons?.includes('sku-confidence-unresolved'),'disputed OCR SKU lacks confidence reason');
+assert(!disputedSku.reviewGate.allClear&&!disputedSku.atomicSave.canCommit,'disputed OCR SKU incorrectly cleared Confirm & Save');
 console.log(JSON.stringify({
   ok:true,
   parserVersion:Parser.VERSION,
