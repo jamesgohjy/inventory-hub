@@ -138,7 +138,7 @@ assert(parserV3.includes("VERSION='3.0-evidence-recovery'")&&parserV3.includes("
 assert(parserV3.includes('function basicCountercheck')&&parserV3.includes('countercheck must flag metadata leakage'),'V3 must actively countercheck normal equipment invoices even without a support schedule');
 assert(parserV3.includes('replacement evidence leaked into unrelated ordinal')&&parserV3.includes('replacement conflict not isolated to affected ordinal'),'Parser V3 must regression-test row-scoped replacement evidence');
 assert(runtime.includes('applyParserV3Countercheck14y')&&runtime.includes('Parser V3 — counterchecking V2 result'),'Runtime must run V3 after V2 for valid equipment invoices');
-assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes("pendingV3=parserV3UnresolvedConflicts14y().length>0")&&runtime.includes("blocked=effective!=='equipment'||(!isVault&&!hasItems)||pendingV2Blocking||pendingV3"),'Unresolved V3 conflicts must remain a hard Confirm & Save block while materialized V2 pending rows stay reviewable');
+assert(runtime.includes('parserV3UnresolvedConflicts14y')&&runtime.includes("pendingV3=parserV3UnresolvedConflicts14y().length>0")&&runtime.includes('pendingV3||pendingV411'),'Unresolved V3 conflicts and missing certified V4.1 gates must remain hard Confirm & Save blocks');
 assert(runtime.includes('function renderParserV3Verification14y')&&!runtime.includes('<b>Level 3 — V2 / V3 conflict</b>'),'Normal Review must not expose V3 level/conflict diagnostic cards');
 assert(runtime.includes("host.querySelectorAll('.v703312q-level3-badge,.v703313-level3-badge,.v703313-field-warning').forEach(x=>x.remove())")&&!runtime.includes("badge.textContent='Level 3 — verify highlighted field'"),'Line-item Level verification badges/warnings must remain hidden');
 assert(!parserV3.includes('replaceOnce(')&&!parserV3.includes('supplier-specific'),'V3 must remain generic and repository-native');
@@ -269,9 +269,9 @@ assert(!runtime.includes('SUPABASE_SECRET_KEY')&&!runtime.includes('SUPABASE_ACC
 // Live mixed-document OCR trigger: a readable native invoice must still run independent OCR
 // when a corroborating numbered price schedule is attached.
 assert(runtime.includes('nativeHasCorroboratingSchedule')&&runtime.includes('||nativeHasCorroboratingSchedule'),'Live runtime does not force OCR for attached price schedules');
-assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if(nativeAllowed&&modelRich)invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
+assert(runtime.includes('const nativeAllowed=!!v70338PrimaryGate.decisions?.[i]?.allowed')&&runtime.includes('if((nativeAllowed||ocrAllowed)&&(modelRich||productCodeTable))invoiceModelPages.push(i+1)'),'High-resolution recovery must remain restricted to invoice-authorised pages');
 assert(runtime.includes("applyParsedFixes?.(normalized,recoveryRaw,sources.slice(1))"),'Normal import finalizer must run common invoice-evidence recovery before V2/V3');
-assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("filterInvoicePages([hiText],[])")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, and re-apply the invoice-page gate');
+assert(runtime.includes("const modelLabelRe=/\\b(?:MODEL(?:\\s*(?:NO\\.?|NUMBER))?|M\\/N)")&&runtime.includes("invoice-hires-'+mode.key+'-p")&&runtime.includes("SINGLE_BLOCK"),'High-resolution invoice-model recovery must tolerate lost punctuation, use two OCR modes, and retain the earlier invoice-page gate');
 const supportScheduleRe=/\bSCHEDULES?\s+OF\s+PRICES\b/i;
 const richMixedText=['TAX INVOICE','No. Description Qty Unit Price Amount','1 Mixer 1 100.00 100.00','SCHEDULES OF PRICES AND TECHNICAL DATA','1 Mixer ABC-1 UK 1 $100.00 $100.00'].join(String.fromCharCode(10));
 const oldStrongNativeGate=5000<80||(1===0&&60<20);
