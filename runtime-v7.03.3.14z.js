@@ -977,6 +977,25 @@ function referenceNumberFromLabel(text=''){
     const value=cleanHeaderValue(m[1]||'');
     if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDate(value))return value;
   }
+  // Some PDF text layers insert spaces inside one printed header cell. Only
+  // compact that cell when it follows a Ref./Reference label and has an
+  // identifier shape with a delimiter; never borrow an adjacent date/PO cell.
+  // Columnar text can keep all labels on one line and place their values on
+  // the next line. In that form accept only the first Ref cell when the next
+  // header cell is an unambiguous date; this prevents consuming a PO or terms.
+  const columnar=normalized.match(/\bRef(?:erence)?\.?\s*No\.?[^\n]*\n\s*[^A-Z0-9]*([A-Z0-9][A-Z0-9\s/-]{7,}?)\s+(?:[0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*\d{2,4})\b/i);
+  if(columnar){
+    const compact=String(columnar[1]||'').replace(/\s+/g,'').replace(/[–—]/g,'-');
+    if(/^[A-Z0-9]+(?:[-/][A-Z0-9]+){2,}[-/]?$/i.test(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
+  }
+  const lines=normalized.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  for(let i=0;i<lines.length;i++){
+    if(!/^(?:Ref(?:erence)?\.?\s*(?:No\.?|Number|#)?|Ref(?:erence)?\s+P\/?O\s*(?:No\.?|Number|#)?)$/i.test(lines[i]))continue;
+    const raw=String(lines[i+1]||'').trim();
+    if(!raw||/\b(?:date|invoice|p\/?o|salesman|terms|customer)\b/i.test(raw))continue;
+    const compact=raw.replace(/\s+/g,'').replace(/[–—]/g,'-');
+    if(/^[A-Z0-9]+(?:[-/][A-Z0-9]+){2,}[-/]?$/i.test(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
+  }
   return '';
 }
 function moneyFromLine(line=''){
@@ -1564,6 +1583,13 @@ function parseGenericInvoiceItems(text){
     desc=desc.replace(/^\|+|\|+$/g,'').replace(/\s+/g,' ').trim();
     if(desc&&qty!==null&&price!==null&&amount!==null){
       current=normalizeParsedInvoiceItem({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:qty,unit_price:price,amount,warranty:'',serials:''});
+      items.push(current);continue;
+    }
+    // A lone money-like token cannot be promoted to Qty. Preserve the row for
+    // Review, but leave every economic field unresolved until distinct printed
+    // quantity, price and amount cells are bound.
+    if(desc&&qty!==null&&price===null&&amount===null){
+      current=normalizeParsedInvoiceItem({sku:'',item_name:desc,description:desc,category:'',unit:'pcs',quantity:null,unit_price:null,amount:null,warranty:'',serials:'',quantityReviewRequired:true,priceReviewRequired:true,amountReviewRequired:true});
       items.push(current);continue;
     }
     if(current&&!/^\d+\s*$/.test(line)&&!/(?:invoice\s+no|invoice\s+date|customer\s+code|payment\s+terms)/i.test(line)){
@@ -2700,12 +2726,18 @@ function v661FinalizeParsedInvoice(parsed={},raw=''){
       if(incoming&&!String(doc[k]??'').trim())doc[k]=fixed[k];
     }
   }
-  // Reference Number is evidence-only: exact labelled evidence or blank. Never retain a guessed/reconstructed value.
+  // Reference Number is evidence-only: use the strict cross-row resolver when it
+  // succeeds. Some native PDF text layers keep a whole labelled columnar header
+  // in two rows, which the cross-row resolver cannot classify. In that narrow
+  // case the chosen (primary) source may supply a bounded Ref cell only when it
+  // is followed by a printed date; referenceNumberFromLabel rejects adjacent
+  // PO/terms cells and is never a reconstructed value.
+  const chosenPrintedReference=referenceNumberFromLabel(sources[0]?.text||'');
   try{
     const ev2=window.InventoryHubParserV2Evidence?.buildDocumentEvidence?.({sources,raw:evidence});
     const h2=ev2&&window.InventoryHubParserV2Header?.resolveHeaders?.(ev2);
-    doc.reference_number=String(h2?.reference_number||'').trim();
-  }catch(refErr){console.warn('Strict Reference Number resolver unavailable; leaving Reference Number blank.',refErr);doc.reference_number='';}
+    doc.reference_number=String(h2?.reference_number||'').trim()||chosenPrintedReference;
+  }catch(refErr){console.warn('Strict Reference Number resolver unavailable; using only bounded primary-source evidence.',refErr);doc.reference_number=chosenPrintedReference;}
   doc=v662RecoverMoneyFromText(doc,evidence);
   const savedLayout=state.pdfLayout;let moneyCandidates=[];
   for(const src of sources){state.pdfLayout=src.layout||[];let d=v661RepairInvoiceMoneyFromLayout({...doc});d=v662RecoverMoneyFromText(d,src.text||'');const a=Number(d.subtotal),b=Number(d.gst),c=Number(d.total_amount),ok=[a,b,c].every(Number.isFinite)&&Math.abs((a+b)-c)<=.06;moneyCandidates.push({d,ok,score:(Number.isFinite(a)?1:0)+(Number.isFinite(b)?1:0)+(Number.isFinite(c)?1:0)+(ok?8:0)});}
@@ -2974,7 +3006,8 @@ async function forceOcrRecovery(file){
       setProgress(pct,`Recovery OCR ${m.label}… invoice page ${ci+1} of ${selectedCanvases.length}`);const modeStart=performance.now();await worker.setParameters({tessedit_pageseg_mode:m.psm,preserve_interword_spaces:'1',user_defined_dpi:'300'});const r=await worker.recognize(input,{}, {text:true,tsv:true,hocr:true,blocks:true});const layout=ocrResultToLayout(r.data||{},page,input.height,input.width);m.layouts.push(layout);m.texts.push(String(r.data?.text||'').trim()||layout.rows?.map(x=>x.text).join('\n').trim());m.renderDpi=Math.min(m.renderDpi??Infinity,Number(entry.renderDpi)||0);recoveryTimings.push({page,stage:m.key,ms:Math.round(performance.now()-modeStart)});
     }}finally{if(prepared){prepared.width=0;prepared.height=0;}if(entry.render){c.width=0;c.height=0;}}
   }}catch(err){await recoveryPdf?.destroy?.();throw err;}finally{await worker.terminate();}
-  console.info('Recovery OCR timings',JSON.stringify({pages:recoveryPages,modeMs:recoveryTimings,totalMs:Math.round(performance.now()-recoveryStart)}));
+  state.v703316LastRecoveryTiming={pages:recoveryPages,modeMs:recoveryTimings,totalMs:Math.round(performance.now()-recoveryStart)};
+  console.info('Recovery OCR timings',JSON.stringify(state.v703316LastRecoveryTiming));
   const recovered=modes.map(m=>{
     // Recovery witnesses obey the same page authority as initial extraction.
     const gated=v703316FilterRecoveryPages(m.texts,m.layouts,recoveryPages);
@@ -3331,6 +3364,17 @@ function v411PrintedTotalsConsensus14z(sources=[],rows=[]){
   const agreed=[...groups.values()].filter(x=>x.sources.size>=2);
   return agreed.length===1?{...agreed[0].values,sources:[...agreed[0].sources]}:null;
 }
+function v411TerminalShapeExtension(current='',candidate=''){
+  const raw=v=>String(v||'').toUpperCase().trim();
+  const shape=v=>raw(v).replace(/[IL]/g,'1').replace(/O/g,'0').replace(/S/g,'5');
+  const a=raw(current),b=raw(candidate);
+  if(Math.abs(a.length-b.length)!==1)return '';
+  const short=a.length<b.length?a:b,long=a.length<b.length?b:a;
+  if(shape(short)!==shape(long.slice(0,short.length)))return '';
+  // Preserve the already-read prefix and accept only the separately witnessed
+  // terminal revision character. This prevents a crop from rewriting a model.
+  return a.length<b.length?a+b.slice(-1):b+a.slice(-1);
+}
 function v411TerminalSkuEvidenceConflict(item={},sources=[]){
   const codeKey=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
   const current=codeKey(item.sku||item.model||'');
@@ -3462,7 +3506,6 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   // (for example P versus P1). A row-bound product-code crop is stronger
   // evidence, but this remains a Review-only correction until a person sees
   // the printed source; it must never become a silent saved identity.
-  const terminalOneCharDifference=(a,b)=>Math.abs(a.length-b.length)===1&&(a.startsWith(b)||b.startsWith(a));
   for(const item of finalParsed.items){
     const originalSku=String(item.sku||item.model||'');
     // A numeric SALES code is a transaction category, not an equipment model.
@@ -3473,20 +3516,20 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     }
     const current=codeKey(originalSku),name=codeKey(item.item_name||'');
     if(!current||!name)continue;
-    const candidates=(state.v411ProductCodeWitnesses||[]).filter(w=>{
+    const candidates=(state.v411ProductCodeWitnesses||[]).map(w=>{
       const line=codeKey(w.rowText),code=codeKey(w.sku);
       const substitution=oneSubstitution(current,code)&&line.includes(name);
-      const terminal=terminalOneCharDifference(current,code)&&line.includes(code)
-        &&(current.startsWith(code)||code.startsWith(current));
-      return code&&(substitution||terminal);
-    });
-    const distinct=[...new Set(candidates.map(w=>codeKey(w.sku)))];
+      const terminal=v411TerminalShapeExtension(originalSku,w.sku);
+      if(!code||(!substitution&&!(terminal&&line.includes(code))))return null;
+      return {...w,resolvedSku:terminal||w.sku};
+    }).filter(Boolean);
+    const distinct=[...new Set(candidates.map(w=>codeKey(w.resolvedSku)))];
     if(distinct.length!==1)continue;
     const witness=candidates[0];
-    item.sku=witness.sku;item.model=witness.sku;
+    item.sku=witness.resolvedSku;item.model=witness.resolvedSku;
     item.skuReviewRequired=true;item.humanReviewRequired=true;item.needsReview=true;
     item.v411ProductCodeCropWitness={page:witness.page,primary:witness.primaryRaw,companion:witness.companionRaw,previous:originalSku};
-    identityCorrections.push({previous:current,candidate:witness.sku,page:witness.page});
+    identityCorrections.push({previous:current,candidate:witness.resolvedSku,page:witness.page});
   }
   const terminalSkuConflicts=[];
   for(const item of finalParsed.items){
@@ -3499,6 +3542,32 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   if(identityCorrections.length||terminalSkuConflicts.length){
     finalParsed.v411ReviewGate={...(finalParsed.v411ReviewGate||{}),allClear:false,identityCropConflict:true,terminalSkuConflict:terminalSkuConflicts.length>0};
     finalParsed.v411AtomicSave={...(finalParsed.v411AtomicSave||{}),canCommit:false,operations:[],blockers:[...new Set([...(finalParsed.v411AtomicSave?.blockers||[]),'product-code-identity-conflict',...(terminalSkuConflicts.length?['product-code-terminal-conflict']:[])]) ]};
+    finalParsed.v411ParserDisposition='review';finalParsed.v411ParserReady=false;finalParsed.v4ReviewMaterialized=false;
+  }
+  // A fuzzy existing-inventory suggestion is not identity evidence. Preserve the
+  // printed model in Review, but do not let a similarity score silently merge or
+  // save it as an inventory SKU. An operator must resolve it deliberately.
+  const existingSkuAmbiguities=[];
+  if(typeof findBestItemMatch==='function'){
+    for(const item of finalParsed.items||[]){
+      const match=findBestItemMatch(item);
+      if(!match||!(Number(match.score)>=0.58)||Number(match.score)>=0.999)continue;
+      item.skuReviewRequired=true;item.humanReviewRequired=true;item.needsReview=true;
+      item.v411ExistingSkuAmbiguity={suggestedSku:String(match.item?.sku||''),score:Number(match.score)};
+      existingSkuAmbiguities.push({sku:String(item.sku||item.model||''),suggestedSku:String(match.item?.sku||''),score:Number(match.score)});
+    }
+  }
+  if(existingSkuAmbiguities.length){
+    finalParsed.v411ReviewGate={...(finalParsed.v411ReviewGate||{}),allClear:false,existingSkuAmbiguity:true};
+    finalParsed.v411AtomicSave={...(finalParsed.v411AtomicSave||{}),canCommit:false,operations:[],blockers:[...new Set([...(finalParsed.v411AtomicSave?.blockers||[]),'possible-existing-sku-requires-review'])]};
+    finalParsed.v411ParserDisposition='review';finalParsed.v411ParserReady=false;finalParsed.v4ReviewMaterialized=false;
+  }
+  // Supplier identity is required for a purchase record. A readable line-item
+  // table cannot certify an import whose supplier header is absent.
+  const missingSupplier=!String(finalParsed.doc?.supplier_name||'').trim();
+  if(missingSupplier){
+    finalParsed.v411ReviewGate={...(finalParsed.v411ReviewGate||{}),allClear:false,missingSupplier:true};
+    finalParsed.v411AtomicSave={...(finalParsed.v411AtomicSave||{}),canCommit:false,operations:[],blockers:[...new Set([...(finalParsed.v411AtomicSave?.blockers||[]),'supplier-header-missing'])]};
     finalParsed.v411ParserDisposition='review';finalParsed.v411ParserReady=false;finalParsed.v4ReviewMaterialized=false;
   }
   const arithmetic=patch?.v703314nDocumentArithmetic?.(finalParsed.doc||{},finalParsed.items||[]);
@@ -3591,6 +3660,11 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   }
   const refCell=globalThis.InventoryHubV411CellOcrBridge?.chooseReferenceEvidence?.(state.v411ReferenceOcrEvidence||[]);
   if(refCell&&finalParsed.doc){finalParsed.doc.reference_number=refCell;finalParsed.doc.reference=refCell;}
+  // A primary-source Ref cell bounded by its following date is stronger than
+  // disagreeing OCR variants. Restore it after optional crop OCR selection;
+  // this retains readable native text while keeping unbounded OCR blank.
+  const primaryBoundedReference=referenceNumberFromLabel(sourceText);
+  if(primaryBoundedReference&&finalParsed.doc){finalParsed.doc.reference_number=primaryBoundedReference;finalParsed.doc.reference=primaryBoundedReference;}
   // V2 understands a table label above its value; the same-line helper does
   // not. Use the strict evidence resolver before deciding that no printed
   // reference exists, so a correctly resolved cross-row value survives.
@@ -3602,8 +3676,10 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     strictReferenceConflict=resolvedRef?.decisions?.reference_number?.reason==='conflicting-reference-glyphs';
   }catch(refErr){console.warn('Cross-row reference verification unavailable.',refErr);}
   if(strictPrintedReference&&finalParsed.doc&&!finalParsed.doc.reference_number){finalParsed.doc.reference_number=strictPrintedReference;finalParsed.doc.reference=strictPrintedReference;}
-  const hasPrintedReference=!!strictPrintedReference||[sourceText,...sources.map(x=>String(x?.text||''))].some(text=>!!referenceNumberFromLabel(text));
-  if((!hasPrintedReference||strictReferenceConflict)&&finalParsed.doc){finalParsed.doc.reference_number='';finalParsed.doc.reference='';}
+  const hasPrintedReference=!!strictPrintedReference||!!primaryBoundedReference||[sourceText,...sources.map(x=>String(x?.text||''))].some(text=>!!referenceNumberFromLabel(text));
+  // OCR disagreement cannot erase a bounded value from the primary source.
+  // It can still block auto-population where no such source evidence exists.
+  if((!hasPrintedReference||(strictReferenceConflict&&!primaryBoundedReference))&&finalParsed.doc){finalParsed.doc.reference_number='';finalParsed.doc.reference='';}
   console.info('Certification reference witnesses',JSON.stringify({highRefs,cell:state.v411ReferenceOcrEvidence,selected:refCell||((agreedRef.length===1)?agreedRef[0][0]:null)}));
   if(patch?.buildParserDiagnostics14l){
     finalParsed.v703314lDiagnostics=patch.buildParserDiagnostics14l(finalParsed,sourceText,{
@@ -3622,6 +3698,16 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     if(identityCorrections.length&&finalParsed.v703314lDiagnostics){
       finalParsed.v703314lDiagnostics.overall_status='REVIEW';
       finalParsed.v703314lDiagnostics.decision_reasons=[...(finalParsed.v703314lDiagnostics.decision_reasons||[]),`Product-code crop OCR read a different printed identity (${identityCorrections.map(x=>x.previous+' → '+x.candidate).join(', ')}). Verify the two source lines; saving remains blocked.`];
+    }
+    if(existingSkuAmbiguities.length&&finalParsed.v703314lDiagnostics){
+      finalParsed.v703314lDiagnostics.overall_status='REVIEW';
+      finalParsed.v703314lDiagnostics.decision_reasons=[...(finalParsed.v703314lDiagnostics.decision_reasons||[]),`Possible existing inventory SKU match requires explicit review (${existingSkuAmbiguities.map(x=>(x.sku||'printed model')+' → '+x.suggestedSku+' '+Math.round(x.score*100)+'%').join(', ')}). Saving remains blocked.`];
+      if(finalParsed.v703314lDiagnostics.verification)finalParsed.v703314lDiagnostics.verification.level3_required=true;
+    }
+    if(missingSupplier&&finalParsed.v703314lDiagnostics){
+      finalParsed.v703314lDiagnostics.overall_status='REVIEW';
+      finalParsed.v703314lDiagnostics.decision_reasons=[...(finalParsed.v703314lDiagnostics.decision_reasons||[]),'Supplier header was not verified from the source invoice. Saving remains blocked.'];
+      if(finalParsed.v703314lDiagnostics.verification)finalParsed.v703314lDiagnostics.verification.level3_required=true;
     }
   }
   finalParsed.v703312jInventoryFilter={
