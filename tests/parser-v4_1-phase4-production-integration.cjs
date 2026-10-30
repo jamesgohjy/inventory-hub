@@ -17,8 +17,8 @@ const v3At=runtime.indexOf('state.parsed=await applyParserV3Countercheck14y(stat
 const v41At=runtime.indexOf('state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);');
 const reviewAt=runtime.indexOf('applyParsedReviewToForm();renderParserV2Verification14y();renderParserV3Verification14y();',v41At);
 assert(v3At>=0&&v41At>v3At&&reviewAt>v41At,'V4.1 is not enforced between V3 countercheck and Review');
-assert(app.includes("ASSET_REV='v703314z-phase4identity-r10'"),'Phase 4 diagnostic-parity asset revision missing');
-assert(index.includes('app.js?v=7.03.3.14z-r42'),
+assert(app.includes("ASSET_REV='v703314z-step4-live-v176'"),'Phase 4 diagnostic-parity asset revision missing');
+assert(index.includes('app.js?v=7.03.3.14z-step4-live-v176'),
   'browser cache-bust version was not advanced');
 
 const self=V41.selfTest();
