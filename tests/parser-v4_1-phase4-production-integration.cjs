@@ -13,10 +13,12 @@ assert(app.includes('Parser V4.1 evidence-integrity startup gate failed'),
   'V4.1 startup self-test gate missing');
 assert(runtime.includes('function applyParserV41ProductionIntegrity14z'),
   'production V4.1 integrity wrapper missing');
-assert(runtime.includes('state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);applyParsedReviewToForm();'),
-  'V4.1 is not enforced between V3 countercheck and Review');
-assert(app.includes("ASSET_REV='v703314z-phase4identity-r10'"),'Phase 4 diagnostic-parity asset revision missing');
-assert(index.includes('app.js?v=7.03.3.14z-r42'),
+const v3At=runtime.indexOf('state.parsed=await applyParserV3Countercheck14y(state.parsed,state.parsed.raw||state.parsed.rawText||text);');
+const v41At=runtime.indexOf('state.parsed=applyParserV41ProductionIntegrity14z(state.parsed,state.parsed.raw||state.parsed.rawText||text);');
+const reviewAt=runtime.indexOf('applyParsedReviewToForm();renderParserV2Verification14y();renderParserV3Verification14y();',v41At);
+assert(v3At>=0&&v41At>v3At&&reviewAt>v41At,'V4.1 is not enforced between V3 countercheck and Review');
+assert(app.includes("ASSET_REV='v703314z-step4-live-v176'"),'Phase 4 diagnostic-parity asset revision missing');
+assert(index.includes('app.js?v=7.03.3.14z-step4-live-v176'),
   'browser cache-bust version was not advanced');
 
 const self=V41.selfTest();

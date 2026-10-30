@@ -3,7 +3,7 @@
   'use strict';
   if(window.__AV_V703314T_BOOTSTRAP_STARTED__)return;
   window.__AV_V703314T_BOOTSTRAP_STARTED__=true;
-  const VERSION='7.03.3.14z',ASSET_REV='v703314z-phase4identity-r10';
+  const VERSION='7.03.3.14z',ASSET_REV='v703314z-step4-live-v176';
   async function loadScript(src,globalName){
     if(globalName&&window[globalName])return window[globalName];
     await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=()=>reject(new Error('Unable to load '+src));document.head.appendChild(s);});
@@ -45,7 +45,14 @@
       const parserV41=await loadScript('modules/parser-v4_1-shadow.js?v='+key,'InventoryHubParserV41Shadow');
       const parserV41Gate=parserV41.selfTest?.();
       if(!parserV41Gate?.ok)throw new Error('Parser V4.1 evidence-integrity startup gate failed: '+(parserV41Gate?.failures||['self-test unavailable']).join(', '));
+      const parserV411Cell=await loadScript('modules/parser-v411-cell-ocr-bridge.js?v='+key,'InventoryHubV411CellOcrBridge');
+      const parserV411CellGate=parserV411Cell.selfTest?.();
+      if(!parserV411CellGate?.ok)throw new Error('Parser V4.1.1 cell-OCR bridge startup gate failed: '+(parserV411CellGate?.failures||['self-test unavailable']).join(', '));
+      const parserV411=await loadScript('modules/parser-v411-fixes1-5-shadow.js?v='+key,'InventoryHubV411Fixes1to5Shadow');
+      const parserV411Gate=parserV411.selfTest?.();
+      if(!parserV411Gate?.ok)throw new Error('Parser V4.1.1 fixes 1-15 startup gate failed: '+(parserV411Gate?.failures||['self-test unavailable']).join(', '));
       await loadScript('modules/canonical-parser.js?v='+key,'InventoryHubCanonicalParser');
+      await loadScript('modules/step4-live-header.js?v='+key,'InventoryHubStep4LiveHeader');
       await loadScript('modules/parser-table.js?v='+key,'InventoryHubParserTable');
       await loadScript('modules/grouped-company-ui.js?v='+key,'InventoryHubGroupedCompanyUI');
       await loadScript('runtime-v7.03.3.14z.js?v='+key);
