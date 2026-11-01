@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 51650)
-Total output lines: 2374
-
 /* AV Inventory Hub v7.03.3.14z reference, duplicate-row and review arithmetic patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
@@ -1467,7 +1464,68 @@ Total output lines: 2374
         const weakName=!matchName||match.humanReviewRequired||match.needsReview||!V703312J_EQUIPMENT_RE.test(matchName)||V703312J_SERVICE_ROW_RE.test(matchName);
         if(recName&&weakName)match.item_name=recName;
         if(clean(rec.description||'')&&(!clean(match.description||'')||weakName))match.description=rec.description;
-        cons…1650 tokens truncated…-source-line':'source-line'};
+        const recComplete=rec.unit_price!==null&&rec.unit_price!==undefined&&rec.unit_price!==''&&rec.amount!==null&&rec.amount!==undefined&&rec.amount!==''&&Number.isFinite(Number(rec.unit_price))&&Number.isFinite(Number(rec.amount));
+        const matchPriceMissing=match.unit_price===null||match.unit_price===undefined||match.unit_price===''||Number(match.unit_price)===0;
+        const matchAmountMissing=match.amount===null||match.amount===undefined||match.amount===''||Number(match.amount)===0;
+        if(recComplete&&matchPriceMissing&&matchAmountMissing){
+          match.quantity=rec.quantity;match.unit_price=rec.unit_price;match.amount=rec.amount;
+          delete match.priceReviewRequired;delete match.amountReviewRequired;
+        }
+        if(rec.v703314zReplacementModel)match.v703314zReplacementModel=rec.v703314zReplacementModel;
+        match.v703312kSourceLine=uniq([match.v703312kSourceLine,rec.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
+        const sourceCount=match.v703312kEvidenceSources.length;
+        if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
+        else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
+      }
+    }
+    return dedupeParsedLineItems(consolidateFragmentedParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw))));
+  }
+
+  const v703314nRound2=n=>Number.isFinite(Number(n))?Math.round(Number(n)*100)/100:null;
+  const v703314nFinite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
+  function v703314nTolerance(value,min=.02,rate=.0005){return Math.max(min,Math.abs(Number(value)||0)*rate);}
+  function v703314nLineArithmetic(row={}){
+    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    if(!(q>0)||!Number.isFinite(p)||!Number.isFinite(a))return {status:'unavailable',reason:'Qty, unit price and amount are not all available.',quantity:v703314nFinite(row.quantity)?q:null,unit_price:v703314nFinite(row.unit_price)?p:null,amount:v703314nFinite(row.amount)?a:null};
+    const expected=v703314nRound2(q*p),difference=v703314nRound2(Math.abs(a-expected)),tolerance=v703314nTolerance(expected,.02,.0005),pass=difference<=tolerance;
+    return {status:pass?'pass':'review',quantity:q,unit_price:p,amount:a,expected_amount:expected,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Qty × Unit Price agrees with Amount.':'Qty × Unit Price does not agree with Amount.'};
+  }
+  function v703314nDocumentArithmetic(doc={},rows=[]){
+    const subtotal=v703314nFinite(doc.subtotal)?Number(doc.subtotal):null,gst=v703314nFinite(doc.gst)?Number(doc.gst):null,total=v703314nFinite(doc.total_amount??doc.total)?Number(doc.total_amount??doc.total):null;
+    const out={subtotal_gst_total:{status:'unavailable',reason:'Subtotal, GST and Total are not all available.'},line_sum_subtotal:{status:'unavailable',advisory:true,reason:'A complete numeric line amount set is not available.'}};
+    if(subtotal!==null&&gst!==null&&total!==null){
+      const expected=v703314nRound2(subtotal+gst),difference=v703314nRound2(Math.abs(total-expected)),tolerance=v703314nTolerance(total,.05,.0001),pass=difference<=tolerance;
+      out.subtotal_gst_total={status:pass?'pass':'review',subtotal,gst,total,expected_total:expected,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Subtotal + GST agrees with Total.':'Subtotal + GST does not agree with Total.'};
+    }
+    const numeric=(rows||[]).filter(r=>v703314nFinite(r.amount)),eligible=(rows||[]).length>0&&numeric.length===(rows||[]).length;
+    if(eligible&&subtotal!==null){
+      const sum=v703314nRound2(numeric.reduce((n,r)=>n+Number(r.amount),0)),difference=v703314nRound2(Math.abs(sum-subtotal)),tolerance=v703314nTolerance(subtotal,.05,.0005),pass=difference<=tolerance;
+      out.line_sum_subtotal={status:pass?'pass':'review',advisory:true,line_amount_sum:sum,subtotal,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Parsed line amounts agree with Subtotal.':'Parsed line amounts do not fully reconcile with Subtotal. This is advisory because intentionally excluded service/accessory rows may contribute to Subtotal.'};
+    }
+    return out;
+  }
+  function v703314nEvidenceMatch(value,field,row={},raw='',evidenceSources=[]){
+    if(value===null||value===undefined||value==='')return {found:false,source:'',page:null,line:null,text:'',method:'blank'};
+    const prov=row?.v7Provenance?.[field]||row?.provenance?.[field]||{};
+    if(clean(prov.sourceText||''))return {found:true,source:clean(prov.source||row.source||'provenance'),page:prov.page??row.page??null,line:prov.rowId||row.rowId||null,text:clean(prov.sourceText),method:'provenance'};
+    const sources=v703312kEvidenceTexts(raw,evidenceSources);
+    const direct=field==='sku'||field==='serials',target=direct?compact(value):norm(String(value));
+    const numericField=['quantity','unit_price','amount'].includes(field);
+    for(const ev of sources){
+      const lines=String(ev.text||'').replace(/\r/g,'').split('\n');
+      let candidateIndexes=lines.map((_,i)=>i);
+      if(numericField){
+        const skuKey=compact(row.sku||''),nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4).slice(0,4),anchors=[];
+        for(let i=0;i<lines.length;i++){const c=compact(lines[i]),n=norm(lines[i]);if((skuKey&&c.includes(skuKey))||(!skuKey&&nameWords.length>=2&&nameWords.filter(w=>n.includes(w)).length>=2))anchors.push(i);}
+        if(anchors.length){const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);candidateIndexes=[...set].sort((a,b)=>a-b);}
+      }
+      for(const i of candidateIndexes){
+        const line=clean(lines[i]);if(!line)continue;const hay=direct?compact(line):norm(line);
+        let matched=!!target&&hay.includes(target);
+        if(!matched&&['quantity','unit_price','amount','subtotal','gst','total_amount'].includes(field)&&Number.isFinite(Number(value))){
+          const n=Number(value),forms=[String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})].map(x=>norm(x));matched=forms.some(x=>x&&hay.includes(x));
+        }
+        if(matched)return {found:true,source:ev.source||'evidence',page:ev.page??null,line:i+1,text:line.slice(0,320),method:numericField?'row-local-source-line':'source-line'};
       }
     }
     return {found:false,source:'',page:null,line:null,text:'',method:'not-found'};
