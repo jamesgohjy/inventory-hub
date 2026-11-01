@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 51650)
+Total output lines: 2374
+
 /* AV Inventory Hub v7.03.3.14z reference, duplicate-row and review arithmetic patch
  * Baseline: live v7.03.2, itself based on verified v7.03.1.
  * Focus: no hallucinated SKU/model, Product No intelligence, Level 1/2/3 discipline,
@@ -43,9 +46,13 @@
       if(!label.test(lines[i]))continue;
       const serials=[...v703315SerialTokens(lines[i])];let endLineIndex=i,uncertain=false;
       const notApplicable=/^(?:N\s*\/?\s*A|NONE|NIL|NOT\s+APPLICABLE|-+)$/i.test(clean(lines[i]).replace(label,'').trim());
-      for(let j=i+1;j<Math.min(lines.length,i+7);j++){
+      for(let j=i+1;j<Math.min(lines.length,i+65);j++){
         const line=lines[j];
         if(label.test(line)||hardStop.test(line)||economic.test(line))break;
+        // Wrapped serials contain only identifier tokens. A new product row can also
+        // contain model-like tokens, so stop before parsing descriptive text as serials.
+        if(line.split(/[,;\s]+/).filter(Boolean).length>2||
+           /\b(?:projector|speaker|microphone|panel|controller|amplifier|mixer|camera|display|monitor|installation|shipment|warranty|device|system|cable)\b/i.test(line))break;
         const tokens=v703315SerialTokens(line);
         if(tokens.length){
           for(const token of tokens)if(!serials.some(v=>compact(v)===compact(token)))serials.push(token);
@@ -170,7 +177,7 @@
     const headingPhrases=[...normalizedHeading,...adjacentPhrases(normalizedHeading,3)];
     const earlyPhrases=[...normalizedEarly,...adjacentPhrases(normalizedEarly,3)];
 
-    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|SERVICE\s+INVOICE|INSTALLATION\s+REPORT|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?$/i;
+    const nonInvoiceRe=/^(?:PRO\s*FORMA\s+INVOICE|PROFORMA\s+INVOICE|QUOTATION|QUOTE|DELIVERY\s+ORDER|DELIVERY\s+NOTE|DELIVERY\s+SLIP|PACKING\s+LIST|PACKING\s*\/?\s*DELIVERY\s+SLIP|PACKING\s+DELIVERY\s+SLIP|PURCHASE\s+REQUISITION|PURCHASE\s+REQUEST|PURCHASE\s+ORDER|GOODS\s+RECEIVED\s+NOTE|SERVICE\s+REPORT|SERVICE\s+INVOICE|INSTALLATION\s+REPORT|CREDIT\s+NOTE|DEBIT\s+NOTE|STATEMENT|SCHEDULES?\s+OF\s+PRICES(?:\s+AND\s+TECHNICAL\s+DATA)?|PRICE\s+SCHEDULE|SCHEDULE\s+OF\s+PRICES|BILL\s+OF\s+QUANTITIES|BOQ|TECHNICAL\s+PROPOSAL|TECHNICAL\s+DATA\s+SHEET|TENDER\s+SCHEDULE)(?:\s+(?:NO|NUMBER|#)?\s*[A-Z0-9./-]+)?(?:\s|$)/i;
     const nonInvoiceTitles=[...new Set(earlyPhrases.filter(x=>nonInvoiceRe.test(x)))];
 
     // A heading can be merged into surrounding header text by PDF extraction. Accept TAX INVOICE
@@ -321,7 +328,7 @@
     const s=clean(line);if(!s)return [];
     const raw=[];const re=/(?:^|[\s(])([A-Z][A-Z0-9+._\/-]{1,27})(?=$|[\s),:;])/gi;let m;
     while((m=re.exec(s))){
-      const token=clean(m[1]).replace(/[,:;]+$/,'');
+      const token=clean(m[1]).replace(/[,:;._\/-]+$/,'');
       if(credibleSku(token,s))raw.push(token);
     }
     return uniq(raw,compact);
@@ -354,6 +361,9 @@
         if(i-headerIndex>=0&&i-headerIndex<=4)score+=12;
         if(/\b(?:PRODUCT\s*(?:NO\.?|NUMBER)|MODEL|SKU)\b/i.test(line))score+=8;
         if(brand)score+=4;
+        // A specific printed part number outranks a short family name on the
+        // same invoice line (e.g. IHK3-86SA versus K3).
+        if(/[-_/.]/.test(model)&&model.length>=6)score+=6;
         score+=targetHits*2;
         if(/\b(?:screen|projector|microphone|speaker|player|controller|panel|camera|mixer|display|monitor|receiver|transmitter|amplifier|processor|switcher)\b/i.test(line))score+=3;
         if(compact(raw).includes(compact(model)))score+=2;
@@ -464,7 +474,7 @@
       if(compact(r.sku||'')!==compact(id.model))r.v7033SkuCorrection={from:clean(r.sku||''),to:id.model,reason:id.reason,evidenceLine:id.evidenceLine,source:id.source};
       r.sku=id.model;
       if(id.score>=7)delete r.skuReviewRequired;
-    }else if(r.sku&&looksLikeDimensionOrSpec(r.sku,raw)){
+    }else if(r.sku&&(/^\d{1,3}$/.test(clean(r.sku))||looksLikeDimensionOrSpec(r.sku,raw))){
       r.v7033RejectedSku=clean(r.sku);r.sku='';r.skuReviewRequired=true;
     }
     const name=conciseName(r,id);if(name)r.item_name=name;
@@ -522,7 +532,14 @@
       if(!lm)continue;
       const candidates=[];
       if(clean(lm[1]))candidates.push(clean(lm[1]));
-      if(lines[i+1])candidates.push(lines[i+1]);
+      if(lines[i+1]){
+        candidates.push(lines[i+1]);
+        // OCR can prepend punctuation and stray letters to a value on the
+        // line beneath its label. Extract only an unambiguous invoice-shaped
+        // token and let the normal strength checks validate it.
+        const tokens=lines[i+1].match(/\b[A-Z]{2,}\d{2,}[-/][A-Z0-9][-A-Z0-9]{3,}\b/gi)||[];
+        if(tokens.length===1)candidates.push(tokens[0]);
+      }
       for(const c of candidates){const n=normalizeInvoiceNumberCandidate(c,supplier,raw);if(n)return n;}
     }
     const heading=v=>{const h=clean(v).replace(/[^A-Za-z ]+/g,' ').replace(/\s+/g,' ').trim();if(!h||h.length>120||h.split(/\s+/).length>6||/\b(?:PRO\s*FORMA|PROFORMA|COPY\s+OF|REFERENCE|PAYMENT)\b/i.test(h))return false;return /(?:^|\s)(?:TAX\s+INVOICE|INVOICE|SALES\s+INVOICE|COMMERCIAL\s+INVOICE|GST\s+INVOICE)$/i.test(h);};
@@ -556,12 +573,13 @@
     return '';
   }
   function referenceNumberFromLabel(raw=''){
-    const text=String(raw||'').replace(/\r/g,'\n');
-    const re=/\b(?:Reference(?:\s*(?:No\.?|Number|#))?|Ref\.?\s*(?:No\.?|Number|#)?)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9._\/-]{2,})/ig;
+    const lines=String(raw||'').replace(/\r/g,'\n').split(/\n+/).map(clean);
+    const re=/\b(?:Reference(?:[ \t]*(?:No\.?|Number|#))?|Ref\.?[ \t]*(?:No\.?|Number|#)?)[ \t]*[:#.-]?[ \t]*([A-Z0-9][A-Z0-9._\/-]{2,})/i;
     const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
-    for(const m of text.matchAll(re)){
+    for(const line of lines){
+      const m=line.match(re);if(!m)continue;
       const value=clean(m[1]||'').replace(/[,:;]+$/,'');
-      if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDateLike(value))return value;
+      if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDateLike(value)&&!/^\d{1,2}-\d{2}$/.test(value))return value;
     }
     return '';
   }
@@ -586,7 +604,7 @@
     if(labelledReference){
       d.reference_number=labelledReference;
       if(previousReference&&previousReference!==labelledReference)d.v7033ReferenceCorrectedFrom=previousReference;
-    }else d.reference_number=previousReference;
+    }else d.reference_number=previousReference&&String(raw||'').includes(previousReference)&&!/^\d{1,2}-\d{2}$/.test(previousReference)?previousReference:'';
     return d;
   }
   function lineEvidenceSignature(r={}){
@@ -660,7 +678,7 @@
   // not on an idealized one-line fixture. Service/accessory classification always runs first.
   const V703312J_SERVICE_ROW_RE=/\b(?:delivery\s+(?:fee|charge|service|cost)|shipping\s+(?:fee|charge|service|cost)|freight(?:\s+(?:fee|charge|service|cost))?|courier(?:\s+(?:fee|charge|service|cost))?|transport(?:ation)?\s+(?:fee|charge|service|cost)|installation(?:\s+(?:fee|charge|work|cost))?|installing(?:\s+(?:fee|charge|work|cost))?|labou?r(?:\s+(?:fee|charge|work|cost))?|service\s+(?:fee|charge|work|cost)|commissioning|training|knowledge\s+transfer|system\s+tuning|calibration|programming|label(?:ling|ing)|tidying|racking|mounting\s+kits?|return\s+trip|dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|remov(?:e|al|ing)\s+(?:of\s+)?existing)\b/i;
   const V703312J_ACCESSORY_RE=/\b(?:dmx\s+)?cables?\b|\bcabling\b|\bwires?\b|\bwiring\b|\bconnectors?\b|\baccessories?\b|\bmounts?\b|\bbrackets?\b|\blamp\s+kits?\b|\bcarts?\b|\btrolleys?\b|\bstands?\b|\bsecurity\s+locks?\b|\bsafety\s+wires?\b/i;
-  const V703312J_EQUIPMENT_RE=/\b(?:controllers?|control\s+panels?|keypads?|button\s+keypads?|projectors?|microphones?|mics?|speakers?|loudspeakers?|cameras?|mixers?|consoles?|displays?|monitors?|receivers?|transmitters?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visuali[sz]ers?|document\s+cameras?|lighting\s+controllers?|media\s+players?|cd\/?mp3\s+players?|players?|receptacles?|audio\s+testers?|signal\s+testers?|analy[sz]ers?|scalers?|matrix|nvr|dvr|network\s+video\s+recorders?|digital\s+video\s+recorders?)\b/i;
+  const V703312J_EQUIPMENT_RE=/\b(?:controllers?|control\s+panels?|keypads?|button\s+keypads?|projectors?|screens?|microphones?|mics?|speakers?|loudspeakers?|cameras?|mixers?|consoles?|displays?|monitors?|receivers?|transmitters?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visuali[sz]ers?|document\s+cameras?|lighting\s+controllers?|media\s+players?|cd\/?mp3\s+players?|players?|receptacles?|audio\s+testers?|signal\s+testers?|analy[sz]ers?|scalers?|matrix|nvr|dvr|network\s+video\s+recorders?|digital\s+video\s+recorders?)\b/i;
   function v703312jRowText(row={}){return clean([row.item_name,row.description,row.sku].filter(Boolean).join(' '));}
   function v703314kHasStrongEquipmentIdentity(row={}){
     const text=v703312jRowText(row),sku=clean(row.sku||''),primary=clean(row.item_name||'');
@@ -669,6 +687,9 @@
   }
   function v703312jIsServiceRow(row={}){
     const text=v703312jRowText(row),primary=clean(row.item_name||row.description||'');
+    // A separately priced support-plan row can repeat the physical product
+    // description and model. Its explicit plan identity still makes it service.
+    if(/\b(?:hi[-\s]?care|care\s+basic|support\s+plan|service\s+contract|extended\s+warranty)\b/i.test(primary))return true;
     const genericScope=/\b(?:the\s+)?new\s+equipment\s+specified\s+in\s+(?:section|sec)\b/i.test(primary)
       ||/includes?\s*(?:racking|mounting|cabling|labelling|labeling|tidying)\b/i.test(primary)
       ||/\b(?:scope\s+of\s+work|system\s+tuning|knowledge\s+transfer|testing\s+and\s+commissioning)\b/i.test(primary);
@@ -681,6 +702,8 @@
   }
   function v703312jIsAccessoryRow(row={}){
     const text=v703312jRowText(row);if(!V703312J_ACCESSORY_RE.test(text))return false;
+    const primary=clean(row.item_name||row.description||''),sku=clean(row.sku||''),q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
+    if(/\b(?:manual|motorized|motorised|projection)\s+screens?\b/i.test(text)&&!/\b(?:screen\s+mount|screen\s+bracket|mount(?:ing)?\s+bracket)\b/i.test(primary)&&credibleSku(sku,text)&&q>0&&p>=0&&a>=0&&Math.abs(q*p-a)<=Math.max(.08,a*.01))return false;
     if(isStructuredPhysicalAssetRow(row))return false;
     if(V703312J_EQUIPMENT_RE.test(text)&&/\b(?:with|including|includes|incl\.?|supplied\s+with)\b[\s\S]{0,80}\b(?:cables?|wires?|mounts?|brackets?|stands?|carts?|trolleys?|locks?)\b/i.test(text))return false;
     return true;
@@ -1444,68 +1467,7 @@
         const weakName=!matchName||match.humanReviewRequired||match.needsReview||!V703312J_EQUIPMENT_RE.test(matchName)||V703312J_SERVICE_ROW_RE.test(matchName);
         if(recName&&weakName)match.item_name=recName;
         if(clean(rec.description||'')&&(!clean(match.description||'')||weakName))match.description=rec.description;
-        const recComplete=rec.unit_price!==null&&rec.unit_price!==undefined&&rec.unit_price!==''&&rec.amount!==null&&rec.amount!==undefined&&rec.amount!==''&&Number.isFinite(Number(rec.unit_price))&&Number.isFinite(Number(rec.amount));
-        const matchPriceMissing=match.unit_price===null||match.unit_price===undefined||match.unit_price===''||Number(match.unit_price)===0;
-        const matchAmountMissing=match.amount===null||match.amount===undefined||match.amount===''||Number(match.amount)===0;
-        if(recComplete&&matchPriceMissing&&matchAmountMissing){
-          match.quantity=rec.quantity;match.unit_price=rec.unit_price;match.amount=rec.amount;
-          delete match.priceReviewRequired;delete match.amountReviewRequired;
-        }
-        if(rec.v703314zReplacementModel)match.v703314zReplacementModel=rec.v703314zReplacementModel;
-        match.v703312kSourceLine=uniq([match.v703312kSourceLine,rec.v703312kSourceLine].map(clean).filter(Boolean),clean).join(' | ');
-        const sourceCount=match.v703312kEvidenceSources.length;
-        if(sourceCount>=2&&!match.v703312kIndependentConflict&&!rec.v703312kIndependentConflict){match.v703312kLevel2={status:'confirmed',sources:sourceCount,reason:'Independent OCR reads agree on the same equipment identity and economics.'};match.humanReviewRequired=false;match.needsReview=false;}
-        else if(match.v703312kLevel2?.status!=='confirmed')match.v703312kLevel2=rec.v703312kLevel2;
-      }
-    }
-    return dedupeParsedLineItems(consolidateFragmentedParsedLineItems(kept.map(r=>validateSkuQtyEvidence(r.v703312kOcrEvidence?r:fixRow(r,raw),raw))));
-  }
-
-  const v703314nRound2=n=>Number.isFinite(Number(n))?Math.round(Number(n)*100)/100:null;
-  const v703314nFinite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
-  function v703314nTolerance(value,min=.02,rate=.0005){return Math.max(min,Math.abs(Number(value)||0)*rate);}
-  function v703314nLineArithmetic(row={}){
-    const q=Number(row.quantity),p=Number(row.unit_price),a=Number(row.amount);
-    if(!(q>0)||!Number.isFinite(p)||!Number.isFinite(a))return {status:'unavailable',reason:'Qty, unit price and amount are not all available.',quantity:v703314nFinite(row.quantity)?q:null,unit_price:v703314nFinite(row.unit_price)?p:null,amount:v703314nFinite(row.amount)?a:null};
-    const expected=v703314nRound2(q*p),difference=v703314nRound2(Math.abs(a-expected)),tolerance=v703314nTolerance(expected,.02,.0005),pass=difference<=tolerance;
-    return {status:pass?'pass':'review',quantity:q,unit_price:p,amount:a,expected_amount:expected,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Qty × Unit Price agrees with Amount.':'Qty × Unit Price does not agree with Amount.'};
-  }
-  function v703314nDocumentArithmetic(doc={},rows=[]){
-    const subtotal=v703314nFinite(doc.subtotal)?Number(doc.subtotal):null,gst=v703314nFinite(doc.gst)?Number(doc.gst):null,total=v703314nFinite(doc.total_amount??doc.total)?Number(doc.total_amount??doc.total):null;
-    const out={subtotal_gst_total:{status:'unavailable',reason:'Subtotal, GST and Total are not all available.'},line_sum_subtotal:{status:'unavailable',advisory:true,reason:'A complete numeric line amount set is not available.'}};
-    if(subtotal!==null&&gst!==null&&total!==null){
-      const expected=v703314nRound2(subtotal+gst),difference=v703314nRound2(Math.abs(total-expected)),tolerance=v703314nTolerance(total,.05,.0001),pass=difference<=tolerance;
-      out.subtotal_gst_total={status:pass?'pass':'review',subtotal,gst,total,expected_total:expected,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Subtotal + GST agrees with Total.':'Subtotal + GST does not agree with Total.'};
-    }
-    const numeric=(rows||[]).filter(r=>v703314nFinite(r.amount)),eligible=(rows||[]).length>0&&numeric.length===(rows||[]).length;
-    if(eligible&&subtotal!==null){
-      const sum=v703314nRound2(numeric.reduce((n,r)=>n+Number(r.amount),0)),difference=v703314nRound2(Math.abs(sum-subtotal)),tolerance=v703314nTolerance(subtotal,.05,.0005),pass=difference<=tolerance;
-      out.line_sum_subtotal={status:pass?'pass':'review',advisory:true,line_amount_sum:sum,subtotal,difference,tolerance:Number(tolerance.toFixed(2)),reason:pass?'Parsed line amounts agree with Subtotal.':'Parsed line amounts do not fully reconcile with Subtotal. This is advisory because intentionally excluded service/accessory rows may contribute to Subtotal.'};
-    }
-    return out;
-  }
-  function v703314nEvidenceMatch(value,field,row={},raw='',evidenceSources=[]){
-    if(value===null||value===undefined||value==='')return {found:false,source:'',page:null,line:null,text:'',method:'blank'};
-    const prov=row?.v7Provenance?.[field]||row?.provenance?.[field]||{};
-    if(clean(prov.sourceText||''))return {found:true,source:clean(prov.source||row.source||'provenance'),page:prov.page??row.page??null,line:prov.rowId||row.rowId||null,text:clean(prov.sourceText),method:'provenance'};
-    const sources=v703312kEvidenceTexts(raw,evidenceSources);
-    const direct=field==='sku'||field==='serials',target=direct?compact(value):norm(String(value));
-    const numericField=['quantity','unit_price','amount'].includes(field);
-    for(const ev of sources){
-      const lines=String(ev.text||'').replace(/\r/g,'').split('\n');
-      let candidateIndexes=lines.map((_,i)=>i);
-      if(numericField){
-        const skuKey=compact(row.sku||''),nameWords=norm(row.item_name||row.description||'').split(' ').filter(w=>w.length>=4).slice(0,4),anchors=[];
-        for(let i=0;i<lines.length;i++){const c=compact(lines[i]),n=norm(lines[i]);if((skuKey&&c.includes(skuKey))||(!skuKey&&nameWords.length>=2&&nameWords.filter(w=>n.includes(w)).length>=2))anchors.push(i);}
-        if(anchors.length){const set=new Set();for(const a of anchors)for(let j=Math.max(0,a-2);j<=Math.min(lines.length-1,a+3);j++)set.add(j);candidateIndexes=[...set].sort((a,b)=>a-b);}
-      }
-      for(const i of candidateIndexes){
-        const line=clean(lines[i]);if(!line)continue;const hay=direct?compact(line):norm(line);
-        let matched=!!target&&hay.includes(target);
-        if(!matched&&['quantity','unit_price','amount','subtotal','gst','total_amount'].includes(field)&&Number.isFinite(Number(value))){
-          const n=Number(value),forms=[String(n),n.toFixed(2),n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})].map(x=>norm(x));matched=forms.some(x=>x&&hay.includes(x));
-        }
-        if(matched)return {found:true,source:ev.source||'evidence',page:ev.page??null,line:i+1,text:line.slice(0,320),method:numericField?'row-local-source-line':'source-line'};
+        cons…1650 tokens truncated…-source-line':'source-line'};
       }
     }
     return {found:false,source:'',page:null,line:null,text:'',method:'not-found'};
@@ -1694,7 +1656,11 @@
       return {...item,v7033ReviewFields:fields};
     });
     const quality14n=v703314nApplyQualityGuards(out,source,{incoming,excludedService,excludedAccessory,recovered,evidenceSources});
-    out.items=quality14n.items;out.v703314nQuality=quality14n.summary;
+    out.items=quality14n.items.map(item=>{
+      const sku=clean(item.sku||''),canonical=sku.replace(/[-_.\/]+$/,'');
+      return canonical&&canonical!==sku&&credibleSku(canonical,source)&&new RegExp('(?:^|[^A-Za-z0-9])'+canonical.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:$|[^A-Za-z0-9])','i').test(source)
+        ?{...item,sku:canonical,model:clean(item.model||'')===sku?canonical:item.model}:item;
+    });out.v703314nQuality=quality14n.summary;
     if(quality14n.reviewRows.length){const vr={...(v7.verification||{})};vr.humanReviewRows=dedupeReviewRows([...(vr.humanReviewRows||[]),...quality14n.reviewRows]);vr.humanReviewRequired=true;v7.verification=vr;}
     const rowNeed=out.items.some(r=>r.humanReviewRequired===true||explicitReviewFlag(r)||Object.keys(r.v7033ReviewFields||{}).length>0)||quality14n.humanReviewRequired;
     v7.humanReviewRequired=!!(rowNeed||v7.verification?.humanReviewRequired||comp.recheckRequired);
@@ -1870,6 +1836,8 @@
     check('purchase order with invoice-like equipment is rejected before extraction',classifyInvoicePage(po).allowed,false);
     check('quotation with modelled equipment is rejected before extraction',classifyInvoicePage(quotation).allowed,false);
     check('delivery order with modelled equipment is rejected before extraction',classifyInvoicePage(delivery).allowed,false);
+    const packingMerged='PACKING/DELIVERY SLIP    28 Aug 2026    Ltd.\nInvoice Number INV LTA-00215840\nDescription Quantity\nXVive U35C Wireless System 4.00';
+    check('packing/delivery slip title remains hard-rejected when PDF extraction merges date/company text onto heading',classifyInvoicePage(packingMerged).allowed,false);
     const mixed=filterInvoicePages([invoice,po,quotation,delivery],[{page:1},{page:2},{page:3},{page:4}]);
     check('mixed PDF exposes only Invoice/Tax Invoice page text',mixed.texts.length===1&&mixed.texts[0]===invoice,true);
     check('mixed PDF rejects PO quotation and delivery pages',mixed.decisions.slice(1).every(x=>x.allowed===false),true);
@@ -1888,11 +1856,20 @@
   function buildParserDiagnostics14l(parsed={},raw='',context={}){
     const source=String(raw||parsed?.raw||parsed?.rawText||''),incoming=[...(context.incoming||[])],items=[...(parsed?.items||[])];
     const classification=classifyInvoicePage(source),doc=parsed?.doc||{},v7=parsed?.v7||parsed?.parseEvidence?.v7||{},comp=v7.completenessValidation||{},verify=parsed?.v703312kVerification||{};
+    const certified=context.certifiedResult;
+    const certifiedBound=!!certified&&Array.isArray(certified.rows)&&certified.rows.length===items.length
+      &&certified.rows.every((r,i)=>clean(r.sku||'')===clean(items[i]?.sku||'')
+        &&['quantity','unit_price','amount'].every(k=>r[k]===items[i]?.[k]));
     const decisionRows=incoming.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,...v703314lRowDecision(r)}));
-    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:{...(r.v7033ReviewFields||{})},human_review_required:!!(r.humanReviewRequired||r.needsReview||Object.keys(r.v7033ReviewFields||{}).length)}));
+    const finalItems=items.map((r,i)=>({index:i+1,sku:clean(r.sku||''),item_name:clean(r.item_name||''),quantity:r.quantity??null,unit_price:r.unit_price??null,amount:r.amount??null,identity:{...(r.v7033Identity||{})},line_evidence:{...(r.v703312LineEvidence||{})},field_confidence:{...(r.v703314nFieldConfidence||{})},arithmetic:{...(r.v703314nArithmetic||{})},level1:r.v703312kLevel1||verify.level1?.[i]||null,level2:r.v703312kLevel2||verify.level2?.[i]||null,review_fields:certifiedBound&&certified.reviewGate?.decisions?.[i]?.status==='auto-accept'?{}:{...(r.v7033ReviewFields||{})},legacy_review_fields:{...(r.v7033ReviewFields||{})},human_review_required:certifiedBound?certified.reviewGate?.decisions?.[i]?.status!=='auto-accept':!!(r.humanReviewRequired||r.needsReview||Object.keys(r.v7033ReviewFields||{}).length)}));
     const excludedService=[...(context.excludedService||[])],excludedAccessory=[...(context.excludedAccessory||[])],recovered=[...(context.recovered||[])];
-    const level3=!!(verify.level3Required||v7.humanReviewRequired||comp.recheckRequired||finalItems.some(x=>x.human_review_required));
-    const status=!classification.allowed?'BLOCK':(!items.length?'BLOCK':(level3?'REVIEW':'PASS'));
+    const legacyLevel3=!!(verify.level3Required||v7.humanReviewRequired||comp.recheckRequired||items.some(x=>x.humanReviewRequired||x.needsReview||Object.keys(x.v7033ReviewFields||{}).length));
+    const level3=certifiedBound?!certified.reviewGate?.allClear:legacyLevel3;
+    const legacyStatus=!classification.allowed?'BLOCK':(!items.length?'BLOCK':(legacyLevel3?'REVIEW':'PASS'));
+    const certifiedReady=certifiedBound&&certified.ready===true&&certified.safe===true
+      &&certified.reviewGate?.allClear===true&&certified.atomicSave?.canCommit===true
+      &&!(certified.failures||[]).length;
+    const status=!classification.allowed||!items.length?'BLOCK':(certifiedBound?(certifiedReady?'PASS':(certified.disposition==='fail'?'BLOCK':'REVIEW')):legacyStatus);
     const reasons=[];
     if(!classification.allowed)reasons.push('Document classification did not establish an Invoice / Tax Invoice.');
     if(classification.reviewRequired)reasons.push('Document-title evidence requires review.');
@@ -1901,7 +1878,7 @@
     if(recovered.length)reasons.push(recovered.length+' equipment row(s) recovered from OCR/table evidence.');
     if(level3)reasons.push('Level 3 review is still required for unresolved evidence.');
     if(!reasons.length)reasons.push('Parser evidence is internally consistent.');
-    return {version:VERSION,generated_at:new Date().toISOString(),overall_status:status,patch_focus:'Golden invoices + evidence tracing + arithmetic validation + field confidence + OCR preprocessing + holdout testing',quality14n:parsed.v703314nQuality||null,source:{character_count:source.length,line_count:source?source.split(/\r?\n/).length:0,evidence_source_count:(context.evidenceSources||[]).length,evidence_sources:(context.evidenceSources||[]).map((x,i)=>String(x?.source||('evidence-'+(i+1))))},document:{classification:{allowed:classification.allowed,disposition:classification.disposition,type:classification.type,reason:classification.reason,review_required:classification.reviewRequired,score:classification.score,evidence:classification.evidence},header:{supplier_name:doc.supplier_name||'',invoice_number:doc.invoice_number||'',invoice_date:doc.invoice_date||'',delivery_order_number:doc.delivery_order_number||'',reference:doc.reference||doc.reference_number||'',currency:doc.currency||'',subtotal:doc.subtotal??null,gst:doc.gst??null,total_amount:doc.total_amount??doc.total??null},corrections:{invoice_number_corrected_from:doc.v7033InvoiceNumberCorrectedFrom||'',invoice_number_review_required:!!doc.invoiceNumberReviewRequired}},filtering:{incoming_count:incoming.length,tracked_count:items.length,excluded_service_count:excludedService.length,excluded_accessory_count:excludedAccessory.length,recovered_equipment_count:recovered.length,incoming_rows:decisionRows},final_items:finalItems,verification:{level3_required:level3,completeness:comp,level1:verify.level1||[],level2:verify.level2||[]},decision_reasons:reasons};
+    return {version:VERSION,generated_at:new Date().toISOString(),overall_status:status,legacy_status:legacyStatus,certified_status:certifiedBound?certified.disposition:null,patch_focus:'Golden invoices + evidence tracing + arithmetic validation + field confidence + OCR preprocessing + holdout testing',quality14n:parsed.v703314nQuality||null,source:{character_count:source.length,line_count:source?source.split(/\r?\n/).length:0,evidence_source_count:(context.evidenceSources||[]).length,evidence_sources:(context.evidenceSources||[]).map((x,i)=>String(x?.source||('evidence-'+(i+1))))},document:{classification:{allowed:classification.allowed,disposition:classification.disposition,type:classification.type,reason:classification.reason,review_required:classification.reviewRequired,score:classification.score,evidence:classification.evidence},header:{supplier_name:doc.supplier_name||'',invoice_number:doc.invoice_number||'',invoice_date:doc.invoice_date||'',delivery_order_number:doc.delivery_order_number||'',reference:doc.reference||doc.reference_number||'',currency:doc.currency||'',subtotal:doc.subtotal??null,gst:doc.gst??null,total_amount:doc.total_amount??doc.total??null},corrections:{invoice_number_corrected_from:doc.v7033InvoiceNumberCorrectedFrom||'',invoice_number_review_required:!!doc.invoiceNumberReviewRequired}},filtering:{incoming_count:incoming.length,tracked_count:items.length,excluded_service_count:excludedService.length,excluded_accessory_count:excludedAccessory.length,recovered_equipment_count:recovered.length,incoming_rows:decisionRows},final_items:finalItems,verification:{level3_required:level3,legacy_level3_required:legacyLevel3,completeness:comp,level1:finalItems.map(x=>({sku:x.sku,item_name:x.item_name,...(x.level1||{status:'unknown'})})),level2:finalItems.map(x=>({sku:x.sku,item_name:x.item_name,...(x.level2||{status:'unknown'})}))},decision_reasons:reasons};
   }
   function runHistoricalRegressionChecks(){
     const cases=[];const add=cfg=>{const actual=cfg.run(),pass=!!cfg.pass(actual);cases.push({id:cfg.id,source_files:cfg.source_files,source_kind:'historical-source-excerpt',expected:cfg.expected,actual,evidence:cfg.evidence(actual),pass,reason:pass?cfg.pass_reason:(cfg.fail_reason(actual)||'Actual parser result did not match the historical expectation.')});};

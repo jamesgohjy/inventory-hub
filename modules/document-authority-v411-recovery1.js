@@ -6,7 +6,7 @@
   const VERSION='4.1.1-recovery1-document-authority';
   const clean=v=>String(v??'').normalize('NFKC').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
   const rowText=r=>clean([r?.sku,r?.model,r?.item_name,r?.description].filter(Boolean).join(' '));
-  const EQUIPMENT=/\b(?:projectors?|microphones?|mics?|speakers?|loudspeakers?|cameras?|mixers?|consoles?|displays?|monitors?|receivers?|transmitters?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visuali[sz]ers?|document\s+cameras?|control\s+panels?|controllers?|keypads?|lighting\s+controllers?|media\s+players?|cd\/?mp3\s+players?|receptacles?|audio\s+testers?|signal\s+testers?|scalers?|matrix|nvr|dvr|network\s+video\s+recorders?|digital\s+video\s+recorders?)\b/i;
+  const EQUIPMENT=/\b(?:projectors?|projection\s+screens?|manual\s+screens?|motorized\s+screens?|motorised\s+screens?|screens?|microphones?|mics?|speakers?|loudspeakers?|cameras?|mixers?|consoles?|displays?|monitors?|receivers?|transmitters?|amplifiers?|pre\s*amplifiers?|preamplifiers?|processors?|switchers?|visuali[sz]ers?|document\s+cameras?|control\s+panels?|controllers?|keypads?|lighting\s+controllers?|media\s+players?|cd\/?mp3\s+players?|receptacles?|audio\s+testers?|signal\s+testers?|scalers?|matrix|nvr|dvr|network\s+video\s+recorders?|digital\s+video\s+recorders?)\b/i;
   const SERVICE_SKU=/\b(?:INSTALL(?:ATION)?|LABOU?R|SERVICE|REPAIR|DISMOUNT(?:ING)?|DISMANTL(?:E|ING)|RE-?INSTAT(?:E|EMENT)|RELOCAT(?:E|ION)|REMOV(?:E|AL)|TEST(?:ING)?|COMMISSION(?:ING)?|DELIVERY|FREIGHT|TRANSPORT|COURIER)\b/i;
   const LABOUR=/\b(?:supply\s+)?labou?r\b|\bmanpower\b|\bprofessional\s+services?\b|\bconsult(?:ancy|ing)\b/i;
   const SERVICE_ACTION=/\b(?:dismantl(?:e|ed|ing)|dismount(?:ed|ing)?|de-?mount(?:ed|ing)?|re-?instat(?:e|ement|ing)|relocat(?:e|ion|ing)|remov(?:e|al|ing)|repair(?:ing|ed)?|testing|commissioning|programming|calibration|system\s+tuning|training|knowledge\s+transfer)\b/i;
@@ -37,7 +37,7 @@
     const text=rowText(row),primary=clean(row.item_name||row.description||''),sku=clean(row.sku||row.model||'');
     if(!text)return false;
     if(LABOUR.test(text)||SERVICE_SKU.test(sku))return true;
-    const physical=EQUIPMENT.test(primary||text);
+    const physical=EQUIPMENT.test(text);
     const bundle=PURCHASE_BUNDLE.test(primary)&&physical&&!LABOUR.test(primary);
     if(bundle&&!/\b(?:cabling|wiring|labelling|labeling|tidying|training|commissioning|system\s+tuning)\b/i.test(primary))return false;
     if(SERVICE_START.test(primary))return true;
@@ -70,7 +70,7 @@
   function strongPhysicalRow(row={},evidence=''){
     const text=rowText(row),primary=clean(row.item_name||row.description||'');
     if(!text||metadataText(text)||isServiceLine(row))return false;
-    if(!EQUIPMENT.test(primary||text))return false;
+    if(!EQUIPMENT.test(text))return false;
     if(!sourceSupportsPhysicalRow(row,evidence))return false;
     return economicEvidence(row)||credibleSku(row.sku||row.model||'');
   }
@@ -111,6 +111,9 @@
       {item_name:'Installation labour',quantity:1,unit_price:200,amount:200}
     ]}).type,'equipment');
     expect('supply install physical item',classifyContent({evidence:'TAX INVOICE\nSupply & Install Outdoor Dual Microphone Wall Receptacle 1 450.00 450.00',rawRows:[{item_name:'Supply & Install Outdoor Dual Microphone Wall Receptacle',quantity:1,unit_price:450,amount:450}]}).type,'equipment');
+    expect('supply install priced physical screen',classifyContent({evidence:'TAX INVOICE\nPRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT\nMAS-1818 Supply and Install 70 x 70 manual projection screen 1 270.00 270.00',rawRows:[{sku:'MAS-1818',item_name:'Manual Projection Screen',description:'Supply and Install 70 x 70 manual projection screen',quantity:1,unit_price:270,amount:270}]}).type,'equipment');
+    expect('wrapped screen description supplies physical noun',classifyContent({evidence:'TAX INVOICE\nPRODUCT NO. DESCRIPTION QUANTITY UNIT PRICE AMOUNT\nMAS-1818 Supply and Install Remaco MAS 1818 70 x 70 1 270.00 270.00\nManual screen in ceiling mount with safety',rawRows:[{sku:'MAS-1818',item_name:'Remaco MAS 1818',description:'Supply and Install Remaco MAS 1818 70 x 70 Manual screen in ceiling mount with safety',quantity:1,unit_price:270,amount:270}]}).type,'equipment');
+    expect('screen repair stays service',classifyContent({evidence:'TAX INVOICE\nRepair existing screen 1 270.00 270.00',rawRows:[{item_name:'Repair existing screen',quantity:1,unit_price:270,amount:270}]}).type,'service');
     expect('address cannot promote invoice',classifyContent({evidence:'TAX INVOICE\n1 Raffles Institution Lane Singapore 575954',inventoryRows:[{item_name:'1 Raffles Institution Lane Singapore 575954',quantity:1,unit_price:10,amount:10}]}).type,'uncertain');
     expect('invented equipment row cannot promote service invoice',classifyContent({evidence:svcEvidence,inventoryRows:[{sku:'FAKE-100',item_name:'Projector',quantity:1,unit_price:100,amount:100}]}).type,'service');
     for(const title of ['PURCHASE ORDER','DELIVERY ORDER','QUOTATION','PROFORMA INVOICE','PACKING LIST','SERVICE REPORT','SERVICE INVOICE','CREDIT NOTE']){

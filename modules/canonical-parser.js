@@ -4,6 +4,9 @@
   const API_VERSION='1.1';
   const ENGINE_VERSION='7.03.3.14x';
   const clean=v=>String(v??'').replace(/\s+/g,' ').trim();
+  // Strip scanning/copy instructions from user-visible, saveable item text.
+  // Raw invoice evidence remains untouched for audit and Review comparison.
+  const cleanRowText=v=>clean(v).replace(/\b(?:COPY|SCAN(?:NED)?|DRAFT)\s*[-—:]*\s*VERIFY\s+(?:AGAINST|WITH)\s+(?:THE\s+)?ORIGINAL\b/gi,' ').replace(/\s+/g,' ').trim();
   const compact=v=>clean(v).normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]+/g,'');
   const normalizeBrand=v=>clean(v).normalize('NFKC').toUpperCase().replace(/\b(?:PTE|LTD|LIMITED|INC|CORP|CORPORATION)\b/g,' ').replace(/[^A-Z0-9]+/g,' ').trim();
   const normalizeModel=v=>compact(v);
@@ -61,8 +64,8 @@
       row.sku=clean(row.sku);
       row.model=clean(row.model);
       row.brand=clean(row.brand||row.manufacturer);
-      row.item_name=clean(row.item_name||row.description);
-      row.description=clean(row.description||row.item_name);
+      row.item_name=cleanRowText(row.item_name||row.description);
+      row.description=cleanRowText(row.description||row.item_name);
       row.serials=serials(row.serials).join(', ');
       row.canonical_identity=canonicalIdentity(row);
       row.invoice_evidence=rowEvidence(input,index);
@@ -188,6 +191,7 @@
     isCanonicalResult,
     diagnostics,
     normalizeBrand,
-    normalizeModel
+    normalizeModel,
+    cleanRowText
   });
 })(typeof window!=='undefined'?window:globalThis);

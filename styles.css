@@ -680,6 +680,12 @@ button:disabled{cursor:not-allowed;opacity:.62}
 
 /* v7.03.3.14y r25 — duplicate Standard Item Name review belongs to imported line items */
 .parsed-row.duplicate-standard-name-review{border-color:#f3b64b;background:#fffaf0;box-shadow:0 0 0 1px rgba(245,158,11,.16)}
+.review-source-evidence{margin-top:12px;padding:10px;border:1px solid #edc879;border-radius:9px;background:#fffbef;font-size:12px}
+.review-source-evidence summary{cursor:pointer;font-weight:700;color:#6d4a14}
+.review-source-evidence p{margin:8px 0;color:#654f2e;line-height:1.4}
+.review-source-evidence button{margin:4px 8px 4px 0}
+.review-source-readings{display:block;margin:3px 0 8px;color:#635d50;overflow-wrap:anywhere}
+.review-source-crop canvas{display:block;max-width:100%;height:auto;margin-top:10px;border:1px solid #aa9680;background:white;image-rendering:auto}
 .duplicate-standard-name-alert{display:flex;align-items:flex-start;gap:9px;margin:10px 0 0;padding:9px 10px;border:1px solid #f0c66f;border-radius:8px;background:#fff3cd;color:#714b00}
 .duplicate-standard-name-alert>svg{width:17px;height:17px;flex:0 0 17px;margin-top:1px;color:#b26a00}
 .duplicate-standard-name-alert strong{display:block;font-size:11px;color:#6a4700}

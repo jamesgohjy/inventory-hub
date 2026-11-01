@@ -59,7 +59,7 @@ for(const [name,result] of Object.entries(suites)){
   assert(result.ok,name+' regression suite failed: '+(result.failures||[]).join(', '));
 }
 const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Object.values(suites).reduce((n,r)=>n+r.cases.filter(x=>x.pass).length,0);
-assert(total===88&&passed===88,'Expected 88/88 core regression checks, got '+passed+'/'+total);
+assert(total===89&&passed===89,'Expected 89/89 core regression checks, got '+passed+'/'+total);
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
 const avMediaDedupe=api.consolidateFragmentedParsedLineItems([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
@@ -308,7 +308,7 @@ assert(runtime.includes('v703314zAutoMergeExactMasterDuplicates')&&runtime.inclu
 assert(!runtime.includes('renderInventoryDuplicateNameWarning')&&!index.includes('inventoryDuplicateNameWarning'),'Duplicate Standard Item Name warning must not render on the Inventory page');
 assert(runtime.includes('refreshParsedDuplicateStandardNameWarnings14z')&&runtime.includes('duplicate-standard-name-review')&&runtime.includes('Double-check duplicate Standard Item Name'),'Post-import Line Items Review must highlight same-name/different-SKU rows');
 assert(parserV4Review.includes('duplicateStandardItemNameGroups'),'Parser V4 Review bridge duplicate Standard Item Name helper missing');
-assert(index.includes('styles.css?v=7.03.3.14z-r28'),'Styles cache-bust revision missing');
+assert(index.includes('styles.css?v=7.03.3.14z-r29'),'Styles cache-bust revision missing');
 console.log('standard-item-duplicate-policy: exact identity auto-merge + line-item Review yellow warning PASS');
 assert(app.includes('modules/parser-evidence-engine.js')&&app.includes('modules/parser-table.js')&&app.includes('modules/grouped-company-ui.js')&&app.includes('modules/parser-v4-review-bridge.js')&&app.includes(activeRuntimePath),'Active bootstrap direct module references missing');
 assert(runtime.includes('v4PreVerificationCandidates')&&runtime.includes('materializeAndDiagnose'),'Live V4 path must preserve pre-verification candidates and materialize them into Review');
