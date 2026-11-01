@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
+const project=fs.existsSync(path.join(__dirname,'../dist/modules/parser-v411-fixes1-5-shadow.js'))?path.join(__dirname,'..','dist'):path.join(__dirname,'..');
+require(path.join(project,'modules/parser-v411-fixes1-5-shadow.js'));
+const parse=globalThis.InventoryHubV411Fixes1to5Shadow.run;
+const input=`Cobalt AV Pte Ltd\nTAX INVOICE\nInvoice No: TEST-100\nDate: 2026-10-01\nNO / MODEL DESCRIPTION QTY UNIT PRICE AMOUNT\n10RDSP-774 DSP Amplifier 2 450.00 900.00\n2PS-AV-125 Document Camera 1 150.00 150.00\nSubtotal 1050.00\nGST 9% 94.50\nTotal 1144.50`;
+const out=parse(input,{verificationTexts:[input]});
+assert.equal(out.disposition,'review');
+assert.equal(out.reviewGate.autoAcceptCount,0);
+assert.ok(out.failures.some(f=>f.issue==='fused-row-ordinal-identity'));
+console.log('PASS fused row ordinal identity remains Review and cannot auto-save');
