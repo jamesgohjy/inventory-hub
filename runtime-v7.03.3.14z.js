@@ -174,20 +174,15 @@ class SupabaseDB{
   async fileUrl(docId,download=false){
     const d=state.data.documents.find(x=>x.id===docId);
     if(!d?.storage_path)throw new Error('Stored PDF path is missing.');
-    const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120);
+    const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});
     if(error)throw error;
     if(!download)return data.signedUrl;
-    // A new signed-URL tab is not a downloadable local file in several browsers,
-    // which blocks the cancel-only shadow re-run workflow. Fetch the authorised
-    // object and explicitly download the original filename instead.
-    const response=await fetch(data.signedUrl);
-    if(!response.ok)throw new Error(`Stored PDF download failed (${response.status}).`);
-    const blob=await response.blob();
-    if(!blob.size)throw new Error('Stored PDF download was empty.');
-    const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=d.file_name||'document.pdf';a.style.display='none';
+    // Keep this in the original click task. An awaited cross-origin fetch can
+    // lose user activation, whereas the signed URL's attachment disposition
+    // produces a real browser download with the authoritative source filename.
+    const a=document.createElement('a');
+    a.href=data.signedUrl;a.download=d.file_name||'document.pdf';a.style.display='none';
     document.body.appendChild(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),30000);
     return null;
   }
 }
