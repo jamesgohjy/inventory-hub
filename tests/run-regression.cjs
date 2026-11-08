@@ -9,6 +9,7 @@ const app=read('app.js');
 const activeRuntimePath=(app.match(/loadScript\('(runtime-v7\.03\.3\.14[a-z]+\.js)\?v='/)||[])[1];
 assert(activeRuntimePath,'Bootstrap must name an active direct runtime');
 const runtime=read(activeRuntimePath);
+assert(runtime.includes("const response=await fetch(data.signedUrl);")&&runtime.includes("a.download=d.file_name||'document.pdf'")&&!runtime.includes("window.open(data.signedUrl,'_blank');return null;"),'Stored-PDF download must fetch the signed object and explicitly download the original file rather than opening an unusable signed-URL tab');
 const evidenceEngine=read('modules/parser-evidence-engine.js');
 const parserModule=read('modules/parser-table.js');
 const canonicalParser=read('modules/canonical-parser.js');
