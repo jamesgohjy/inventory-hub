@@ -176,14 +176,7 @@ class SupabaseDB{
     if(!d?.storage_path)throw new Error('Stored PDF path is missing.');
     const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});
     if(error)throw error;
-    if(!download)return data.signedUrl;
-    // Keep this in the original click task. An awaited cross-origin fetch can
-    // lose user activation, whereas the signed URL's attachment disposition
-    // produces a real browser download with the authoritative source filename.
-    const a=document.createElement('a');
-    a.href=data.signedUrl;a.download=d.file_name||'document.pdf';a.style.display='none';
-    document.body.appendChild(a);a.click();a.remove();
-    return null;
+    return data.signedUrl;
   }
 }
 
@@ -4272,6 +4265,7 @@ function v70336EnsureDocumentEditor(){
 function openDocumentMetadataEdit(docId){if(!requireEdit())return;const doc=(state.data.documents||[]).find(x=>String(x.id)===String(docId));if(!doc){toast('Document not found.');return;}const overlay=v70336EnsureDocumentEditor();$('v70336DocumentId').value=doc.id;$('v70336DocumentSupplier').value=doc.supplier_name||'';$('v70336DocumentInvoice').value=doc.invoice_number||'';$('v70336DocumentDate').value=documentInvoiceDate(doc)||'';overlay.hidden=false;overlay.style.display='flex';requestAnimationFrame(()=>$('v70336DocumentSupplier')?.focus());}
 
 for(const id of ['documentsTable','detailBody'])$(id).onclick=async e=>{const el=e.target.closest('[data-doc-view],[data-doc-edit],[data-doc-download],[data-doc-delete]');if(!el)return;if(el.dataset.docEdit){openDocumentMetadataEdit(el.dataset.docEdit);return;}try{if(el.dataset.docDelete){if(!requireEdit())return;const deleteId=el.dataset.docDelete;const doc=state.data.documents.find(x=>x.id===deleteId);const linked=state.data.purchases.filter(p=>p.document_id===deleteId);const message=linked.length?`Delete "${doc?.file_name||'this invoice'}"?\n\nThis will also remove the linked purchase record, its purchased quantities and serial numbers from inventory. Master SKU items with no remaining purchase history will also be removed from Inventory.`:`Delete "${doc?.file_name||'this document'}" permanently?`;if(!confirm(message))return;await state.db.deleteDocument(deleteId);state.data.documents=state.data.documents.filter(x=>x.id!==deleteId);renderDocuments();try{await reload();}catch(refreshErr){console.error('Post-delete refresh failed:',refreshErr);}toast('Invoice deleted.');return;}const url=await state.db.fileUrl(el.dataset.docView||el.dataset.docDownload,!!el.dataset.docDownload);if(url)window.open(url,'_blank');}catch(err){console.error(err);toast(friendlyError(err))}};
+for(const id of ['documentsTable','detailBody'])$(id).addEventListener('click',async e=>{const el=e.target.closest('[data-doc-view],[data-doc-download]');if(!el)return;e.preventDefault();e.stopImmediatePropagation();const sourceWindow=window.open('about:blank','_blank');try{const url=await state.db.fileUrl(el.dataset.docView||el.dataset.docDownload,!!el.dataset.docDownload);if(!url)throw new Error('Stored PDF URL was unavailable.');if(sourceWindow)sourceWindow.location.replace(url);else window.open(url,'_blank');}catch(err){try{sourceWindow?.close();}catch(_e){}console.error(err);toast(friendlyError(err));}},true);
 $('detailDialog').onclick=async e=>{const el=e.target.closest('[data-doc-view]');if(el){try{const u=await state.db.fileUrl(el.dataset.docView);window.open(u,'_blank')}catch(err){toast(err.message)}}};$('closeDetailBtn').onclick=()=>$('detailDialog').close();
 $('importDialog')?.addEventListener('close',cleanupPdfPreview);
 $('importBtn').onclick=openImport;$('closeImportBtn').onclick=()=>{cleanupPdfPreview();$('importDialog').close();};$('cancelReviewBtn').onclick=()=>{cleanupPdfPreview();$('importDialog').close();};$('dropZone').onclick=()=>$('pdfInput').click();$('pdfInput').onchange=e=>e.target.files[0]&&startImport(e.target.files[0]);
