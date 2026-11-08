@@ -171,7 +171,25 @@ class SupabaseDB{
     const storagePath=rpc.data||d.storage_path;
     if(storagePath){const rm=await this.sb.storage.from('inventory-documents').remove([storagePath]);if(rm.error)console.warn('Database records deleted but storage cleanup failed:',rm.error);}
   }
-  async fileUrl(docId,download=false){const d=state.data.documents.find(x=>x.id===docId);const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120,{download:download?d.file_name:undefined});if(error)throw error;if(download){window.open(data.signedUrl,'_blank');return null;}return data.signedUrl;}
+  async fileUrl(docId,download=false){
+    const d=state.data.documents.find(x=>x.id===docId);
+    if(!d?.storage_path)throw new Error('Stored PDF path is missing.');
+    const {data,error}=await this.sb.storage.from('inventory-documents').createSignedUrl(d.storage_path,120);
+    if(error)throw error;
+    if(!download)return data.signedUrl;
+    // A new signed-URL tab is not a downloadable local file in several browsers,
+    // which blocks the cancel-only shadow re-run workflow. Fetch the authorised
+    // object and explicitly download the original filename instead.
+    const response=await fetch(data.signedUrl);
+    if(!response.ok)throw new Error(`Stored PDF download failed (${response.status}).`);
+    const blob=await response.blob();
+    if(!blob.size)throw new Error('Stored PDF download was empty.');
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=d.file_name||'document.pdf';a.style.display='none';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+    return null;
+  }
 }
 
 const state={db:null,data:null,parsed:null,file:null,session:null,profile:null,pdfPreviewUrl:null,pdfPreviewPage:1,pdfPreviewZoom:'page-width',pdfLayout:null,ocrCandidates:null,v2FullDocumentEvidence:null,v411NumericCellOcrEvidence:null,importHumanReviewApproved:false,masterDuplicateAutoMergeError:null};
