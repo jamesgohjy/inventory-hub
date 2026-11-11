@@ -2046,6 +2046,10 @@ function v667ShortItemName(value=''){
 function v667InferCategory(line={}){
   const t=normalizePdfText([line.sku,line.item_name,line.description].filter(Boolean).join(' ')).replace(/\s+/g,' ').toLowerCase();
   if(/\b(?:projector|visualizer|document\s+camera)\b/.test(t))return 'Projection / Video';
+  // HDMI/HDBaseT transport is video infrastructure.  Check it before the
+  // generic receiver/transmitter audio rule so an AV extender is never filed
+  // as audio merely because its product name says "Receiver".
+  if(/\b(?:hdmi|hdbaset|video\s+(?:switcher|transmitter|receiver))\b/.test(t))return 'Projection / Video';
   if(/\b(?:control\s+panel|controller|keypad|button\s+keypad|control\s+processor|hdmi\s+control)\b/.test(t))return 'AV Control';
   if(/\b(?:active\s+speaker|speaker|loudspeaker)\b/.test(t))return 'Audio / Speakers';
   if(/\b(?:microphone|transmitter|receiver|wireless\s+system)\b/.test(t))return 'Audio / Wireless';
@@ -3564,6 +3568,14 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     // Missing numeric fields require Review; they do not erase a physical row.
     return name&&!isNonInventoryServiceLine(x)&&!isExcludedInventoryAccessoryLine(x);
   });
+  // Bind serial blocks again after the certified rows become the final Review
+  // authority. Earlier candidate passes can correctly read a serial but lose
+  // it while rows are normalized or reconciled. The binder only attaches a
+  // block to the nearest preceding row with model/description evidence and
+  // retains conflict/count review flags, so it cannot invent serial ownership.
+  if(typeof patch?.v703315BindSerialBlocks==='function'){
+    finalParsed.items=patch.v703315BindSerialBlocks(finalParsed.items,sourceText);
+  }
   // A product-code witness is evaluated inside the certified parser. Keep
   // this late path fail-closed for any conflict that escaped that assessment.
   const identityCorrections=[];
