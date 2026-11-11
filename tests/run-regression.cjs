@@ -66,6 +66,7 @@ assert(api.referenceNumberFromLabel('Ref. No. VSO17-028984 DATE 11/12/24 P/O NO.
 assert(runtime.includes('const terminalOmission=identified.length>=6&&otherText.includes(identified.slice(0,-1));')&&runtime.includes('if((direct||terminalOmission)&&sharedType)return true;'),'Recovered-row coverage must consolidate an identified and blank-SKU duplicate only with exact economics and printed model evidence');
 assert(runtime.includes("if(/\\b(?:hdmi|hdbaset|video\\s+(?:switcher|transmitter|receiver))\\b/.test(t))return 'Projection / Video';"),'HDMI/HDBaseT transport must not be categorised as audio equipment');
 assert(runtime.includes("finalParsed.items=patch.v703315BindSerialBlocks(finalParsed.items,sourceText);"),'Final Review rows must receive source-bound serial evidence after certified-row reconciliation');
+assert(runtime.includes('function v703314zSourceExclusionLedger(raw=\'\')')&&runtime.includes('...sourceExclusions.service')&&runtime.includes('...sourceExclusions.support'),'Review diagnostics must retain an evidence ledger for source-excluded installation and FOC/support rows');
 const avMediaDedupe=api.consolidateFragmentedParsedLineItems([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
   {sku:'',item_name:'PT-MZI7K Replacement of AV Projector and control Panel',description:'PT-MZI7K Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352},
