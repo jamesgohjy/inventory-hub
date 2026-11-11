@@ -990,6 +990,7 @@ function referenceNumberFromLabel(text=''){
   // genuine labelled Ref. No. value to be discarded on otherwise clear scans.
   // The label boundary remains mandatory, so this cannot promote a model or
   // arbitrary invoice text into a reference.
+  const canonicalReference=value=>String(value||'').replace(/^VSO0(\d{2}-\d{6})$/i,'VSO$1');
   const isReferenceShape=value=>/^(?:[A-Z]{2,}\d{1,}|[A-Z0-9]{3,})(?:[-/][A-Z0-9]+)+$/i.test(String(value||''));
   // A label must be a separate word. `QA-REFRESH-...` contains `REF` but
   // cannot supply a Reference field; a zero-width label/value boundary used
@@ -998,7 +999,7 @@ function referenceNumberFromLabel(text=''){
   const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
   for(const m of normalized.matchAll(re)){
     const value=cleanHeaderValue(m[1]||'');
-    if(value&&/\d/.test(value)&&isReferenceShape(value)&&!blocked.test(value)&&!parseDate(value))return value;
+    if(value&&/\d/.test(value)&&isReferenceShape(value)&&!blocked.test(value)&&!parseDate(value))return canonicalReference(value);
   }
   // Some PDF text layers insert spaces inside one printed header cell. Only
   // compact that cell when it follows a Ref./Reference label and has an
@@ -1009,7 +1010,7 @@ function referenceNumberFromLabel(text=''){
   const columnar=normalized.match(/\bRef(?:erence)?\.?\s*No\.?[^\n]*\n\s*[^A-Z0-9]*([A-Z0-9][A-Z0-9\s/-]{7,}?)\s+(?:[0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*\d{2,4})\b/i);
   if(columnar){
     const compact=String(columnar[1]||'').replace(/\s+/g,'').replace(/[–—]/g,'-');
-    if(isReferenceShape(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
+    if(isReferenceShape(compact)&&/\d/.test(compact)&&!parseDate(compact))return canonicalReference(compact);
   }
   const lines=normalized.split(/\n+/).map(x=>x.trim()).filter(Boolean);
   for(let i=0;i<lines.length;i++){
@@ -1017,7 +1018,7 @@ function referenceNumberFromLabel(text=''){
     const raw=String(lines[i+1]||'').trim();
     if(!raw||/\b(?:date|invoice|p\/?o|salesman|terms|customer)\b/i.test(raw))continue;
     const compact=raw.replace(/\s+/g,'').replace(/[–—]/g,'-');
-    if(isReferenceShape(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
+    if(isReferenceShape(compact)&&/\d/.test(compact)&&!parseDate(compact))return canonicalReference(compact);
   }
   return '';
 }
