@@ -739,7 +739,33 @@ async function extractPdf(file){
     const worker=await Tesseract.createWorker('eng');
     try{
       for(let i=1;i<=pdf.numPages;i++){
-        const p=await pdf.getPage(i),vp=p.getViewport({scale:4.17}),c=document.createElement('canvas');
+        const p=await pdf.getPage(i);
+        // Mixed bundles (such as Concept's invoice/PO/DO set) used to render
+        // every page at 300 DPI before an obvious PO/DO/quotation could be
+        // excluded.  A title-only screen is not line-item evidence and can
+        // never add data; it may only skip a page after an explicit
+        // non-invoice verdict.  Invoice and Review pages continue through the
+        // unchanged 300 DPI evidence path below.
+        const screenVp=p.getViewport({scale:2.1}),screen=document.createElement('canvas');
+        screen.width=Math.round(screenVp.width);screen.height=Math.round(screenVp.height);
+        await p.render({canvasContext:screen.getContext('2d',{willReadFrequently:true}),viewport:screenVp}).promise;
+        await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM?.AUTO??'3',preserve_interword_spaces:'1',user_defined_dpi:'150'});
+        const screenStart=performance.now(),screenResult=await worker.recognize(screen,{}, {text:true});
+        const screenText=String(screenResult.data?.text||'').trim();
+        const screenVerdict=globalThis.V7033Patch?.classifyInvoicePage?.(screenText)||null;
+        const explicitScreenNonInvoice=screenVerdict&&!screenVerdict.allowed&&!screenVerdict.reviewRequired
+          &&screenVerdict.type==='non-invoice'&&Array.isArray(screenVerdict.evidence?.nonInvoiceTitles)
+          &&screenVerdict.evidence.nonInvoiceTitles.length>0;
+        initialOcrTimings.push({page:i,stage:'title-screen-150dpi',ms:Math.round(performance.now()-screenStart),skipped:explicitScreenNonInvoice?'explicit-non-invoice':''});
+        screen.width=0;screen.height=0;
+        if(explicitScreenNonInvoice){
+          // Preserve page indexes in every evidence mode.  The empty entries
+          // let downstream authority/recovery code prove that this page never
+          // supplied invoice evidence.
+          for(const mode of modes){mode.layouts.push({page:i,rows:[]});mode.texts.push('');}
+          continue;
+        }
+        const vp=p.getViewport({scale:4.17}),c=document.createElement('canvas');
         c.width=Math.round(vp.width);c.height=Math.round(vp.height);await p.render({canvasContext:c.getContext('2d',{willReadFrequently:true}),viewport:vp}).promise;
         // AUTO runs on every page as the document-authority screen. If it reads
         // an explicit PO/DO/quotation title, remaining modes cannot produce legal
