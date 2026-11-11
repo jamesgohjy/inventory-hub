@@ -3036,7 +3036,12 @@ function v703317InitialOcrModesForPage(firstPassText='',modes=[]){
 function v703316RecoveryPages(context={},pageCount=0){
   const candidates=(context.ocrCandidates||[]).filter(x=>/^(?:auto|column|block)$/.test(String(x.source||''))
     &&Array.isArray(x.invoicePageDecisions)&&x.invoicePageDecisions.length===pageCount);
-  if(candidates.length<2)return Array.from({length:pageCount},(_,i)=>i+1);
+  // A single first-pass witness is sufficient to remove a page only when it
+  // explicitly identifies a prohibited document title.  It cannot promote a
+  // page or create inventory evidence; it merely prevents the expensive
+  // recovery pass from rescanning PO/DO/quotation pages.  This matters when
+  // only one initial OCR variant survives the evidence-quality gate.
+  if(!candidates.length)return Array.from({length:pageCount},(_,i)=>i+1);
   const pages=[];
   for(let page=1;page<=pageCount;page++){
     const verdicts=candidates.map(x=>x.invoicePageDecisions[page-1]).filter(x=>Number(x?.page)===page);
@@ -3045,8 +3050,8 @@ function v703316RecoveryPages(context={},pageCount=0){
     // A legible prohibited title in one layout outranks a continuation guess
     // when no layout positively reads a new invoice title. Retain a positive
     // invoice or Review verdict so uncertain pages receive deeper OCR.
-    const noPositiveInvoice=verdicts.length>=3&&verdicts.every(x=>!x.reviewRequired&&(!x.allowed||x.type==='invoice_continuation'));
-    const titleRejected=explicitDenials.length>=2||(explicitDenials.length>=1&&noPositiveInvoice);
+    const noPositiveInvoice=verdicts.length>0&&verdicts.every(x=>!x.reviewRequired&&(!x.allowed||x.type==='invoice_continuation'));
+    const titleRejected=explicitDenials.length>=1&&noPositiveInvoice;
     console.info('Recovery page verdicts',JSON.stringify({page,votes:verdicts.map(x=>({type:x.type,allowed:x.allowed,titles:x.evidence?.nonInvoiceTitles?.length||0})),titleRejected}));
     if(!titleRejected)pages.push(page);
   }
