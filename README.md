@@ -72,3 +72,7 @@ Supplier-specific parsing rules are included for the two sample invoice styles s
 ## Important implementation note
 
 A generic invoice parser cannot guarantee perfect extraction from every supplier layout. This application therefore follows a safe workflow: **Extract → Standardise → Review → Save**, rather than silently writing OCR results into live inventory.
+
+## Controlled live rollout
+
+The parser is production-ready only when the Review and audit safeguards remain part of everyday use. The operational rollout and post-release checks are documented in [docs/controlled-live-rollout.md](docs/controlled-live-rollout.md).
