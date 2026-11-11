@@ -379,6 +379,7 @@ const ha=v2ctx.InventoryHubParserV2Header.resolveHeaders(sameCompanyA),hb=v2ctx.
 assert(/AV MEDIA PTE LTD/i.test(ha.supplier_name)&&/AV MEDIA PTE LTD/i.test(hb.supplier_name),'Parser V2 same-company supplier resolution failed across evidence variations');
 assert(ha.invoice_number==='VIN17-049472'&&hb.invoice_number==='VIN17-055555','Parser V2 invoice-number resolution failed across same-company variations');
 assert(runtime.includes("replace(/^VINIL(?=\\d)/i,'VIN')"),'AV Media VINIL OCR surplus must normalize only at the invoice prefix');
+assert(runtime.includes('const v703314zStartImport=startImport;')&&runtime.includes('await v703314zStartImport(file);'),'AV Media header normalization must run after native-header reconciliation');
 assert(ha.invoice_date==='2026-04-06'&&hb.invoice_date==='2026-08-18','Parser V2 date resolution failed across same-company variations');
 const badRef=v2ctx.InventoryHubParserV2Header.resolveHeaders(v2ctx.InventoryHubParserV2Evidence.buildDocumentEvidence({sources:[
   {source:'native',text:'Ref. No.: VSO17-035483'},
