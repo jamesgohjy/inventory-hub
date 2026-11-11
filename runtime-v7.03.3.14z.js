@@ -985,6 +985,12 @@ function labelledValue(text,labelRe,valueRe=/[^\n]+/){
 }
 function referenceNumberFromLabel(text=''){
   const normalized=normalizePdfText(text);
+  // AV Media prints references such as VSO17-028984: a single deliberate
+  // delimiter is enough.  Do not require a second delimiter, which caused a
+  // genuine labelled Ref. No. value to be discarded on otherwise clear scans.
+  // The label boundary remains mandatory, so this cannot promote a model or
+  // arbitrary invoice text into a reference.
+  const isReferenceShape=value=>/^(?:[A-Z]{2,}\d{1,}|[A-Z0-9]{3,})(?:[-/][A-Z0-9]+)+$/i.test(String(value||''));
   // A label must be a separate word. `QA-REFRESH-...` contains `REF` but
   // cannot supply a Reference field; a zero-width label/value boundary used
   // to turn its suffix into a plausible yet wrong saved value.
@@ -992,7 +998,7 @@ function referenceNumberFromLabel(text=''){
   const blocked=/^(?:DATE|INVOICE|NO|NUMBER|P\/?O|PO|TERMS|SALESMAN|CUSTOMER|CODE)$/i;
   for(const m of normalized.matchAll(re)){
     const value=cleanHeaderValue(m[1]||'');
-    if(value&&/\d/.test(value)&&!blocked.test(value)&&!parseDate(value))return value;
+    if(value&&/\d/.test(value)&&isReferenceShape(value)&&!blocked.test(value)&&!parseDate(value))return value;
   }
   // Some PDF text layers insert spaces inside one printed header cell. Only
   // compact that cell when it follows a Ref./Reference label and has an
@@ -1003,7 +1009,7 @@ function referenceNumberFromLabel(text=''){
   const columnar=normalized.match(/\bRef(?:erence)?\.?\s*No\.?[^\n]*\n\s*[^A-Z0-9]*([A-Z0-9][A-Z0-9\s/-]{7,}?)\s+(?:[0-3]?\d\s*[/.-]\s*[01]?\d\s*[/.-]\s*\d{2,4})\b/i);
   if(columnar){
     const compact=String(columnar[1]||'').replace(/\s+/g,'').replace(/[–—]/g,'-');
-    if(/^[A-Z0-9]+(?:[-/][A-Z0-9]+){2,}[-/]?$/i.test(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
+    if(isReferenceShape(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
   }
   const lines=normalized.split(/\n+/).map(x=>x.trim()).filter(Boolean);
   for(let i=0;i<lines.length;i++){
@@ -1011,7 +1017,7 @@ function referenceNumberFromLabel(text=''){
     const raw=String(lines[i+1]||'').trim();
     if(!raw||/\b(?:date|invoice|p\/?o|salesman|terms|customer)\b/i.test(raw))continue;
     const compact=raw.replace(/\s+/g,'').replace(/[–—]/g,'-');
-    if(/^[A-Z0-9]+(?:[-/][A-Z0-9]+){2,}[-/]?$/i.test(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
+    if(isReferenceShape(compact)&&/\d/.test(compact)&&!parseDate(compact))return compact;
   }
   return '';
 }
@@ -3325,6 +3331,24 @@ function v703314zRecoveredRowCoverage(recovered=[],finalItems=[]){
     }
     const stripSalesCategoryName=value=>identity(value).replace(/^\d{3,12}SALES/,'');
     const aName=stripSalesCategoryName(a?.item_name||a?.description),bName=stripSalesCategoryName(b?.item_name||b?.description);
+    // A recovery witness and the certified row can describe the same priced
+    // physical line while only one retains a readable SKU.  That is common
+    // when a tight crop reads PT-MZ17K but the full-row OCR reads "PT-MZ 17K"
+    // inside the description.  Treat it as *coverage*, not a second inventory
+    // item, only when exact economics agree and the surviving model is visibly
+    // present (allowing one missing terminal revision glyph) in the other
+    // row's printed name/source line.  This is deliberately narrower than
+    // fuzzy description matching: two explicit or different models never join.
+    if((!aSku||!bSku)&&sameEconomics(a,b,true)){
+      const identified=aSku||bSku;
+      const other=aSku?b:b;
+      const otherText=identity([other?.item_name,other?.description,other?.v703312kSourceLine].filter(Boolean).join(' '));
+      const direct=otherText.includes(identified);
+      const terminalOmission=identified.length>=6&&otherText.includes(identified.slice(0,-1));
+      const typeWords=value=>String(value||'').toUpperCase().match(/PROJECTOR|TRANSMITTER|RECEIVER|SWITCHER|KEYPAD|PANEL|MIXER|SPEAKER|MICROPHONE|DISPLAY|MONITOR/g)||[];
+      const sharedType=typeWords(a?.item_name||a?.description).some(word=>typeWords(b?.item_name||b?.description).includes(word));
+      if((direct||terminalOmission)&&sharedType)return true;
+    }
     const prior=identity(b?.v411ProductCodeCropWitness?.previous||b?.productCodeWitness?.previous);
     if(!aSku&&prior&&bName&&aName.startsWith(prior)
       &&(aName===prior+bName||identity(String(a?.item_name||a?.description||'').trim().replace(/^[A-Z0-9./-]+\s+/i,''))
