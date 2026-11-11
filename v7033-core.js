@@ -717,6 +717,9 @@
     const t=norm(text);
     if(/controller|control panel|keypad|button keypad|processor|switcher/.test(t))return 'AV Control';
     if(/projector|visualizer|document camera|display|monitor|camera|nvr|dvr|network video recorder|digital video recorder/.test(t))return 'Projection / Video';
+    // A TP/RX or TP/TX product can be called a receiver/transmitter, but HDMI
+    // and HDBaseT identify video transport rather than audio equipment.
+    if(/hdmi|hdbaset|video transmitter|video receiver/.test(t))return 'Projection / Video';
     if(/microphone|\bmic\b|speaker|loudspeaker|amplifier|mixer|console|receiver|transmitter|media player|cd mp3 player|\bplayer\b|receptacle/.test(t))return 'Audio / Equipment';
     return '';
   }
