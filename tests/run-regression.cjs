@@ -63,6 +63,7 @@ const total=Object.values(suites).reduce((n,r)=>n+r.cases.length,0),passed=Objec
 assert(total===89&&passed===89,'Expected 89/89 core regression checks, got '+passed+'/'+total);
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-028984 DATE 11/12/24 P/O NO. PO2024/000/183')==='VSO17-028984','Single-delimiter AV Media Reference extraction failed');
+assert(runtime.includes("const canonicalReference=value=>String(value||'').replace(/^VSO0(\\d{2}-\\d{6})$/i,'VSO$1');"),'AV Media reference OCR normalizer must remove only the documented surplus zero form');
 assert(runtime.includes('const terminalOmission=identified.length>=6&&otherText.includes(identified.slice(0,-1));')&&runtime.includes('if((direct||terminalOmission)&&sharedType)return true;'),'Recovered-row coverage must consolidate an identified and blank-SKU duplicate only with exact economics and printed model evidence');
 assert(runtime.includes("if(/\\b(?:hdmi|hdbaset|video\\s+(?:switcher|transmitter|receiver))\\b/.test(t))return 'Projection / Video';"),'HDMI/HDBaseT transport must not be categorised as audio equipment');
 assert(runtime.includes("finalParsed.items=patch.v703315BindSerialBlocks(finalParsed.items,sourceText);"),'Final Review rows must receive source-bound serial evidence after certified-row reconciliation');
@@ -330,7 +331,7 @@ assert(groupModule.includes('ui-group')&&groupModule.includes('ui-group__toggle'
 assert(/ASSET_REV='v703314[a-z]+-[^']+'/.test(app),'Active cache-busting asset revision marker missing');
 assert(runtime.includes("'Parser V4 is now the production import engine after the full promotion regression gate passed.'")&&runtime.includes("'Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'"),'Direct runtime Patch Notes are not the current v14z user-facing version');
 assert(index.includes('Parser V4 is now the production import engine after the full promotion regression gate passed.')&&index.includes('Invoice and Tax Invoice pages are authoritative; quotation, PO, DO and standalone schedule pages cannot create or repair inventory rows.'),'Static Patch Notes fallback is not current');
-assert(/app\.js\?v=7\.03\.3\.14[a-z]+-(?:r\d+|step4-live-v\d+|holdout-[a-z-]+-v\d+)/.test(index),'Index app.js cache-bust revision missing');
+assert(/app\.js\?v=7\.03\.3\.14[a-z]+-(?:r\d+|step4-live-v\d+|(?:holdout|avmedia)-[a-z-]+-v\d+)/.test(index),'Index app.js cache-bust revision missing');
 assert(!app.includes('runtime-v7.03.3.14t.js')&&!app.includes('runtime-v7.03.3.14s.js')&&!app.includes('baseline-v6.55-d452'),'14z bootstrap still references an older runtime/baseline');
 assert(index.includes('id="inventoryGroup"')&&index.includes('id="documentGroup"'),'Protected Group by Company controls are missing from Inventory or Documents');
 assert(/id="inventoryGroup"[\s\S]{0,300}value="company">Group by Company/.test(index),'Inventory Group by Company option must remain available');
