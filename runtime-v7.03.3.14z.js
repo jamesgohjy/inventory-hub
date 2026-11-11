@@ -2644,7 +2644,10 @@ function recoverSupplierFromEvidence14x(doc={},sources=[]){
 function recoverAvMediaHeader(doc={},rawText=''){
   const sources=v661EvidenceSources(rawText);recoverSupplierFromEvidence14x(doc,sources);const all=sources.map(x=>x.text).join('\n'),isAv=/\bAV\s+MEDIA\b/i.test(all)||/av\s+media/i.test(String(doc.supplier_name||''));
   if(isAv)doc.supplier_name='AV Media Pte Ltd';
-  const cleanInv=v=>String(v||'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/^YIN/i,'VIN').replace(/^Y1N/i,'VIN').replace(/^V1N/i,'VIN').replace(/^YlN/i,'VIN').replace(/^VINI(?=\d)/i,'VIN1').replace(/^VINl(?=\d)/i,'VIN1');
+  // AV Media's VIN prefix is frequently read as VINIL by image OCR.  This is
+  // a prefix-only correction, retained only when digits immediately follow,
+  // so arbitrary invoice text is never rewritten.
+  const cleanInv=v=>String(v||'').replace(/\s+/g,'').replace(/[–—]/g,'-').replace(/^VINIL(?=\d)/i,'VIN').replace(/^YIN/i,'VIN').replace(/^Y1N/i,'VIN').replace(/^V1N/i,'VIN').replace(/^YlN/i,'VIN').replace(/^VINI(?=\d)/i,'VIN1').replace(/^VINl(?=\d)/i,'VIN1');
   const bad=/^(?:CUSTOMER|CODE|DATE|TERMS|SOLD|DELIVERED|REFERENCE|REF|INVOICE|NO)$/i;
   let invoice='';
   for(const src of sources){
