@@ -3471,6 +3471,22 @@ function v411TerminalSkuEvidenceConflict(item={},sources=[]){
   const distinct=[...new Set(hits.map(x=>codeKey(x.token)))];
   return distinct.length===1?{current,alternate:distinct[0],evidence:hits}:null;
 }
+function v703314zSourceExclusionLedger(raw=''){
+  // Certified row builders may correctly exclude a service or FOC/support row
+  // before it reaches their candidate list. Keep an evidence ledger from the
+  // source transcript so Review can truthfully report that exclusion instead
+  // of showing "0 excluded". These entries are diagnostics only: they never
+  // re-enter finalParsed.items or become saveable inventory rows.
+  const lines=normalizePdfText(raw).split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const service=[],support=[];
+  for(const line of lines){
+    if(/\b(?:sales\s*[-:]\s*installation|services?\s*,\s*cabling\s+and\s+installation)\b/i.test(line)){
+      service.push({item_name:line,v703314zSourceLedger:true});continue;
+    }
+    if(/\b(?:FOC\s+(?:WTY|warranty)|warranty\s+cost\s+for|extended\s+warranty)\b/i.test(line))support.push({item_name:line,v703314zSourceLedger:true});
+  }
+  return {service,support};
+}
 function applyParserV41ProductionIntegrity14z(parsed,raw=''){
   const legacy=window.InventoryHubParserV41Shadow;
   const certified=window.InventoryHubV411Fixes1to5Shadow;
@@ -3723,8 +3739,9 @@ function applyParserV41ProductionIntegrity14z(parsed,raw=''){
     }
     if(isManualScreen){item.description='Manual Screen';if(!item.category||item.category==='AV Accessories')item.category='Projection';}
   }
-  const excludedService=[...(patch?.v703312jIsServiceRow?originalIncoming.filter(patch.v703312jIsServiceRow):[]),...recoveredInstallation];
-  const excludedAccessory=patch?.v703312jIsAccessoryRow?originalIncoming.filter(patch.v703312jIsAccessoryRow):[];
+  const sourceExclusions=v703314zSourceExclusionLedger(sourceText);
+  const excludedService=[...(patch?.v703312jIsServiceRow?originalIncoming.filter(patch.v703312jIsServiceRow):[]),...recoveredInstallation,...sourceExclusions.service];
+  const excludedAccessory=[...(patch?.v703312jIsAccessoryRow?originalIncoming.filter(patch.v703312jIsAccessoryRow):[]),...sourceExclusions.support];
   // Prefer the same labelled reference independently read by both measured
   // high-resolution invoice passes. A single OCR substitution cannot replace
   // the existing value, and the chosen token is present in source evidence.
