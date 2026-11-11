@@ -64,6 +64,8 @@ assert(total===89&&passed===89,'Expected 89/89 core regression checks, got '+pas
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-026212/V17-041821 DATE 15/12/23 P/O NO. PO/23/000056')==='VSO17-026212/V17-041821','Flexible labelled Reference No. extraction failed');
 assert(api.referenceNumberFromLabel('Ref. No. VSO17-028984 DATE 11/12/24 P/O NO. PO2024/000/183')==='VSO17-028984','Single-delimiter AV Media Reference extraction failed');
 assert(runtime.includes('const terminalOmission=identified.length>=6&&otherText.includes(identified.slice(0,-1));')&&runtime.includes('if((direct||terminalOmission)&&sharedType)return true;'),'Recovered-row coverage must consolidate an identified and blank-SKU duplicate only with exact economics and printed model evidence');
+assert(runtime.includes("if(/\\b(?:hdmi|hdbaset|video\\s+(?:switcher|transmitter|receiver))\\b/.test(t))return 'Projection / Video';"),'HDMI/HDBaseT transport must not be categorised as audio equipment');
+assert(runtime.includes("finalParsed.items=patch.v703315BindSerialBlocks(finalParsed.items,sourceText);"),'Final Review rows must receive source-bound serial evidence after certified-row reconciliation');
 const avMediaDedupe=api.consolidateFragmentedParsedLineItems([
   {sku:'',item_name:'and control Panel',description:'and control Panel',quantity:4,unit_price:9588,amount:38.35,amountReviewRequired:true},
   {sku:'',item_name:'PT-MZI7K Replacement of AV Projector and control Panel',description:'PT-MZI7K Replacement of AV Projector and control Panel',quantity:4,unit_price:9588,amount:38352},
